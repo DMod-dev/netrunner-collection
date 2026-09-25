@@ -1,6 +1,7 @@
 import { PrismaInstrumentation } from '@prisma/instrumentation'
 import { nodeProfilingIntegration } from '@sentry/profiling-node'
 import * as Sentry from '@sentry/react-router'
+import { redactSentryRequest } from '../../app/utils/log-redaction.ts'
 import {
 	isHealthcheckTransaction,
 	shouldDropErrorEvent,
@@ -44,7 +45,9 @@ export function init() {
 			if (shouldDropErrorEvent(event)) {
 				return null
 			}
-			return event
+			// One-time codes and email addresses travel in verify-link query
+			// strings; scrub them like the access log does.
+			return redactSentryRequest(event)
 		},
 		beforeSendTransaction(event) {
 			// Drop Fly/consul healthchecks, including orphaned Prisma spans that
@@ -53,7 +56,7 @@ export function init() {
 				return null
 			}
 
-			return event
+			return redactSentryRequest(event)
 		},
 	})
 }

@@ -18,7 +18,7 @@ export default defineConfig((config) => {
 		enforce: 'pre' as const,
 		resolveId(source: string) {
 			if (!process.env.VITEST) return null
-			if (source.endsWith('cache.server.ts')) {
+			if (source.endsWith('/cache.server.ts')) {
 				return path.resolve('tests/mocks/cache-server.ts')
 			}
 			return null

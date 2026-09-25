@@ -114,3 +114,46 @@ default it uses [`express-rate-limit`](https://npm.im/express-rate-limit) with
 the in-memory store. There are trade-offs with this simpler approach, but it
 should be relatively simple to externalize the store into Redis as that's a
 built-in feature to express-rate-limit.
+
+Requests are keyed by `Fly-Client-IP` and sorted into buckets per minute:
+
+| Bucket    | Limit | Applies to                                                                             |
+| --------- | ----- | -------------------------------------------------------------------------------------- |
+| strongest | 10    | non-GET requests to login, signup, verify, forgot/reset password, onboarding, settings |
+| expensive | 10    | collection import (POST), deck check (POST), collection export (GET)                   |
+| strong    | 100   | every other non-GET request                                                            |
+| images    | 300   | `/resources/images`                                                                    |
+| general   | 1000  | everything else                                                                        |
+
+The limits are multiplied by 10,000 outside production so Playwright never trips
+them.
+
+## Request bodies
+
+Every action reads its body with `request.formData()` before it can validate
+anything, so `server/body-limit.ts` caps request bodies at 5 MB before any route
+runs. A larger `Content-Length` gets a 413 without the body being read; a
+chunked body that grows past the limit has its connection destroyed. The routes'
+own limits (2 MB imports, 3 MB profile photos) still apply on top.
+
+## Account enumeration and email flooding
+
+The signup and forgot-password forms show the same "check your email" page
+whether or not the address or username has an account, so they can't be used to
+find out who is registered. Signing up with a registered email sends that
+address a note pointing at login and password reset instead of a code.
+
+Only one email of each kind goes to a given address per minute
+(`app/utils/email-cooldown.server.ts`); repeat submissions within that window
+are accepted silently and send nothing, so the forms can't be used to flood
+someone's inbox. The cooldown is per process and is released again if the send
+fails.
+
+## Logs and error reports
+
+Verification links are GETs whose query string carries the one-time code and the
+target email. `app/utils/log-redaction.ts` replaces the `code`, `target` and
+`redirectTo` values with `[redacted]` in the access log (morgan's `url` token)
+and in Sentry's request data (`beforeSend` / `beforeSendTransaction` in
+`server/utils/monitoring.ts`). Anything else that logs a request URL must go
+through the same helper.

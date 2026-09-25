@@ -8,7 +8,9 @@ import express from 'express'
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
 import getPort, { portNumbers } from 'get-port'
 import morgan from 'morgan'
+import { formatUrlForLog } from '../app/utils/log-redaction.ts'
 import { createHostAllowlist } from './allowed-hosts.ts'
+import { createBodyLimit } from './body-limit.ts'
 
 const MODE = process.env.NODE_ENV ?? 'development'
 const IS_PROD = MODE === 'production'
@@ -48,6 +50,10 @@ app.use((req, res, next) => {
 	if (isAllowedHost(req.get('host'))) return next()
 	res.status(421).type('text/plain').send('Misdirected Request')
 })
+
+// Every action buffers its whole body with request.formData() before it can
+// validate anything, so cap bodies before any of that code runs.
+app.use(createBodyLimit())
 
 // ensure HTTPS only (X-Forwarded-Proto comes from Fly)
 app.use((req, res, next) => {
@@ -102,13 +108,10 @@ app.get([/^\/img\/.*/, /^\/favicons\/.*/], (_req, res) => {
 	return res.status(404).send('Not found')
 })
 
-morgan.token('url', (req) => {
-	try {
-		return decodeURIComponent(req.url ?? '')
-	} catch {
-		return req.url ?? ''
-	}
-})
+// Verification links are GETs carrying the one-time code and the user's
+// email; keep those out of the logs (Sentry gets the same treatment in
+// ./utils/monitoring.ts).
+morgan.token('url', (req) => formatUrlForLog(req.url ?? ''))
 app.use(
 	morgan('tiny', {
 		skip: (req, res) =>
@@ -163,9 +166,36 @@ const imageRateLimit = rateLimit({
 	limit: 300 * maxMultiple,
 })
 
+// Endpoints that do real work per request: a collection import parses up to
+// 20k rows and writes them in one transaction, a deck check calls NetrunnerDB
+// and walks the user's collection, an export serialises all of it. A person
+// does these a few times a day; a script hitting them 100 times a minute is
+// the cheapest way to pin the CPU.
+const expensiveRateLimit = rateLimit({
+	...rateLimitDefault,
+	windowMs: 60 * 1000,
+	limit: 10 * maxMultiple,
+})
+const expensiveRequests: Array<{ method: string; path: string }> = [
+	{ method: 'POST', path: '/collection/import-export' },
+	{ method: 'POST', path: '/collection/deck-check' },
+	{ method: 'GET', path: '/resources/collection-export' },
+]
+
 app.use((req, res, next) => {
 	if (req.path.startsWith('/resources/images')) {
 		return imageRateLimit(req, res, next)
+	}
+
+	// Client-side navigations and fetchers hit `<route>.data`; treat those
+	// the same as the document request.
+	const routePath = req.path.replace(/\.data$/, '')
+	if (
+		expensiveRequests.some(
+			(r) => r.method === req.method && r.path === routePath,
+		)
+	) {
+		return expensiveRateLimit(req, res, next)
 	}
 
 	const strongPaths = [
@@ -174,6 +204,7 @@ app.use((req, res, next) => {
 		'/verify',
 		'/admin',
 		'/onboarding',
+		'/forgot-password',
 		'/reset-password',
 		'/settings/profile',
 		'/resources/login',

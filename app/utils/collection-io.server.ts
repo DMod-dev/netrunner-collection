@@ -1,4 +1,5 @@
 import { type Prisma } from '@prisma/client'
+import { cachedUntilNextSync } from './card-data-cache.server.ts'
 import { MAX_QUANTITY } from './collection.ts'
 import { prisma } from './db.server.ts'
 import { normalizeTitle } from './deck-check.server.ts'
@@ -262,7 +263,16 @@ export type ParsedImport = {
 	errors: Array<{ line: number; message: string }>
 }
 
-async function getPrintingResolver() {
+// Resolving names needs every printing, so the resolver is kept until the
+// next sync rather than rebuilt for each import preview.
+function getPrintingResolver() {
+	return cachedUntilNextSync(
+		'collection-import:printing-resolver',
+		buildPrintingResolver,
+	)
+}
+
+async function buildPrintingResolver() {
 	const printings = await prisma.printing.findMany({
 		orderBy: { dateRelease: 'desc' },
 		select: {

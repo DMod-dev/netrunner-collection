@@ -1,5 +1,9 @@
+import { cachedUntilNextSync } from './card-data-cache.server.ts'
 import { prisma } from './db.server.ts'
 import { NRDB_JSON_API_HEADERS, NRDB_USER_AGENT } from './nrdb.server.ts'
+
+/** How long a deck check waits for NetrunnerDB before giving up. */
+export const NRDB_FETCH_TIMEOUT_MS = 10_000
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
 
@@ -38,13 +42,42 @@ export type DeckRequirements = {
 
 export class DeckImportError extends Error {}
 
+/**
+ * Fetch from NetrunnerDB with a deadline. A request that hangs would
+ * otherwise hold the user's submission (and a server slot) open indefinitely;
+ * a timeout or network failure becomes a DeckImportError the page can show.
+ */
+async function fetchNrdb(
+	url: string,
+	headers: Record<string, string>,
+	timeoutMs: number,
+) {
+	try {
+		return await fetch(url, {
+			headers,
+			signal: AbortSignal.timeout(timeoutMs),
+		})
+	} catch (error) {
+		if (error instanceof Error && error.name === 'TimeoutError') {
+			throw new DeckImportError(
+				"NetrunnerDB didn't respond in time. Try again in a minute.",
+			)
+		}
+		throw new DeckImportError(
+			"Couldn't reach NetrunnerDB. Try again in a minute.",
+		)
+	}
+}
+
 export async function fetchNrdbDeck(
 	ref: NrdbDeckRef,
+	{ timeoutMs = NRDB_FETCH_TIMEOUT_MS }: { timeoutMs?: number } = {},
 ): Promise<DeckRequirements> {
 	if (ref.kind === 'decklist') {
-		const response = await fetch(
+		const response = await fetchNrdb(
 			`https://api.netrunnerdb.com/api/v3/public/decklists/${ref.id}`,
-			{ headers: NRDB_JSON_API_HEADERS },
+			NRDB_JSON_API_HEADERS,
+			timeoutMs,
 		)
 		if (response.status === 404) {
 			throw new DeckImportError(
@@ -70,9 +103,10 @@ export async function fetchNrdbDeck(
 	}
 
 	// Privately shared decks are only in the v2 API, keyed by printing code.
-	const response = await fetch(
+	const response = await fetchNrdb(
 		`https://netrunnerdb.com/api/2.0/public/deck/${ref.id}`,
-		{ headers: { 'user-agent': NRDB_USER_AGENT } },
+		{ 'user-agent': NRDB_USER_AGENT },
+		timeoutMs,
 	)
 	if (!response.ok) {
 		throw new DeckImportError(
@@ -157,7 +191,13 @@ export function parseDeckLine(rawLine: string): ParsedLine | null {
 	return name ? { count, name, line } : null
 }
 
-async function getTitleIndex() {
+// Building the index reads every card, so it is kept until the next sync
+// rather than rebuilt for each pasted deck.
+function getTitleIndex() {
+	return cachedUntilNextSync('deck-check:title-index', buildTitleIndex)
+}
+
+async function buildTitleIndex() {
 	const cards = await prisma.card.findMany({
 		select: { id: true, title: true, strippedTitle: true },
 	})

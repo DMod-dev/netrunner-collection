@@ -40,6 +40,11 @@ export async function requireEmail(recipient: string) {
 	return email
 }
 
+/** Forget an emailed fixture, so a later readEmail proves a fresh send. */
+export async function deleteEmail(recipient: string) {
+	await fsExtra.remove(path.join(fixturesDirPath, 'email', `${recipient}.json`))
+}
+
 export async function readEmail(recipient: string) {
 	try {
 		const email = await readFixture('email', recipient)

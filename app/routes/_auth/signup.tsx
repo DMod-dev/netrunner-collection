@@ -12,12 +12,16 @@ import { requireAnonymous } from '#app/utils/auth.server.ts'
 import { getEnabledProviderNames } from '#app/utils/connections.server.ts'
 import { ProviderConnectionForm } from '#app/utils/connections.tsx'
 import { prisma } from '#app/utils/db.server.ts'
+import {
+	claimEmailCooldown,
+	releaseEmailCooldown,
+} from '#app/utils/email-cooldown.server.ts'
 import { sendEmail } from '#app/utils/email.server.ts'
 import { checkHoneypot } from '#app/utils/honeypot.server.ts'
-import { useIsPending } from '#app/utils/misc.tsx'
+import { getDomainUrl, useIsPending } from '#app/utils/misc.tsx'
 import { EmailSchema } from '#app/utils/user-validation.ts'
 import { type Route } from './+types/signup.ts'
-import { prepareVerification } from './verify.server.ts'
+import { getRedirectToUrl, prepareVerification } from './verify.server.ts'
 
 export const handle: SEOHandle = {
 	getSitemapEntries: () => null,
@@ -37,23 +41,7 @@ export async function action({ request }: Route.ActionArgs) {
 
 	await checkHoneypot(formData)
 
-	const submission = await parseWithZod(formData, {
-		schema: SignupSchema.superRefine(async (data, ctx) => {
-			const existingUser = await prisma.user.findUnique({
-				where: { email: data.email },
-				select: { id: true },
-			})
-			if (existingUser) {
-				ctx.addIssue({
-					path: ['email'],
-					code: z.ZodIssueCode.custom,
-					message: 'A user already exists with this email',
-				})
-				return
-			}
-		}),
-		async: true,
-	})
+	const submission = parseWithZod(formData, { schema: SignupSchema })
 	if (submission.status !== 'success') {
 		return data(
 			{ result: submission.reply() },
@@ -61,22 +49,55 @@ export async function action({ request }: Route.ActionArgs) {
 		)
 	}
 	const { email } = submission.value
-	const { verifyUrl, redirectTo, otp } = await prepareVerification({
-		period: 10 * 60,
+
+	// Same page either way, so this form can't be used to find out which
+	// emails have an account. A registered address gets a note pointing at
+	// login and password reset instead of a code; either way at most one
+	// email a minute.
+	const redirectTo = getRedirectToUrl({
 		request,
 		type: 'onboarding',
 		target: email,
 	})
-
-	const response = await sendEmail({
-		to: email,
-		subject: `Welcome to Netrunner Collection!`,
-		react: <SignupEmail onboardingUrl={verifyUrl.toString()} otp={otp} />,
+	if (!claimEmailCooldown('signup', email)) {
+		return redirect(redirectTo.toString())
+	}
+	const existingUser = await prisma.user.findUnique({
+		where: { email },
+		select: { id: true },
 	})
+
+	let response: Awaited<ReturnType<typeof sendEmail>>
+	if (existingUser) {
+		const origin = getDomainUrl(request)
+		response = await sendEmail({
+			to: email,
+			subject: `You already have a Netrunner Collection account`,
+			react: (
+				<ExistingAccountEmail
+					loginUrl={`${origin}/login`}
+					resetUrl={`${origin}/forgot-password`}
+				/>
+			),
+		})
+	} else {
+		const { verifyUrl, otp } = await prepareVerification({
+			period: 10 * 60,
+			request,
+			type: 'onboarding',
+			target: email,
+		})
+		response = await sendEmail({
+			to: email,
+			subject: `Welcome to Netrunner Collection!`,
+			react: <SignupEmail onboardingUrl={verifyUrl.toString()} otp={otp} />,
+		})
+	}
 
 	if (response.status === 'success') {
 		return redirect(redirectTo.toString())
 	} else {
+		releaseEmailCooldown('signup', email)
 		return data(
 			{
 				result: submission.reply({ formErrors: [response.error.message] }),
@@ -86,6 +107,40 @@ export async function action({ request }: Route.ActionArgs) {
 			},
 		)
 	}
+}
+
+function ExistingAccountEmail({
+	loginUrl,
+	resetUrl,
+}: {
+	loginUrl: string
+	resetUrl: string
+}) {
+	return (
+		<E.Html lang="en" dir="ltr">
+			<E.Container>
+				<h1>
+					<E.Text>You already have an account</E.Text>
+				</h1>
+				<p>
+					<E.Text>
+						Someone (probably you) tried to sign up for Netrunner Collection
+						with this email address, but it already has an account.
+					</E.Text>
+				</p>
+				<p>
+					<E.Text>
+						<E.Link href={loginUrl}>Log in</E.Link> to your existing account, or{' '}
+						<E.Link href={resetUrl}>reset your password</E.Link> if you've
+						forgotten it.
+					</E.Text>
+				</p>
+				<p>
+					<E.Text>If this wasn't you, you can safely ignore this email.</E.Text>
+				</p>
+			</E.Container>
+		</E.Html>
+	)
 }
 
 export function SignupEmail({

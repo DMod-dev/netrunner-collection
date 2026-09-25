@@ -183,7 +183,10 @@ test('fetchNrdbDeck maps shared decks from printing codes to cards', async () =>
 
 	expect(fetchSpy).toHaveBeenCalledWith(
 		`https://netrunnerdb.com/api/2.0/public/deck/${UUID}`,
-		{ headers: { 'user-agent': NRDB_USER_AGENT } },
+		expect.objectContaining({
+			headers: { 'user-agent': NRDB_USER_AGENT },
+			signal: expect.any(AbortSignal),
+		}),
 	)
 	expect(deck.name).toBe('Shared deck')
 	expect(Object.fromEntries(deck.cards)).toEqual({
@@ -203,4 +206,79 @@ test('fetchNrdbDeck explains decks that are missing or not shared', async () => 
 	await expect(fetchNrdbDeck({ kind: 'decklist', id: UUID })).rejects.toThrow(
 		/published decklist/,
 	)
+})
+
+test('fetchNrdbDeck gives up on a hung NetrunnerDB with a user-facing error', async () => {
+	// behaves like a real fetch: never resolves, rejects with the signal's
+	// reason once the timeout aborts it
+	vi.spyOn(globalThis, 'fetch').mockImplementation(
+		(_url, init) =>
+			new Promise((_resolve, reject) => {
+				init?.signal?.addEventListener('abort', () =>
+					reject(init.signal?.reason),
+				)
+			}),
+	)
+	const started = Date.now()
+	await expect(
+		fetchNrdbDeck({ kind: 'decklist', id: UUID }, { timeoutMs: 50 }),
+	).rejects.toThrow(/didn't respond in time/)
+	expect(Date.now() - started).toBeLessThan(5_000)
+})
+
+test('fetchNrdbDeck explains a network failure', async () => {
+	vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('fetch failed'))
+	await expect(fetchNrdbDeck({ kind: 'deck', id: UUID })).rejects.toThrow(
+		/couldn't reach netrunnerdb/i,
+	)
+})
+
+test('the title index is kept until the next successful NRDB sync', async () => {
+	await insertCards()
+	const newCard = async (id: string, title: string, printingId: string) =>
+		prisma.card.create({
+			data: {
+				id,
+				title,
+				strippedTitle: title,
+				sideId: 'runner',
+				deckLimit: 3,
+				factionId: 'anarch',
+				typeId: 'event',
+				printings: {
+					create: { id: printingId, position: 9, quantity: 3, setId: 'sg' },
+				},
+			},
+		})
+
+	// without a recorded sync nothing is cached
+	await newCard('sure_gamble', 'Sure Gamble', '30010')
+	expect([...(await parseDeckText('3x Sure Gamble')).cards.keys()]).toEqual([
+		'sure_gamble',
+	])
+
+	// a successful sync keys the cache; cards added afterwards are invisible…
+	await prisma.nrdbSync.create({
+		data: {
+			status: 'success',
+			finishedAt: new Date(),
+			// unique per test run so a stale entry from another test can't match
+			startedAt: new Date(
+				Date.now() - 7 * 24 * 60 * 60_000 - Math.random() * 1e6,
+			),
+		},
+	})
+	expect((await parseDeckText('3x Sure Gamble')).cards.size).toBe(1)
+	await newCard('dirty_laundry', 'Dirty Laundry', '30011')
+	expect((await parseDeckText('2x Dirty Laundry')).unrecognized).toEqual([
+		'2x Dirty Laundry',
+	])
+
+	// …until the next sync
+	await prisma.nrdbSync.create({
+		data: { status: 'success', finishedAt: new Date(), startedAt: new Date() },
+	})
+	expect([...(await parseDeckText('2x Dirty Laundry')).cards.keys()]).toEqual([
+		'dirty_laundry',
+	])
 })

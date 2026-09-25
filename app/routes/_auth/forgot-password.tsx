@@ -9,11 +9,15 @@ import { GeneralErrorBoundary } from '#app/components/error-boundary.tsx'
 import { ErrorList, Field } from '#app/components/forms.tsx'
 import { StatusButton } from '#app/components/ui/status-button.tsx'
 import { prisma } from '#app/utils/db.server.ts'
+import {
+	claimEmailCooldown,
+	releaseEmailCooldown,
+} from '#app/utils/email-cooldown.server.ts'
 import { sendEmail } from '#app/utils/email.server.ts'
 import { checkHoneypot } from '#app/utils/honeypot.server.ts'
 import { EmailSchema, UsernameSchema } from '#app/utils/user-validation.ts'
 import { type Route } from './+types/forgot-password.ts'
-import { prepareVerification } from './verify.server.ts'
+import { getRedirectToUrl, prepareVerification } from './verify.server.ts'
 
 export const handle: SEOHandle = {
 	getSitemapEntries: () => null,
@@ -26,28 +30,7 @@ const ForgotPasswordSchema = z.object({
 export async function action({ request }: Route.ActionArgs) {
 	const formData = await request.formData()
 	await checkHoneypot(formData)
-	const submission = await parseWithZod(formData, {
-		schema: ForgotPasswordSchema.superRefine(async (data, ctx) => {
-			const user = await prisma.user.findFirst({
-				where: {
-					OR: [
-						{ email: data.usernameOrEmail },
-						{ username: data.usernameOrEmail },
-					],
-				},
-				select: { id: true },
-			})
-			if (!user) {
-				ctx.addIssue({
-					path: ['usernameOrEmail'],
-					code: z.ZodIssueCode.custom,
-					message: 'No user exists with this username or email',
-				})
-				return
-			}
-		}),
-		async: true,
-	})
+	const submission = parseWithZod(formData, { schema: ForgotPasswordSchema })
 	if (submission.status !== 'success') {
 		return data(
 			{ result: submission.reply() },
@@ -56,12 +39,24 @@ export async function action({ request }: Route.ActionArgs) {
 	}
 	const { usernameOrEmail } = submission.value
 
-	const user = await prisma.user.findFirstOrThrow({
-		where: { OR: [{ email: usernameOrEmail }, { username: usernameOrEmail }] },
-		select: { email: true, username: true },
+	// Whether or not the account exists, the person ends up on the same
+	// "check your email" page: this form must not confirm which usernames and
+	// emails are registered. Only a real account gets an email, and only one
+	// per minute, so it can't be used to flood someone's inbox either.
+	const redirectTo = getRedirectToUrl({
+		request,
+		type: 'reset-password',
+		target: usernameOrEmail,
 	})
+	const user = await prisma.user.findFirst({
+		where: { OR: [{ email: usernameOrEmail }, { username: usernameOrEmail }] },
+		select: { email: true },
+	})
+	if (!user || !claimEmailCooldown('reset-password', user.email)) {
+		return redirect(redirectTo.toString())
+	}
 
-	const { verifyUrl, redirectTo, otp } = await prepareVerification({
+	const { verifyUrl, otp } = await prepareVerification({
 		period: 10 * 60,
 		request,
 		type: 'reset-password',
@@ -79,6 +74,7 @@ export async function action({ request }: Route.ActionArgs) {
 	if (response.status === 'success') {
 		return redirect(redirectTo.toString())
 	} else {
+		releaseEmailCooldown('reset-password', user.email)
 		return data(
 			{ result: submission.reply({ formErrors: [response.error.message] }) },
 			{ status: 500 },

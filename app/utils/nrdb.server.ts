@@ -11,6 +11,9 @@ export const NRDB_JSON_API_HEADERS = {
 	'user-agent': NRDB_USER_AGENT,
 }
 const PAGE_SIZE = 1000
+// A page is a few MB at most; a request that takes longer than this is stuck,
+// and the sync should fail (and be retried tomorrow) rather than hang.
+const FETCH_TIMEOUT_MS = 60_000
 // Keep each transaction small enough that SQLite doesn't hold the write lock
 // for long while the app is serving requests.
 const WRITE_BATCH_SIZE = 200
@@ -80,7 +83,10 @@ async function fetchAll<Attributes>(
 	let url: string | null | undefined =
 		`${NRDB_API}/${resource}?page%5Bsize%5D=${PAGE_SIZE}`
 	while (url) {
-		const response = await fetch(url, { headers: NRDB_JSON_API_HEADERS })
+		const response = await fetch(url, {
+			headers: NRDB_JSON_API_HEADERS,
+			signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+		})
 		if (!response.ok) {
 			throw new Error(
 				`NRDB request failed (${response.status} ${response.statusText}): ${url}`,

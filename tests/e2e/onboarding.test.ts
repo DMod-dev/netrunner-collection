@@ -10,7 +10,7 @@ import {
 	USERNAME_MAX_LENGTH,
 	USERNAME_MIN_LENGTH,
 } from '#app/utils/user-validation.ts'
-import { readEmail } from '#tests/mocks/utils.ts'
+import { deleteEmail, readEmail } from '#tests/mocks/utils.ts'
 import {
 	createUser,
 	expect,
@@ -433,6 +433,88 @@ test('reset password link ignores a spoofed X-Forwarded-Host', async ({
 	invariant(resetPasswordUrl, 'Reset password URL not found')
 	expect(new URL(resetPasswordUrl).origin).toBe(new URL(page.url()).origin)
 	expect(resetPasswordUrl).not.toContain('attacker.example')
+})
+
+test('forgot password gives the same answer for unknown accounts', async ({
+	page,
+	navigate,
+	insertNewUser,
+}) => {
+	// The page must not tell an attacker which usernames or emails exist, so
+	// an unknown account and a real one both land on "check your email".
+	const unknown = `nobody_${faker.string.alphanumeric(8).toLowerCase()}`
+	await navigate('/forgot-password')
+	await page.getByRole('textbox', { name: /username/i }).fill(unknown)
+	await page.getByRole('button', { name: /recover password/i }).click()
+	await expect(page.getByText(/check your email/i)).toBeVisible()
+	await expect(page).toHaveURL(
+		`/verify?type=reset-password&target=${encodeURIComponent(unknown)}`,
+	)
+	await expect(page.getByText(/no user exists/i)).not.toBeVisible()
+
+	const user = await insertNewUser()
+	await navigate('/forgot-password')
+	await page.getByRole('textbox', { name: /username/i }).fill(user.username)
+	await page.getByRole('button', { name: /recover password/i }).click()
+	await expect(page.getByText(/check your email/i)).toBeVisible()
+	await expect(page).toHaveURL(
+		`/verify?type=reset-password&target=${encodeURIComponent(user.username)}`,
+	)
+})
+
+test('a second reset request within a minute sends no second email', async ({
+	page,
+	navigate,
+	insertNewUser,
+}) => {
+	const user = await insertNewUser()
+	await navigate('/forgot-password')
+	await page.getByRole('textbox', { name: /username/i }).fill(user.username)
+	await page.getByRole('button', { name: /recover password/i }).click()
+	await expect(page.getByText(/check your email/i)).toBeVisible()
+	const first = await readEmail(user.email)
+	invariant(first, 'Email not found')
+	expect(first.subject).toMatch(/password reset/i)
+	await deleteEmail(user.email)
+
+	// asking again (by email this time) still shows the same page…
+	await navigate('/forgot-password')
+	await page.getByRole('textbox', { name: /username/i }).fill(user.email)
+	await page.getByRole('button', { name: /recover password/i }).click()
+	await expect(page.getByText(/check your email/i)).toBeVisible()
+	// …but nothing else was sent
+	expect(await readEmail(user.email)).toBeNull()
+
+	// the first code still works
+	const code = first.text.match(CODE_REGEX)?.groups?.code
+	invariant(code, 'Reset Password code not found')
+	await navigate('/forgot-password')
+	await page.getByRole('textbox', { name: /username/i }).fill(user.username)
+	await page.getByRole('button', { name: /recover password/i }).click()
+	await page.getByRole('textbox', { name: /code/i }).fill(code)
+	await page.getByRole('button', { name: /submit/i }).click()
+	await expect(page).toHaveURL(`/reset-password`)
+})
+
+test('signing up with a registered email sends a reminder, not a code', async ({
+	page,
+	navigate,
+	insertNewUser,
+}) => {
+	const user = await insertNewUser()
+	await navigate('/signup')
+	await page.getByRole('textbox', { name: /email/i }).fill(user.email)
+	await page.getByRole('button', { name: /submit/i }).click()
+	// same page as a new signup, so the form doesn't confirm the account exists
+	await expect(page.getByText(/check your email/i)).toBeVisible()
+	await expect(page.getByText(/already exists/i)).not.toBeVisible()
+
+	const email = await readEmail(user.email)
+	invariant(email, 'Email not found')
+	expect(email.subject).toMatch(/already have/i)
+	expect(email.text).not.toMatch(CODE_REGEX)
+	expect(email.text).toContain(`${new URL(page.url()).origin}/login`)
+	expect(email.text).toContain(`${new URL(page.url()).origin}/forgot-password`)
 })
 
 test('reset password with a short code', async ({
