@@ -20,47 +20,14 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  image       UserImage?
-  password    Password?
-  notes       Note[]
-  roles       Role[]
-  sessions    Session[]
-  connections Connection[]
-  passkey     Passkey[]
-}
-
-model Note {
-  id      String @id @default(cuid())
-  title   String
-  content String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  ownerId String
-
-  images NoteImage[]
-
-  // non-unique foreign key
-  @@index([ownerId])
-  // This helps our order by in the user search a LOT
-  @@index([ownerId, updatedAt])
-}
-
-model NoteImage {
-  id        String  @id @default(cuid())
-  altText   String?
-  objectKey String
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  note   Note   @relation(fields: [noteId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  noteId String
-
-  // non-unique foreign key
-  @@index([noteId])
+  image             UserImage?
+  password          Password?
+  collectionEntries CollectionEntry[]
+  variants          Variant[]
+  roles             Role[]
+  sessions          Session[]
+  connections       Connection[]
+  passkey           Passkey[]
 }
 
 model UserImage {
@@ -183,4 +150,159 @@ model Passkey {
   transports     String? // Stored as comma-separated values
 
   @@index(userId)
+}
+
+// ---------------------------------------------------------------------------
+// Card data mirrored from NetrunnerDB (api.netrunnerdb.com/api/v3/public).
+// IDs are NRDB's own ids so we can upsert on every sync. Never edit these by
+// hand; run `npm run sync:nrdb` instead.
+// ---------------------------------------------------------------------------
+
+model Faction {
+  id        String   @id // e.g. "anarch"
+  name      String
+  sideId    String // "corp" | "runner"
+  isMini    Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+
+  cards Card[]
+}
+
+model CardType {
+  id        String   @id // e.g. "event"
+  name      String
+  updatedAt DateTime @updatedAt
+
+  cards Card[]
+}
+
+model CardCycle {
+  id          String    @id // e.g. "system_gateway"
+  name        String
+  position    Int
+  dateRelease DateTime?
+  releasedBy  String?
+  updatedAt   DateTime  @updatedAt
+
+  sets CardSet[]
+}
+
+model CardSet {
+  id          String    @id // e.g. "system_gateway"
+  name        String
+  position    Int
+  size        Int
+  setTypeId   String // "core" | "deluxe" | "data_pack" | "booster_pack" | ...
+  dateRelease DateTime?
+  releasedBy  String?
+  updatedAt   DateTime  @updatedAt
+
+  cycle   CardCycle @relation(fields: [cycleId], references: [id])
+  cycleId String
+
+  printings Printing[]
+
+  @@index([cycleId])
+}
+
+model Card {
+  id              String   @id // e.g. "hedge_fund"
+  title           String
+  strippedTitle   String // ascii-only title, used for search
+  sideId          String
+  text            String?
+  strippedText    String?
+  displaySubtypes String?
+  isUnique        Boolean  @default(false)
+  deckLimit       Int
+  cost            String?
+  influenceCost   Int?
+  /// comma-wrapped format ids the card is currently legal in, e.g. ",standard,startup,eternal,"
+  /// (wrapped so `contains: ",standard,"` matches exactly)
+  legalFormats    String   @default(",")
+  updatedAt       DateTime @updatedAt
+
+  faction   Faction  @relation(fields: [factionId], references: [id])
+  factionId String
+  type      CardType @relation(fields: [typeId], references: [id])
+  typeId    String
+
+  printings Printing[]
+
+  @@index([strippedTitle])
+  @@index([sideId, factionId])
+  @@index([typeId])
+}
+
+model Printing {
+  id          String    @id // NRDB printing code, e.g. "30075"
+  position    Int // position within the set
+  quantity    Int // copies of this card in one product
+  illustrator String?
+  flavor      String?
+  dateRelease DateTime?
+  imageSmall  String?
+  imageLarge  String?
+  isLatest    Boolean   @default(false)
+  updatedAt   DateTime  @updatedAt
+
+  card   Card    @relation(fields: [cardId], references: [id])
+  cardId String
+  set    CardSet @relation(fields: [setId], references: [id])
+  setId  String
+
+  collectionEntries CollectionEntry[]
+  variants          Variant[]
+
+  @@index([cardId])
+  @@index([setId, position])
+}
+
+model NrdbSync {
+  id         String    @id @default(cuid())
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  status     String // "running" | "success" | "error"
+  summary    String? // JSON counts
+  error      String?
+}
+
+// ---------------------------------------------------------------------------
+// User collection data
+// ---------------------------------------------------------------------------
+
+/// How many plain copies of an NRDB printing a user owns.
+model CollectionEntry {
+  quantity  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  userId     String
+  printing   Printing @relation(fields: [printingId], references: [id], onDelete: Cascade)
+  printingId String
+
+  @@id([userId, printingId])
+  @@index([printingId])
+}
+
+/// A user-defined version of a printing NRDB doesn't track (alt art, promo,
+/// foil, language...), with its own quantity. Copies owned of a printing are
+/// CollectionEntry.quantity + the sum of its variants' quantities.
+model Variant {
+  id        String   @id @default(cuid())
+  label     String
+  notes     String?
+  imageUrl  String?
+  quantity  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  userId     String
+  printing   Printing @relation(fields: [printingId], references: [id], onDelete: Cascade)
+  printingId String
+
+  @@unique([userId, printingId, label])
+  @@index([printingId])
 }

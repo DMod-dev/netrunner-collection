@@ -51,9 +51,9 @@ export function UserDropdown() {
 						</Link>
 					</DropdownMenuItem>
 					<DropdownMenuItem asChild>
-						<Link prefetch="intent" to={`/users/${user.username}/notes`}>
-							<Icon className="text-body-md" name="pencil-2">
-								Notes
+						<Link prefetch="intent" to="/collection">
+							<Icon className="text-body-md" name="file-text">
+								Collection
 							</Icon>
 						</Link>
 					</DropdownMenuItem>
