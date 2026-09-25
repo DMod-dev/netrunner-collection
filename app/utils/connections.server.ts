@@ -19,3 +19,18 @@ export function resolveConnectionData(
 ) {
 	return providers[providerName].resolveConnectionData(providerId, options)
 }
+
+/**
+ * Providers that are set up in this environment. GitHub login only appears
+ * once GITHUB_CLIENT_ID is set (tests and dev use a mocked one).
+ */
+export function getEnabledProviderNames(): Array<ProviderName> {
+	// taken from `providers` rather than connections.tsx so this module (used
+	// by tests) doesn't import UI code
+	return (Object.keys(providers) as Array<ProviderName>).filter((name) => {
+		switch (name) {
+			case 'github':
+				return Boolean(process.env.GITHUB_CLIENT_ID)
+		}
+	})
+}

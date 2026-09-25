@@ -12,6 +12,8 @@ const schema = z.object({
 	SENTRY_DSN: z.string().optional(),
 	// If you plan to use Resend, remove the .optional()
 	RESEND_API_KEY: z.string().optional(),
+	// e.g. "Netrunner Collection <noreply@yourdomain.com>"
+	EMAIL_FROM: z.string().optional(),
 	// If you plan to use GitHub auth, remove the .optional()
 	GITHUB_CLIENT_ID: z.string().optional(),
 	GITHUB_CLIENT_SECRET: z.string().optional(),

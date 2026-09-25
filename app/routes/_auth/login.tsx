@@ -12,10 +12,8 @@ import { Spacer } from '#app/components/spacer.tsx'
 import { Icon } from '#app/components/ui/icon.tsx'
 import { StatusButton } from '#app/components/ui/status-button.tsx'
 import { login, requireAnonymous } from '#app/utils/auth.server.ts'
-import {
-	ProviderConnectionForm,
-	providerNames,
-} from '#app/utils/connections.tsx'
+import { getEnabledProviderNames } from '#app/utils/connections.server.ts'
+import { ProviderConnectionForm } from '#app/utils/connections.tsx'
 import { checkHoneypot } from '#app/utils/honeypot.server.ts'
 import { getErrorMessage, useIsPending } from '#app/utils/misc.tsx'
 import { PasswordSchema, UsernameSchema } from '#app/utils/user-validation.ts'
@@ -39,7 +37,7 @@ const AuthenticationOptionsSchema = z.object({
 
 export async function loader({ request }: Route.LoaderArgs) {
 	await requireAnonymous(request)
-	return {}
+	return { providerNames: getEnabledProviderNames() }
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -82,7 +80,10 @@ export async function action({ request }: Route.ActionArgs) {
 	})
 }
 
-export default function LoginPage({ actionData }: Route.ComponentProps) {
+export default function LoginPage({
+	actionData,
+	loaderData,
+}: Route.ComponentProps) {
 	const isPending = useIsPending()
 	const [searchParams] = useSearchParams()
 	const redirectTo = searchParams.get('redirectTo')
@@ -179,9 +180,9 @@ export default function LoginPage({ actionData }: Route.ComponentProps) {
 								remember={fields.remember.value === 'on'}
 							/>
 						</div>
-						<hr className="my-4" />
+						{loaderData.providerNames.length ? <hr className="my-4" /> : null}
 						<ul className="flex flex-col gap-5">
-							{providerNames.map((providerName) => (
+							{loaderData.providerNames.map((providerName) => (
 								<li key={providerName}>
 									<ProviderConnectionForm
 										type="Login"

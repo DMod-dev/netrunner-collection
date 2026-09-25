@@ -10,6 +10,7 @@ import { Button } from '#app/components/ui/button.tsx'
 import { Icon } from '#app/components/ui/icon.tsx'
 import { StatusButton } from '#app/components/ui/status-button.tsx'
 import { requireUserId, sessionKey } from '#app/utils/auth.server.ts'
+import { getEnabledProviderNames } from '#app/utils/connections.server.ts'
 import { prisma } from '#app/utils/db.server.ts'
 import { getUserImgSrc, useDoubleCheck } from '#app/utils/misc.tsx'
 import { authSessionStorage } from '#app/utils/session.server.ts'
@@ -65,6 +66,9 @@ export async function loader({ request }: Route.LoaderArgs) {
 		user,
 		hasPassword: Boolean(password),
 		isTwoFactorEnabled: Boolean(twoFactorVerification),
+		showConnections:
+			getEnabledProviderNames().length > 0 ||
+			(await prisma.connection.count({ where: { userId } })) > 0,
 	}
 }
 
@@ -153,11 +157,13 @@ export default function EditUserProfile({ loaderData }: Route.ComponentProps) {
 						</Icon>
 					</Link>
 				</div>
-				<div>
-					<Link to="connections">
-						<Icon name="link-2">Manage connections</Icon>
-					</Link>
-				</div>
+				{loaderData.showConnections ? (
+					<div>
+						<Link to="connections">
+							<Icon name="link-2">Manage connections</Icon>
+						</Link>
+					</div>
+				) : null}
 				<div>
 					<Link to="passkeys">
 						<Icon name="passkey">Manage passkeys</Icon>

@@ -11,13 +11,15 @@ import {
 	TooltipTrigger,
 } from '#app/components/ui/tooltip.tsx'
 import { requireUserId } from '#app/utils/auth.server.ts'
-import { resolveConnectionData } from '#app/utils/connections.server.ts'
+import {
+	resolveConnectionData,
+	getEnabledProviderNames,
+} from '#app/utils/connections.server.ts'
 import {
 	ProviderConnectionForm,
 	type ProviderName,
 	ProviderNameSchema,
 	providerIcons,
-	providerNames,
 } from '#app/utils/connections.tsx'
 import { prisma } from '#app/utils/db.server.ts'
 import { pipeHeaders } from '#app/utils/headers.server.js'
@@ -80,6 +82,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 		{
 			connections,
 			canDeleteConnections: await userCanDeleteConnections(userId),
+			providerNames: getEnabledProviderNames(),
 		},
 		{ headers: { 'Server-Timing': timings.toString() } },
 	)
@@ -134,7 +137,7 @@ export default function Connections({ loaderData }: Route.ComponentProps) {
 				<p>You don't have any connections yet.</p>
 			)}
 			<div className="border-border mt-5 flex flex-col gap-5 border-t-2 border-b-2 py-3">
-				{providerNames.map((providerName) => (
+				{loaderData.providerNames.map((providerName) => (
 					<ProviderConnectionForm
 						key={providerName}
 						type="Connect"

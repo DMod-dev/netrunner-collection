@@ -1,6 +1,7 @@
 import { invariant } from '@epic-web/invariant'
 import { faker } from '@faker-js/faker'
 import { prisma } from '#app/utils/db.server.ts'
+import { getEmailFrom } from '#app/utils/email.server.ts'
 import {
 	normalizeEmail,
 	normalizeUsername,
@@ -50,7 +51,10 @@ test('onboarding with link', async ({ page, navigate, getOnboardingData }) => {
 
 	await navigate('/')
 
-	await page.getByRole('link', { name: /log in/i }).click()
+	await page
+		.getByRole('banner')
+		.getByRole('link', { name: /log in/i })
+		.click()
 	await expect(page).toHaveURL(`/login`)
 
 	const createAccountLink = page.getByRole('link', {
@@ -70,7 +74,7 @@ test('onboarding with link', async ({ page, navigate, getOnboardingData }) => {
 	const email = await readEmail(onboardingData.email)
 	invariant(email, 'Email not found')
 	expect(email.to).toBe(onboardingData.email.toLowerCase())
-	expect(email.from).toBe('hello@epicstack.dev')
+	expect(email.from).toBe(getEmailFrom())
 	expect(email.subject).toMatch(/welcome/i)
 	const onboardingUrl = extractUrl(email.text) as AppPages
 	invariant(onboardingUrl, 'Onboarding URL not found')
@@ -102,7 +106,7 @@ test('onboarding with link', async ({ page, navigate, getOnboardingData }) => {
 
 	await page.getByRole('button', { name: /Create an account/i }).click()
 
-	await expect(page).toHaveURL(`/`)
+	await expect(page).toHaveURL('/collection')
 
 	await page.getByRole('link', { name: 'User menu' }).click()
 	await page.getByRole('menuitem', { name: /profile/i }).click()
@@ -111,7 +115,7 @@ test('onboarding with link', async ({ page, navigate, getOnboardingData }) => {
 
 	await page.getByRole('link', { name: 'User menu' }).click()
 	await page.getByRole('menuitem', { name: /logout/i }).click()
-	await expect(page).toHaveURL(`/`)
+	await expect(page).toHaveURL('/')
 })
 
 test('onboarding with a short code', async ({
@@ -133,7 +137,7 @@ test('onboarding with a short code', async ({
 	const email = await readEmail(onboardingData.email)
 	invariant(email, 'Email not found')
 	expect(email.to).toBe(onboardingData.email.toLowerCase())
-	expect(email.from).toBe('hello@epicstack.dev')
+	expect(email.from).toBe(getEmailFrom())
 	expect(email.subject).toMatch(/welcome/i)
 	const codeMatch = email.text.match(CODE_REGEX)
 	const code = codeMatch?.groups?.code
@@ -185,7 +189,7 @@ test('completes onboarding after GitHub OAuth given valid user details', async (
 		.check()
 	await createAccountButton.click()
 
-	await expect(page).toHaveURL('/')
+	await expect(page).toHaveURL('/collection')
 	await expect(page.getByText(/thanks for signing up/i)).toBeVisible()
 
 	// internally, a user has been created:
@@ -228,7 +232,7 @@ test('logs user in after GitHub OAuth if they are already registered', async ({
 	await navigate('/signup')
 	await page.getByRole('button', { name: /signup with github/i }).click()
 
-	await expect(page).toHaveURL(`/`)
+	await expect(page).toHaveURL('/collection')
 	await expect(
 		page.getByText(
 			new RegExp(
@@ -342,7 +346,7 @@ test('login as existing user', async ({ page, navigate, insertNewUser }) => {
 	await page.getByRole('textbox', { name: /username/i }).fill(user.username)
 	await page.getByLabel(/^password$/i).fill(password)
 	await page.getByRole('button', { name: /log in/i }).click()
-	await expect(page).toHaveURL(`/`)
+	await expect(page).toHaveURL('/collection')
 
 	await expect(page.getByRole('link', { name: 'User menu' })).toBeVisible()
 })
@@ -371,7 +375,7 @@ test('reset password with a link', async ({
 	invariant(email, 'Email not found')
 	expect(email.subject).toMatch(/password reset/i)
 	expect(email.to).toBe(user.email.toLowerCase())
-	expect(email.from).toBe('hello@epicstack.dev')
+	expect(email.from).toBe(getEmailFrom())
 	const resetPasswordUrl = extractUrl(email.text) as AppPages
 	invariant(resetPasswordUrl, 'Reset password URL not found')
 	await navigate(resetPasswordUrl)
@@ -400,7 +404,7 @@ test('reset password with a link', async ({
 	await page.getByLabel(/^password$/i).fill(newPassword)
 	await page.getByRole('button', { name: /log in/i }).click()
 
-	await expect(page).toHaveURL(`/`)
+	await expect(page).toHaveURL('/collection')
 
 	await expect(page.getByRole('link', { name: 'User menu' })).toBeVisible()
 })
@@ -427,7 +431,7 @@ test('reset password with a short code', async ({
 	invariant(email, 'Email not found')
 	expect(email.subject).toMatch(/password reset/i)
 	expect(email.to).toBe(user.email)
-	expect(email.from).toBe('hello@epicstack.dev')
+	expect(email.from).toBe(getEmailFrom())
 	const codeMatch = email.text.match(CODE_REGEX)
 	const code = codeMatch?.groups?.code
 	invariant(code, 'Reset Password code not found')

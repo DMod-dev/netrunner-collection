@@ -9,10 +9,8 @@ import { GeneralErrorBoundary } from '#app/components/error-boundary.tsx'
 import { ErrorList, Field } from '#app/components/forms.tsx'
 import { StatusButton } from '#app/components/ui/status-button.tsx'
 import { requireAnonymous } from '#app/utils/auth.server.ts'
-import {
-	ProviderConnectionForm,
-	providerNames,
-} from '#app/utils/connections.tsx'
+import { getEnabledProviderNames } from '#app/utils/connections.server.ts'
+import { ProviderConnectionForm } from '#app/utils/connections.tsx'
 import { prisma } from '#app/utils/db.server.ts'
 import { sendEmail } from '#app/utils/email.server.ts'
 import { checkHoneypot } from '#app/utils/honeypot.server.ts'
@@ -31,7 +29,7 @@ const SignupSchema = z.object({
 
 export async function loader({ request }: Route.LoaderArgs) {
 	await requireAnonymous(request)
-	return null
+	return { providerNames: getEnabledProviderNames() }
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -121,7 +119,10 @@ export const meta: Route.MetaFunction = () => {
 	return [{ title: 'Sign Up | Netrunner Collection' }]
 }
 
-export default function SignupRoute({ actionData }: Route.ComponentProps) {
+export default function SignupRoute({
+	actionData,
+	loaderData,
+}: Route.ComponentProps) {
 	const isPending = useIsPending()
 	const [searchParams] = useSearchParams()
 	const redirectTo = searchParams.get('redirectTo')
@@ -171,7 +172,7 @@ export default function SignupRoute({ actionData }: Route.ComponentProps) {
 					</StatusButton>
 				</Form>
 				<ul className="flex flex-col gap-4 py-4">
-					{providerNames.map((providerName) => (
+					{loaderData.providerNames.map((providerName) => (
 						<>
 							<hr />
 							<li key={providerName}>

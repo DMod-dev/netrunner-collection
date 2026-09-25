@@ -21,6 +21,11 @@ const resendSuccessSchema = z.object({
 	id: z.string(),
 })
 
+/** The sender address; must be on a domain verified with Resend. */
+export function getEmailFrom() {
+	return process.env.EMAIL_FROM ?? 'Netrunner Collection <noreply@example.com>'
+}
+
 export async function sendEmail({
 	react,
 	...options
@@ -31,7 +36,7 @@ export async function sendEmail({
 	| { html: string; text: string; react?: never }
 	| { react: ReactElement; html?: never; text?: never }
 )) {
-	const from = 'hello@epicstack.dev'
+	const from = getEmailFrom()
 
 	const email = {
 		from,
