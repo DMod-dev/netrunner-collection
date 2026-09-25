@@ -1,18 +1,29 @@
-import { Link, NavLink, useSearchParams } from 'react-router'
+import { useEffect, useRef } from 'react'
+import { Link, NavLink, useLocation, useSearchParams } from 'react-router'
 import { cn } from '#app/utils/misc.tsx'
 
 export function CollectionNav() {
+	const navRef = useRef<HTMLElement>(null)
+	const { pathname } = useLocation()
+	// on narrow screens the tabs scroll sideways; keep the current one visible
+	useEffect(() => {
+		navRef.current
+			?.querySelector('[aria-current="page"]')
+			?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+	}, [pathname])
+
 	const tabClass = ({ isActive }: { isActive: boolean }) =>
 		cn(
-			'rounded-md px-4 py-1.5 text-sm font-semibold transition-colors',
+			'rounded-md px-2.5 py-1.5 text-sm font-semibold transition-colors sm:px-4',
 			isActive
 				? 'bg-background text-foreground shadow-sm'
 				: 'text-muted-foreground hover:text-foreground',
 		)
 	return (
 		<nav
+			ref={navRef}
 			aria-label="Collection views"
-			className="bg-muted inline-flex gap-1 self-start rounded-lg p-1"
+			className="bg-muted inline-flex max-w-full gap-1 self-start overflow-x-auto rounded-lg p-1 whitespace-nowrap [scrollbar-width:none]"
 		>
 			<NavLink to="/collection" end className={tabClass}>
 				Cards
@@ -22,6 +33,9 @@ export function CollectionNav() {
 			</NavLink>
 			<NavLink to="/collection/deck-check" className={tabClass}>
 				Deck check
+			</NavLink>
+			<NavLink to="/collection/import-export" className={tabClass}>
+				Import/Export
 			</NavLink>
 		</nav>
 	)

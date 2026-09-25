@@ -21,6 +21,18 @@ export async function loader({ request }: Route.LoaderArgs) {
 					objectKey: true,
 				},
 			},
+			collectionEntries: {
+				select: { printingId: true, quantity: true, updatedAt: true },
+			},
+			variants: {
+				select: {
+					printingId: true,
+					label: true,
+					notes: true,
+					quantity: true,
+					updatedAt: true,
+				},
+			},
 			password: false, // <-- intentionally omit password
 			sessions: true,
 			roles: true,
