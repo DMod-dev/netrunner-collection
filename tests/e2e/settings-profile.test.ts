@@ -88,7 +88,6 @@ test('Users can update their profile photo', async ({
 		.getAttribute('src')
 
 	// not sure how to get the before/after src with getAttribute inline
-	// eslint-disable-next-line playwright/prefer-web-first-assertions
 	expect(beforeSrc).not.toEqual(afterSrc)
 })
 

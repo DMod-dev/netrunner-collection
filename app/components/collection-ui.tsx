@@ -23,7 +23,7 @@ export function CollectionNav() {
 		<nav
 			ref={navRef}
 			aria-label="Collection views"
-			className="bg-muted inline-flex max-w-full gap-1 self-start overflow-x-auto rounded-lg p-1 whitespace-nowrap [scrollbar-width:none]"
+			className="bg-muted inline-flex max-w-full [scrollbar-width:none] gap-1 self-start overflow-x-auto rounded-lg p-1 whitespace-nowrap"
 		>
 			<NavLink to="/collection" end className={tabClass}>
 				Cards

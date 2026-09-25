@@ -15,7 +15,7 @@ permissions:
 
 jobs:
   lint:
-    name: ⬣ ESLint
+    name: ⬣ Oxlint
     runs-on: ubuntu-22.04
     steps:
       - name: ⬇️ Checkout repo
@@ -35,8 +35,15 @@ jobs:
       - name: 🛠 Setup Database
         run: npx prisma migrate deploy && npx prisma generate --sql
 
+      # Type-aware lint rules need the generated route types
+      - name: 🧬 Generate route types
+        run: npx react-router typegen
+
       - name: 🔬 Lint
         run: npm run lint
+
+      - name: 💅 Check formatting
+        run: npm run format:check
 
   audit:
     name: 🛡 npm audit
@@ -138,8 +145,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: prisma/data.db
-          key:
-            db-cache-schema_${{ hashFiles('./prisma/schema.prisma')
+          key: db-cache-schema_${{ hashFiles('./prisma/schema.prisma')
             }}-migrations_${{ hashFiles('./prisma/migrations/*/migration.sql')
             }}
 

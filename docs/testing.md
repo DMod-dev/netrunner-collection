@@ -46,12 +46,17 @@ auto-complete. To run type checking across the whole project, run
 
 ## Linting
 
-This project uses ESLint for linting. That is configured in `.eslintrc.js`.
+This project uses [Oxlint](https://oxc.rs/docs/guide/usage/linter.html) for
+linting, configured in `.oxlintrc.json` on top of `@epic-web/config`. Run
+`npm run lint` (or `npm run lint:fix`). Linting is type-aware, so run
+`npx react-router typegen` first if the route types are out of date.
 
 ## Formatting
 
-We use [Prettier](https://prettier.io/) for auto-formatting in this project.
-It's recommended to install an editor plugin (like the
-[VSCode Prettier plugin](https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode))
+We use [Oxfmt](https://oxc.rs/docs/guide/usage/formatter.html) for
+auto-formatting in this project, configured in `oxfmt.config.ts`. It's
+recommended to install an editor plugin (like the
+[Oxc VS Code extension](https://marketplace.visualstudio.com/items?itemName=oxc.oxc-vscode))
 to get auto-formatting on save. There's also a `npm run format` script you can
-run to format all files in the project.
+run to format all files in the project, and `npm run format:check` to check
+them without writing.

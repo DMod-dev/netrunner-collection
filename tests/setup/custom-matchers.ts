@@ -167,7 +167,6 @@ declare module 'vitest' {
 	interface Matchers<
 		R extends void | Promise<void> = void | Promise<void>,
 		// Unused, but merged declarations must match vitest's type parameters
-		// eslint-disable-next-line @typescript-eslint/no-unused-vars
 		T = unknown,
 	> extends CustomMatchers<R> {}
 }

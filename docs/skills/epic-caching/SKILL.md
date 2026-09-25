@@ -127,9 +127,7 @@ export async function getCachedData({
 			// Get fresh data
 			return await fetchDataFromAPI()
 		},
-		checkValue: z.object({
-			/* schema */
-		}), // Validation with Zod
+		checkValue: z.object({/* schema */}), // Validation with Zod
 		ttl: 1000 * 60 * 60 * 24, // 24 hours
 		staleWhileRevalidate: 1000 * 60 * 60 * 24 * 30, // 30 days
 	})

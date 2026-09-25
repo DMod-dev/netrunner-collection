@@ -34,8 +34,8 @@ Here are a few things you get today:
 - Unit testing with [Vitest](https://vitest.dev/) and
   [Testing Library](https://testing-library.com/) with pre-configured Test
   Database
-- Code formatting with [Prettier](https://prettier.io/)
-- Linting with [ESLint](https://eslint.org/)
+- Code formatting with [Oxfmt](https://oxc.rs/docs/guide/usage/formatter.html)
+- Linting with [Oxlint](https://oxc.rs/docs/guide/usage/linter.html)
 - Static Types with [TypeScript](https://typescriptlang.org/)
 - Runtime schema validation with [zod](https://zod.dev/)
 - Error monitoring with [Sentry](https://sentry.io/welcome/)

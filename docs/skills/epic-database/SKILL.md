@@ -409,9 +409,7 @@ export async function action({ request }: Route.ActionArgs) {
 
 	// Now we can write safely
 	await prisma.user.create({
-		data: {
-			/* ... */
-		},
+		data: {/* ... */},
 	})
 }
 ```
