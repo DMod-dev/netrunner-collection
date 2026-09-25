@@ -11,8 +11,8 @@
   },
   "scripts": {
     "build": "react-router build",
-    "dev": "cross-env NODE_ENV=development MOCKS=true node index.ts",
-    "dev:no-mocks": "cross-env NODE_ENV=development node index.ts",
+    "dev": "cross-env NODE_ENV=development MOCKS=true node --conditions=development index.ts",
+    "dev:no-mocks": "cross-env NODE_ENV=development node --conditions=development index.ts",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "lint": "oxlint --type-aware",
