@@ -263,8 +263,11 @@ model NrdbSync {
   startedAt  DateTime  @default(now())
   finishedAt DateTime?
   status     String // "running" | "success" | "error"
+  trigger    String    @default("cli") // "schedule" | "manual" | "cli"
   summary    String? // JSON counts
   error      String?
+
+  @@index([startedAt])
 }
 
 // ---------------------------------------------------------------------------

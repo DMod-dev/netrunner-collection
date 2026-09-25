@@ -2,7 +2,7 @@ import { Img } from 'openimg/react'
 import { useRef } from 'react'
 import { Link, Form } from 'react-router'
 import { getUserImgSrc } from '#app/utils/misc.tsx'
-import { useUser } from '#app/utils/user.ts'
+import { userHasRole, useUser } from '#app/utils/user.ts'
 import { Button } from './ui/button'
 import {
 	DropdownMenu,
@@ -57,6 +57,15 @@ export function UserDropdown() {
 							</Icon>
 						</Link>
 					</DropdownMenuItem>
+					{userHasRole(user, 'admin') ? (
+						<DropdownMenuItem asChild>
+							<Link prefetch="intent" to="/admin/nrdb-sync">
+								<Icon className="text-body-md" name="update">
+									Card data sync
+								</Icon>
+							</Link>
+						</DropdownMenuItem>
+					) : null}
 					<Form action="/logout" method="POST" ref={formRef}>
 						<DropdownMenuItem asChild>
 							<button type="submit" className="w-full">

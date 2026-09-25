@@ -4,7 +4,7 @@ import { prisma } from '#app/utils/db.server.ts'
 import { runRecordedSync } from '#app/utils/nrdb.server.ts'
 
 try {
-	const summary = await runRecordedSync({ log: console.log })
+	const summary = await runRecordedSync({ log: console.log, trigger: 'cli' })
 	console.log('✅ NRDB sync complete', summary)
 } catch (error) {
 	console.error('❌ NRDB sync failed', error)

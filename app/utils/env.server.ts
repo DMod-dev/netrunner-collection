@@ -20,6 +20,9 @@ const schema = z.object({
 
 	ALLOW_INDEXING: z.enum(['true', 'false']).optional(),
 
+	// Daily NetrunnerDB card sync; on by default except with mocks or in tests
+	NRDB_AUTO_SYNC: z.enum(['true', 'false']).optional(),
+
 	// Tigris Object Storage Configuration
 	AWS_ACCESS_KEY_ID: z.string(),
 	AWS_SECRET_ACCESS_KEY: z.string(),

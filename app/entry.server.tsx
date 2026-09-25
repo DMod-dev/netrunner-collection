@@ -15,10 +15,13 @@ import {
 import { getEnv, init } from './utils/env.server.ts'
 import { getInstanceInfo } from './utils/litefs.server.ts'
 import { NonceProvider } from './utils/nonce-provider.ts'
+import { startNrdbSyncScheduler } from './utils/nrdb-scheduler.server.ts'
 import { isExpectedReactRouterErrorMessage } from './utils/sentry-event-filters.ts'
 import { makeTimings } from './utils/timing.server.ts'
 
 export const streamTimeout = 5000
+
+startNrdbSyncScheduler()
 
 init()
 global.ENV = getEnv()
