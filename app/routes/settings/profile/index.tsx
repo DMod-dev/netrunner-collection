@@ -96,7 +96,7 @@ export async function action({ request }: Route.ActionArgs) {
 			return deleteDataAction({ request, userId, formData })
 		}
 		default: {
-			throw new Response(`Invalid intent "${intent}"`, { status: 400 })
+			throw new Response('Invalid intent', { status: 400 })
 		}
 	}
 }

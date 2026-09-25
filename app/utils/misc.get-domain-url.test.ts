@@ -1,9 +1,5 @@
-import { afterEach, expect, test, vi } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { getDomainUrl } from './misc.tsx'
-
-afterEach(() => {
-	vi.unstubAllEnvs()
-})
 
 function makeRequest(headers: Record<string, string>) {
 	return new Request('https://internal.example/forgot-password', {

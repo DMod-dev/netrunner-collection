@@ -55,7 +55,8 @@ export async function action({ request }: Route.ActionArgs) {
 	const userId = await requireUserId(request)
 	const formData = await request.formData()
 	const intent = formData.get('intent')
-	const content = String(formData.get('content') ?? '')
+	const rawContent = formData.get('content')
+	const content = typeof rawContent === 'string' ? rawContent : ''
 	const mode: ImportMode =
 		formData.get('mode') === 'replace' ? 'replace' : 'add'
 
@@ -152,19 +153,25 @@ function ImportSection({ currentCopies }: { currentCopies: number }) {
 			? result.summary
 			: null
 
-	useEffect(() => {
-		if (fetcher.state !== 'idle' || !fetcher.data?.ok) return
-		if (fetcher.data.applied) {
-			const { summary, mode } = fetcher.data
-			toast.success(
-				mode === 'replace'
-					? `Collection replaced: ${summary.copies} copies`
-					: `Imported ${summary.copies} copies`,
-			)
+	const applied =
+		fetcher.state === 'idle' && result?.ok && result.applied ? result : null
+	// clear the form once per applied import
+	const [prevApplied, setPrevApplied] = useState(applied)
+	if (applied !== prevApplied) {
+		setPrevApplied(applied)
+		if (applied) {
 			setContent('')
 			setPreviewed(null)
 		}
-	}, [fetcher.state, fetcher.data])
+	}
+	useEffect(() => {
+		if (!applied) return
+		toast.success(
+			applied.mode === 'replace'
+				? `Collection replaced: ${applied.summary.copies} copies`
+				: `Imported ${applied.summary.copies} copies`,
+		)
+	}, [applied])
 
 	function submit(intent: 'preview' | 'apply') {
 		if (intent === 'preview') setPreviewed(previewKey)

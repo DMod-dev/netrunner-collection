@@ -13,10 +13,12 @@ function EpicProgress() {
 	})
 	const ref = useRef<HTMLDivElement>(null)
 	const [animationComplete, setAnimationComplete] = useState(true)
+	// Adjusting state during render (rather than in the effect) skips a
+	// render with stale state: https://react.dev/learn/you-might-not-need-an-effect#adjusting-some-state-when-a-prop-changes
+	if (delayedPending && animationComplete) setAnimationComplete(false)
 
 	useEffect(() => {
 		if (!ref.current) return
-		if (delayedPending) setAnimationComplete(false)
 
 		const animationPromises = ref.current
 			.getAnimations()

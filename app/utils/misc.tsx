@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from 'clsx'
 import { type GetSrcArgs, defaultGetSrc } from 'openimg/react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useFormAction, useNavigation } from 'react-router'
 import { useSpinDelay } from 'spin-delay'
 import { twMerge } from 'tailwind-merge'
@@ -258,40 +258,22 @@ export function useDoubleCheck() {
 }
 
 /**
- * Simple debounce implementation
- */
-function debounce<Callback extends (...args: Parameters<Callback>) => void>(
-	fn: Callback,
-	delay: number,
-): (this: ThisParameterType<Callback>, ...args: Parameters<Callback>) => void {
-	let timer: ReturnType<typeof setTimeout> | null = null
-	return function (
-		this: ThisParameterType<Callback>,
-		...args: Parameters<Callback>
-	) {
-		if (timer) clearTimeout(timer)
-		timer = setTimeout(() => {
-			fn.apply(this, args)
-		}, delay)
-	}
-}
-
-/**
  * Debounce a callback function
  */
 export function useDebounce<
 	Callback extends (...args: Parameters<Callback>) => ReturnType<Callback>,
 >(callback: Callback, delay: number) {
 	const callbackRef = useRef(callback)
+	const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined)
 	useEffect(() => {
 		callbackRef.current = callback
 	})
-	return useMemo(
-		() =>
-			debounce(
-				(...args: Parameters<Callback>) => callbackRef.current(...args),
-				delay,
-			),
+	// Refs are only read when the returned function runs, never during render
+	return useCallback(
+		(...args: Parameters<Callback>) => {
+			clearTimeout(timerRef.current)
+			timerRef.current = setTimeout(() => callbackRef.current(...args), delay)
+		},
 		[delay],
 	)
 }
