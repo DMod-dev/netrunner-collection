@@ -19,6 +19,13 @@ if (cacheDatabasePath && cacheDatabasePath !== ':memory:') {
 }
 
 beforeEach(async () => {
+	// SQLite trusts a connection's page cache while the change counter in the
+	// file header is unchanged. Copying base.db resets that counter, so a pooled
+	// connection from the previous test can land on a matching counter and read
+	// that test's stale pages (e.g. a spurious P2003 foreign key violation).
+	// Close every connection before swapping the file; Prisma reconnects lazily.
+	const { prisma } = await import('#app/utils/db.server.ts')
+	await prisma.$disconnect()
 	await fsExtra.copyFile(BASE_DATABASE_PATH, databasePath)
 })
 
