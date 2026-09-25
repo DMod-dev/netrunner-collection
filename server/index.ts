@@ -41,6 +41,17 @@ app.use((req, res, next) => {
 	next()
 })
 
+// one canonical address: www.example.com -> example.com
+app.use((req, res, next) => {
+	if (req.method !== 'GET' && req.method !== 'HEAD') return next()
+	const host = getHost(req)
+	if (host.startsWith('www.')) {
+		res.redirect(301, `https://${host.slice(4)}${req.originalUrl}`)
+		return
+	}
+	next()
+})
+
 // no ending slashes for SEO reasons
 // https://github.com/epicweb-dev/epic-stack/discussions/108
 app.get(/.*/, (req, res, next) => {
