@@ -69,8 +69,10 @@ test('Users can update their profile photo', async ({
 
 	await expect(page).toHaveURL(`/settings/profile/photo`)
 
+	// anchored: /change/i also matches the profile form's "Save changes",
+	// which can still be on screen when the URL has already changed
 	await page
-		.getByRole('button', { name: /change/i })
+		.getByRole('button', { name: /^change$/i })
 		.setInputFiles('./tests/fixtures/images/user/kody.png')
 
 	await page.getByRole('button', { name: /save/i }).click()
