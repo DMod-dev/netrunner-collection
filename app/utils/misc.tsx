@@ -76,6 +76,21 @@ export function getDomainUrl(request: Request) {
 	return `${protocol}://${host}`
 }
 
+/**
+ * The path and search the user navigated to. React Router passes loaders and
+ * actions the raw request, so client-side navigations arrive as
+ * `/path.data?_routes=...`; this mirrors the normalization behind the `url`
+ * arg for helpers that only receive the request.
+ */
+export function getRequestPath(request: Request) {
+	const url = new URL(request.url)
+	const pathname = url.pathname.endsWith('/_.data')
+		? url.pathname.replace(/_\.data$/, '')
+		: url.pathname.replace(/\.data$/, '')
+	url.searchParams.delete('_routes')
+	return `${pathname}${url.search}`
+}
+
 export function getReferrerRoute(request: Request) {
 	// spelling errors and whatever makes this annoyingly inconsistent
 	// in my own testing, `referer` returned the right value, but 🤷‍♂️

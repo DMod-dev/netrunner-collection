@@ -1,5 +1,5 @@
 import { http, HttpResponse } from 'msw'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import { server } from '#tests/mocks/index.ts'
 import { consoleWarn } from '#tests/setup/setup-test-env.ts'
 import { checkIsCommonPassword, getPasswordHashParts } from './auth.server.ts'
@@ -62,14 +62,15 @@ test('checkIsCommonPassword returns false when response has invalid format', asy
 	const [prefix] = getPasswordHashParts(password)
 
 	server.use(
-		http.get(`https://api.pwnedpasswords.com/range/${prefix}`, () => {
-			// Create a response that will cause a TypeError when text() is called
-			const response = new Response()
-			Object.defineProperty(response, 'text', {
-				value: () => Promise.resolve(null),
-			})
-			return response
-		}),
+		http.get(
+			`https://api.pwnedpasswords.com/range/${prefix}`,
+			() => new Response(),
+		),
+	)
+	// MSW rebuilds the mocked Response before fetch resolves, so stub text() on
+	// the prototype to make the parsing throw a TypeError
+	vi.spyOn(Response.prototype, 'text').mockResolvedValue(
+		null as unknown as string,
 	)
 
 	const result = await checkIsCommonPassword(password)

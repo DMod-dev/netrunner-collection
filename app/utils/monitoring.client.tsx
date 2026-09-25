@@ -1,9 +1,11 @@
 import * as Sentry from '@sentry/react-router'
+import { sentryDataCollection } from './sentry-data-collection.ts'
 
 export function init() {
 	Sentry.init({
 		dsn: ENV.SENTRY_DSN,
 		environment: ENV.MODE,
+		dataCollection: sentryDataCollection,
 		beforeSend(event) {
 			if (event.request?.url) {
 				const url = new URL(event.request.url)

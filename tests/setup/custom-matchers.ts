@@ -79,7 +79,7 @@ expect.extend({
 	async toHaveSessionForUser(response: Response, userId: string) {
 		const setCookies = response.headers.getSetCookie()
 		const sessionSetCookie = setCookies.find(
-			(c) => setCookieParser.parseString(c).name === 'en_session',
+			(c) => setCookieParser.parseSetCookie(c)[0]?.name === 'en_session',
 		)
 
 		if (!sessionSetCookie) {
@@ -120,7 +120,7 @@ expect.extend({
 	async toSendToast(response: Response, toast: ToastInput) {
 		const setCookies = response.headers.getSetCookie()
 		const toastSetCookie = setCookies.find(
-			(c) => setCookieParser.parseString(c).name === 'en_toast',
+			(c) => setCookieParser.parseSetCookie(c)[0]?.name === 'en_toast',
 		)
 
 		if (!toastSetCookie) {
@@ -158,12 +158,16 @@ expect.extend({
 })
 
 interface CustomMatchers<R = unknown> {
-	toHaveRedirect(redirectTo: string | null): R
+	toHaveRedirect(redirectTo?: string): R
 	toHaveSessionForUser(userId: string): Promise<R>
 	toSendToast(toast: ToastInput): Promise<R>
 }
 
 declare module 'vitest' {
-	interface Assertion<T = any> extends CustomMatchers<T> {}
-	interface AsymmetricMatchersContaining extends CustomMatchers {}
+	interface Matchers<
+		R extends void | Promise<void> = void | Promise<void>,
+		// Unused, but merged declarations must match vitest's type parameters
+		// eslint-disable-next-line @typescript-eslint/no-unused-vars
+		T = unknown,
+	> extends CustomMatchers<R> {}
 }

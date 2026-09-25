@@ -1,12 +1,12 @@
 import { type Submission } from '@conform-to/react'
-import { parseWithZod } from '@conform-to/zod'
+import { parseWithZod } from '@conform-to/zod/v4'
 import { data } from 'react-router'
 import { z } from 'zod'
 import { handleVerification as handleChangeEmailVerification } from '#app/routes/settings/profile/change-email.server.tsx'
 import { twoFAVerificationType } from '#app/routes/settings/profile/two-factor/_layout.tsx'
 import { requireUserId } from '#app/utils/auth.server.ts'
 import { prisma } from '#app/utils/db.server.ts'
-import { getDomainUrl } from '#app/utils/misc.tsx'
+import { getDomainUrl, getRequestPath } from '#app/utils/misc.tsx'
 import { redirectWithToast } from '#app/utils/toast.server.ts'
 import { generateTOTP, verifyTOTP } from '#app/utils/totp.server.ts'
 import { type twoFAVerifyVerificationType } from '../settings/profile/two-factor/verify.tsx'
@@ -59,12 +59,11 @@ export async function requireRecentVerification(request: Request) {
 	const userId = await requireUserId(request)
 	const shouldReverify = await shouldRequestTwoFA(request)
 	if (shouldReverify) {
-		const reqUrl = new URL(request.url)
 		const redirectUrl = getRedirectToUrl({
 			request,
 			target: userId,
 			type: twoFAVerificationType,
-			redirectTo: reqUrl.pathname + reqUrl.search,
+			redirectTo: getRequestPath(request),
 		})
 		throw await redirectWithToast(redirectUrl.toString(), {
 			title: 'Please Reverify',

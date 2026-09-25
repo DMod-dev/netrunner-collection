@@ -1,7 +1,6 @@
 import { test as base, type Response } from '@playwright/test'
 import { type User as UserModel } from '@prisma/client'
 import { href, type Register } from 'react-router'
-import * as setCookieParser from 'set-cookie-parser'
 import {
 	getPasswordHash,
 	getSessionExpirationDate,
@@ -17,6 +16,7 @@ import {
 	deleteGitHubUser,
 	insertGitHubUser,
 } from './mocks/github.ts'
+import { parseSetCookieHeader } from './utils.ts'
 
 export * from './db-utils.ts'
 
@@ -108,7 +108,7 @@ export const test = base.extend<{
 
 			const authSession = await authSessionStorage.getSession()
 			authSession.set(sessionKey, session.id)
-			const cookieConfig = setCookieParser.parseString(
+			const cookieConfig = parseSetCookieHeader(
 				await authSessionStorage.commitSession(authSession),
 			)
 			const newConfig = {

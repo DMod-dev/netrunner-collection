@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
-import { type AppLoadContext } from 'react-router'
+import { RouterContextProvider } from 'react-router'
 import sharp from 'sharp'
 import { afterAll, beforeAll, expect, test } from 'vitest'
 import { BASE_URL } from '#tests/utils.ts'
@@ -38,7 +38,7 @@ function run(query: string) {
 	return loader({
 		request: new Request(url),
 		params: {},
-		context: {} as AppLoadContext,
+		context: new RouterContextProvider(),
 		url,
 		pattern: ROUTE_PATH,
 	} satisfies Route.LoaderArgs)

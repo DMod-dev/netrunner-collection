@@ -3,7 +3,7 @@ import { reactRouter } from '@react-router/dev/vite'
 import {
 	type SentryReactRouterBuildOptions,
 	sentryReactRouter,
-} from '@sentry/react-router'
+} from '@sentry/react-router/vite'
 import tailwindcss from '@tailwindcss/vite'
 import { reactRouterDevTools } from 'react-router-devtools'
 import { defineConfig } from 'vite'
@@ -29,8 +29,7 @@ export default defineConfig((config) => {
 			target: 'es2022',
 			cssMinify: mode === 'production',
 
-			rollupOptions: {
-				input: config.isSsrBuild ? './server/app.ts' : undefined,
+			rolldownOptions: {
 				external: [/node:.*/, 'fsevents'],
 			},
 
@@ -46,6 +45,15 @@ export default defineConfig((config) => {
 			// 'hidden' emits maps for Sentry upload but omits //# sourceMappingURL=
 			// so public /assets never advertise map URLs (esp. when auth token is unset)
 			sourcemap: 'hidden',
+		},
+		// React Router builds with Vite's environment API and reads the custom
+		// server entry from the ssr environment, not the top-level build config.
+		environments: {
+			ssr: {
+				build: {
+					rolldownOptions: { input: './server/app.ts' },
+				},
+			},
 		},
 		server: {
 			watch: {
@@ -80,7 +88,6 @@ export default defineConfig((config) => {
 			restoreMocks: true,
 			coverage: {
 				include: ['app/**/*.{ts,tsx}'],
-				all: true,
 			},
 		},
 	}

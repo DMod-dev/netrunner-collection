@@ -3,14 +3,14 @@
  */
 import { faker } from '@faker-js/faker'
 import { render, screen } from '@testing-library/react'
-import { createRoutesStub } from 'react-router'
-import setCookieParser from 'set-cookie-parser'
+import { createRoutesStub, RouterContextProvider } from 'react-router'
 import { expect, test } from 'vitest'
 import { loader as rootLoader } from '#app/root.tsx'
 import { getSessionExpirationDate, sessionKey } from '#app/utils/auth.server.ts'
 import { prisma } from '#app/utils/db.server.ts'
 import { authSessionStorage } from '#app/utils/session.server.ts'
 import { createUser, getUserImages } from '#tests/db-utils.ts'
+import { parseSetCookieHeader } from '#tests/utils.ts'
 import { default as UsernameRoute, loader } from './index.tsx'
 
 async function createSignedInUser() {
@@ -24,7 +24,7 @@ async function createSignedInUser() {
 	})
 	const authSession = await authSessionStorage.getSession()
 	authSession.set(sessionKey, session.id)
-	const parsedCookie = setCookieParser.parseString(
+	const parsedCookie = parseSetCookieHeader(
 		await authSessionStorage.commitSession(authSession),
 	)
 	const cookieHeader = new URLSearchParams({
@@ -45,7 +45,7 @@ test('Profiles are only visible to signed-in users', async () => {
 		url: new URL(request.url),
 		pattern: '/users/:username',
 		params: { username: user.username },
-		context: {},
+		context: new RouterContextProvider(),
 	}).catch((thrown: unknown) => thrown)
 
 	expect(response).toBeInstanceOf(Response)
@@ -103,7 +103,7 @@ test('The user profile when logged in as self', async () => {
 	const authSession = await authSessionStorage.getSession()
 	authSession.set(sessionKey, session.id)
 	const setCookieHeader = await authSessionStorage.commitSession(authSession)
-	const parsedCookie = setCookieParser.parseString(setCookieHeader)
+	const parsedCookie = parseSetCookieHeader(setCookieHeader)
 	const cookieHeader = new URLSearchParams({
 		[parsedCookie.name]: parsedCookie.value,
 	}).toString()

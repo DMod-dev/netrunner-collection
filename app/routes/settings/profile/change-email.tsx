@@ -1,5 +1,5 @@
 import { getFormProps, getInputProps, useForm } from '@conform-to/react'
-import { getZodConstraint, parseWithZod } from '@conform-to/zod'
+import { getZodConstraint, parseWithZod } from '@conform-to/zod/v4'
 import { type SEOHandle } from '@nasa-gcn/remix-seo'
 import { data, redirect, Form } from 'react-router'
 import { z } from 'zod'
@@ -31,7 +31,7 @@ const ChangeEmailSchema = z.object({
 	email: EmailSchema,
 })
 
-export async function loader({ request }: Route.LoaderArgs) {
+export async function loader({ request, url }: Route.LoaderArgs) {
 	await requireRecentVerification(request)
 	const userId = await requireUserId(request)
 	const user = await prisma.user.findUnique({
@@ -39,7 +39,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 		select: { email: true },
 	})
 	if (!user) {
-		const params = new URLSearchParams({ redirectTo: request.url })
+		const params = new URLSearchParams({ redirectTo: url.href })
 		throw redirect(`/login?${params}`)
 	}
 	return { user }

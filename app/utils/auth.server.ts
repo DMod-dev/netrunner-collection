@@ -7,7 +7,7 @@ import { safeRedirect } from 'remix-utils/safe-redirect'
 import { providers } from './connections.server.ts'
 import { prisma } from './db.server.ts'
 import { normalizeProfileImage } from './image.server.ts'
-import { combineHeaders, downloadFile } from './misc.tsx'
+import { combineHeaders, downloadFile, getRequestPath } from './misc.tsx'
 import { type ProviderUser } from './providers/provider.ts'
 import { authSessionStorage } from './session.server.ts'
 import { uploadProfileImage } from './storage.server.ts'
@@ -53,11 +53,8 @@ export async function requireUserId(
 ) {
 	const userId = await getUserId(request)
 	if (!userId) {
-		const requestUrl = new URL(request.url)
 		redirectTo =
-			redirectTo === null
-				? null
-				: (redirectTo ?? `${requestUrl.pathname}${requestUrl.search}`)
+			redirectTo === null ? null : (redirectTo ?? getRequestPath(request))
 		const loginParams = redirectTo ? new URLSearchParams({ redirectTo }) : null
 		const loginRedirect = ['/login', loginParams?.toString()]
 			.filter(Boolean)

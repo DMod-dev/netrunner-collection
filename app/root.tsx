@@ -1,3 +1,5 @@
+// Must stay first: configures zod before any route module builds a schema
+import './utils/zod-config.ts'
 import { OpenImgContextProvider } from 'openimg/react'
 import {
 	data,
@@ -59,14 +61,18 @@ export const links: Route.LinksFunction = () => {
 	].filter(Boolean)
 }
 
-export const meta: Route.MetaFunction = ({ data }) => {
+export const meta: Route.MetaFunction = ({ loaderData }) => {
 	return [
-		{ title: data ? 'Netrunner Collection' : 'Error | Netrunner Collection' },
+		{
+			title: loaderData
+				? 'Netrunner Collection'
+				: 'Error | Netrunner Collection',
+		},
 		{ name: 'description', content: `Your own captain's log` },
 	]
 }
 
-export async function loader({ request }: Route.LoaderArgs) {
+export async function loader({ request, url }: Route.LoaderArgs) {
 	const timings = makeTimings('root loader')
 	const userId = await time(() => getUserId(request), {
 		timings,
@@ -112,7 +118,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 			requestInfo: {
 				hints: getHints(request),
 				origin: getDomainUrl(request),
-				path: new URL(request.url).pathname,
+				path: url.pathname,
 				userPrefs: {
 					theme: getTheme(request),
 				},
