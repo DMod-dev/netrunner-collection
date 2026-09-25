@@ -10,7 +10,10 @@ export type Timings = Record<
 	>
 >
 
-export function makeTimings(type: string, desc?: string) {
+export function makeTimings(
+	type: string,
+	desc?: string,
+): Timings & { toString(): string } {
 	const timings: Timings = {
 		[type]: [{ desc, start: performance.now() }],
 	}

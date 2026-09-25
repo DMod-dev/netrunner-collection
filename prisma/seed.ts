@@ -38,7 +38,7 @@ async function seed() {
 	console.time(`🐨 Created admin user "kody"`)
 
 	const kodyImages = {
-		kodyUser: { objectKey: 'user/kody.png' },
+		kodyUser: { objectKey: 'users/seed/profile-images/kody.png' },
 	}
 
 	const githubUser = await insertGitHubUser(MOCK_CODE_GITHUB)
@@ -80,9 +80,3 @@ seed()
 	.finally(async () => {
 		await prisma.$disconnect()
 	})
-
-// we're ok to import from the test directory in this file
-/*
-eslint
-	no-restricted-imports: "off",
-*/

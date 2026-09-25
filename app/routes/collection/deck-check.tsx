@@ -34,7 +34,11 @@ export async function loader({ request }: Route.LoaderArgs) {
 export async function action({ request }: Route.ActionArgs) {
 	const userId = await requireUserId(request)
 	const formData = await request.formData()
-	const input = String(formData.get('deck') ?? '').slice(0, MAX_INPUT_LENGTH)
+	const deck = formData.get('deck')
+	const input = (typeof deck === 'string' ? deck : '').slice(
+		0,
+		MAX_INPUT_LENGTH,
+	)
 	if (!input.trim()) {
 		return data(
 			{ input, error: 'Paste a decklist or NetrunnerDB link first.' },

@@ -206,8 +206,11 @@ export default function PhotoRoute({
 							const file = e.currentTarget.files?.[0]
 							if (file) {
 								const reader = new FileReader()
-								reader.onload = (event) => {
-									setNewImageSrc(event.target?.result?.toString() ?? null)
+								reader.onload = () => {
+									// readAsDataURL always produces a string
+									setNewImageSrc(
+										typeof reader.result === 'string' ? reader.result : null,
+									)
 								}
 								reader.readAsDataURL(file)
 							}

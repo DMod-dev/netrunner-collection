@@ -3,7 +3,7 @@ import { faker } from '@faker-js/faker'
 import { SetCookie } from '@mjackson/headers'
 import { http } from 'msw'
 import { RouterContextProvider } from 'react-router'
-import { afterEach, expect, test } from 'vitest'
+import { expect, test } from 'vitest'
 import { twoFAVerificationType } from '#app/routes/settings/profile/two-factor/_layout.tsx'
 import { getSessionExpirationDate, sessionKey } from '#app/utils/auth.server.ts'
 import { GITHUB_PROVIDER_NAME } from '#app/utils/connections.tsx'
@@ -11,7 +11,7 @@ import { prisma } from '#app/utils/db.server.ts'
 import { authSessionStorage } from '#app/utils/session.server.ts'
 import { generateTOTP } from '#app/utils/totp.server.ts'
 import { createUser } from '#tests/db-utils.ts'
-import { insertGitHubUser, deleteGitHubUsers } from '#tests/mocks/github.ts'
+import { insertGitHubUser } from '#tests/mocks/github.ts'
 import { server } from '#tests/mocks/index.ts'
 import { consoleError } from '#tests/setup/setup-test-env.ts'
 import { BASE_URL, convertSetCookieToCookie } from '#tests/utils.ts'
@@ -26,10 +26,6 @@ const LOADER_ARGS_BASE = {
 	url: new URL(ROUTE_PATH, BASE_URL),
 	pattern: ROUTE_PATH,
 } satisfies Omit<Route.LoaderArgs, 'request'>
-
-afterEach(async () => {
-	await deleteGitHubUsers()
-})
 
 test('a new user goes to onboarding', async () => {
 	const request = await setupRequest()

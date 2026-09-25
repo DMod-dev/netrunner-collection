@@ -283,9 +283,9 @@ function Filters({
 					onClick={() => {
 						// inputs are uncontrolled, so clear them to match the new URL
 						formRef.current
-							?.querySelectorAll<
-								HTMLInputElement | HTMLSelectElement
-							>('input, select')
+							?.querySelectorAll<HTMLInputElement | HTMLSelectElement>(
+								'input, select',
+							)
 							.forEach((el) => (el.value = ''))
 					}}
 				>

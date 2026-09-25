@@ -37,9 +37,7 @@ cachified. Here's how you would use cachified to do this:
 import { cachified, cache } from '#app/utils/cache.server.ts'
 import { type Timings } from '#app/utils/timing.server.ts'
 
-const eventSchema = z.object({
-	/* the schema for events */
-})
+const eventSchema = z.object({/* the schema for events */})
 
 export async function getScheduledEvents({
 	timings,
@@ -52,9 +50,7 @@ export async function getScheduledEvents({
 		timings,
 		getFreshValue: () => {
 			// do a fetch request to the tito API and stuff here
-			return [
-				/* the events you got from tito */
-			]
+			return [/* the events you got from tito */]
 		},
 		checkValue: eventSchema.array(),
 		// Time To Live (ttl) in milliseconds: the cached value is considered valid for 24 hours

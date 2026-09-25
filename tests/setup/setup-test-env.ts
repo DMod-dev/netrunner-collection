@@ -5,10 +5,13 @@ import '#app/utils/env.server.ts'
 
 import { cleanup } from '@testing-library/react'
 import { afterEach, beforeEach, vi, type MockInstance } from 'vitest'
+import { deleteGitHubUsers } from '#tests/mocks/github.ts'
 import { server } from '#tests/mocks/index.ts'
 import './custom-matchers.ts'
 
 afterEach(() => server.resetHandlers())
+// the mocked GitHub accounts tests sign in with, created per test
+afterEach(() => deleteGitHubUsers())
 afterEach(() => cleanup())
 
 export let consoleError: MockInstance<(typeof console)['error']>

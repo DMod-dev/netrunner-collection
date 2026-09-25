@@ -657,10 +657,7 @@ jobs:
 ```typescript
 // app/utils/env.server.ts
 export function getDeploymentEnv():
-	| 'production'
-	| 'staging'
-	| 'preview'
-	| 'development' {
+	'production' | 'staging' | 'preview' | 'development' {
 	if (process.env.NODE_ENV === 'development') {
 		return 'development'
 	}

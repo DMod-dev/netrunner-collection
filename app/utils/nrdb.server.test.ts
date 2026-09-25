@@ -1,4 +1,4 @@
-import { afterEach, expect, test, vi } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { prisma } from './db.server.ts'
 import {
 	isAutoSyncEnabled,
@@ -7,11 +7,6 @@ import {
 	SYNC_EVERY_MS,
 	syncIfDue,
 } from './nrdb.server.ts'
-
-afterEach(() => {
-	vi.restoreAllMocks()
-	vi.unstubAllEnvs()
-})
 
 async function waitForSyncToFinish() {
 	// wait on both the "running" row and the in-process flag
@@ -52,7 +47,8 @@ test('syncIfDue starts one scheduled sync when due and records failures', async 
 	})
 
 	const [first, second] = await Promise.all([syncIfDue(), syncIfDue()])
-	expect([first, second].sort()).toEqual([false, true])
+	// exactly one of the two calls starts the sync
+	expect([first, second].filter(Boolean)).toHaveLength(1)
 	expect(await isSyncRunning()).toBe(true)
 
 	openGate()

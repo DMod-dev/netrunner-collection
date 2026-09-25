@@ -150,9 +150,14 @@ export function QuantityStepper({
 	// The value we last asked the server for, shown until the fetcher settles
 	// and the loader has revalidated with the saved quantity.
 	const [pendingValue, setPendingValue] = useState<number | null>(null)
-	useEffect(() => {
+	// Clear it when the fetcher *becomes* idle. Checking `idle` alone would
+	// drop the value we just set if this renders before the submission shows
+	// up in the fetcher's state.
+	const [prevFetcherState, setPrevFetcherState] = useState(fetcher.state)
+	if (fetcher.state !== prevFetcherState) {
+		setPrevFetcherState(fetcher.state)
 		if (fetcher.state === 'idle') setPendingValue(null)
-	}, [fetcher.state])
+	}
 	const displayed = pendingValue ?? quantity
 	// Clicks can land faster than React re-renders, so step from a ref that is
 	// updated synchronously rather than from the rendered value.
@@ -249,7 +254,11 @@ function QuantityInput({
 }) {
 	const [draft, setDraft] = useState(String(value))
 	// keep the text in sync when the value changes from the buttons or server
-	useEffect(() => setDraft(String(value)), [value])
+	const [prevValue, setPrevValue] = useState(value)
+	if (value !== prevValue) {
+		setPrevValue(value)
+		setDraft(String(value))
+	}
 
 	function commit() {
 		const next = Number.parseInt(draft, 10)

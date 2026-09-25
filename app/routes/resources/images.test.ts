@@ -3,12 +3,13 @@ import path from 'node:path'
 import { RouterContextProvider } from 'react-router'
 import sharp from 'sharp'
 import { afterAll, beforeAll, expect, test } from 'vitest'
+import { getUserImages } from '#tests/db-utils.ts'
 import { BASE_URL } from '#tests/utils.ts'
 import { type Route } from './+types/images.ts'
 import { loader } from './images.tsx'
 
 const ROUTE_PATH = '/resources/images'
-const KODY = './tests/fixtures/images/user/kody.png'
+const KODY = './tests/fixtures/images/users/seed/profile-images/kody.png'
 
 // The tigris mock serves GET requests from tests/fixtures/uploaded/<key>.
 const UPLOADED_DIR = path.join(
@@ -122,6 +123,19 @@ test('serves a legacy GitHub-imported avatar key', async () => {
 	expect(response.status).toBe(200)
 	const metadata = await decode(response)
 	expect(metadata).toMatchObject({ width: 64, height: 64 })
+})
+
+test('serves the images seeded and test users are created with', async () => {
+	const keys = [
+		...(await getUserImages()).map((image) => image.objectKey),
+		// kody's, from prisma/seed.ts
+		'users/seed/profile-images/kody.png',
+	]
+	for (const key of keys) {
+		const response = await run(`objectKey=${encodeURIComponent(key)}&w=64`)
+		// the key is in the comparison so a failure says which one
+		expect({ key, status: response.status }).toEqual({ key, status: 200 })
+	}
 })
 
 test('answers 415 (and stays alive) for a stored non-image', async () => {
