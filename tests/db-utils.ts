@@ -40,7 +40,7 @@ export async function getUserImages() {
 	if (userImages) return userImages
 
 	userImages = Array.from({ length: 10 }, (_, index) => ({
-		objectKey: `user/${index}.jpg`,
+		objectKey: `users/seed/profile-images/${index}.jpg`,
 	}))
 
 	return userImages

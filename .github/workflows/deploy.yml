@@ -145,9 +145,8 @@ jobs:
         uses: actions/cache@v6
         with:
           path: prisma/data.db
-          key: db-cache-schema_${{ hashFiles('./prisma/schema.prisma')
-            }}-migrations_${{ hashFiles('./prisma/migrations/*/migration.sql')
-            }}
+          # The cached database is seeded, so the seed is part of its key
+          key: db-cache-schema_${{ hashFiles('./prisma/schema.prisma') }}-migrations_${{ hashFiles('./prisma/migrations/*/migration.sql') }}-seed_${{ hashFiles('./prisma/seed.ts', './tests/db-utils.ts') }}
 
       - name: 🌱 Seed Database
         if: steps.db-cache.outputs.cache-hit != 'true'

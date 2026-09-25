@@ -73,7 +73,7 @@ test('Users can update their profile photo', async ({
 	// which can still be on screen when the URL has already changed
 	await page
 		.getByRole('button', { name: /^change$/i })
-		.setInputFiles('./tests/fixtures/images/user/kody.png')
+		.setInputFiles('./tests/fixtures/images/users/seed/profile-images/kody.png')
 
 	await page.getByRole('button', { name: /save/i }).click()
 

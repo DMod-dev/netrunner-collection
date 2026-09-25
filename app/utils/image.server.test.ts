@@ -9,7 +9,7 @@ import {
 	UnsupportedImageError,
 } from './image.server.ts'
 
-const KODY = './tests/fixtures/images/user/kody.png'
+const KODY = './tests/fixtures/images/users/seed/profile-images/kody.png'
 
 test('probeImage reports accepted raster formats', async () => {
 	const probed = await probeImage(await fs.readFile(KODY))
