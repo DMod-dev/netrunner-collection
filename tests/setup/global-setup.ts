@@ -1,5 +1,5 @@
 import path from 'node:path'
-import { execaCommand } from 'execa'
+import { execa } from 'execa'
 import fsExtra from 'fs-extra'
 import 'dotenv/config'
 import '#app/utils/env.server.ts'
@@ -24,16 +24,14 @@ export async function setup() {
 		}
 	}
 
-	await execaCommand(
-		'npx prisma migrate reset --force --skip-seed --skip-generate',
-		{
-			stdio: 'inherit',
-			env: {
-				...process.env,
-				DATABASE_URL: `file:${BASE_DATABASE_PATH}`,
-				// allow AI agents to reset the database while running tests
-				PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION: 'true',
-			},
+	// Prisma 7's migrate reset no longer seeds or regenerates the client
+	await execa('npx', ['prisma', 'migrate', 'reset', '--force'], {
+		stdio: 'inherit',
+		env: {
+			...process.env,
+			DATABASE_URL: `file:${BASE_DATABASE_PATH}`,
+			// allow AI agents to reset the database while running tests
+			PRISMA_USER_CONSENT_FOR_DANGEROUS_AI_ACTION: 'true',
 		},
-	)
+	})
 }

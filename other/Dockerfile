@@ -41,7 +41,8 @@ WORKDIR /myapp
 
 COPY --from=deps /myapp/node_modules /myapp/node_modules
 
-ADD prisma .
+ADD prisma ./prisma
+ADD prisma.config.ts .
 RUN npm exec prisma generate
 
 ADD . .
@@ -84,6 +85,7 @@ COPY --from=build /myapp/node_modules/.prisma /myapp/node_modules/.prisma
 COPY --from=build /myapp/build /myapp/build
 COPY --from=build /myapp/package.json /myapp/package.json
 COPY --from=build /myapp/prisma /myapp/prisma
+COPY --from=build /myapp/prisma.config.ts /myapp/prisma.config.ts
 # The server entry runs from source (node strips the types), and server/
 # imports a few modules from app/. Nothing else from the repo (docs, tests,
 # CI config) belongs in the image.

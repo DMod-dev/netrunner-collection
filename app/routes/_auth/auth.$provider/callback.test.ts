@@ -2,7 +2,7 @@ import { invariant } from '@epic-web/invariant'
 import { faker } from '@faker-js/faker'
 import { SetCookie } from '@mjackson/headers'
 import { http } from 'msw'
-import { type AppLoadContext } from 'react-router'
+import { RouterContextProvider } from 'react-router'
 import { afterEach, expect, test } from 'vitest'
 import { twoFAVerificationType } from '#app/routes/settings/profile/two-factor/_layout.tsx'
 import { getSessionExpirationDate, sessionKey } from '#app/utils/auth.server.ts'
@@ -22,7 +22,7 @@ const ROUTE_PATH = '/auth/github/callback'
 const PARAMS = { provider: 'github' }
 const LOADER_ARGS_BASE = {
 	params: PARAMS,
-	context: {} as AppLoadContext,
+	context: new RouterContextProvider(),
 	url: new URL(ROUTE_PATH, BASE_URL),
 	pattern: ROUTE_PATH,
 } satisfies Omit<Route.LoaderArgs, 'request'>

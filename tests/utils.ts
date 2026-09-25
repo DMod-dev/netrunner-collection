@@ -1,11 +1,18 @@
+import { invariant } from '@epic-web/invariant'
 import * as setCookieParser from 'set-cookie-parser'
 import { sessionKey } from '#app/utils/auth.server.ts'
 import { authSessionStorage } from '#app/utils/session.server.ts'
 
 export const BASE_URL = 'https://www.epicstack.dev'
 
+export function parseSetCookieHeader(setCookie: string) {
+	const [parsedCookie] = setCookieParser.parseSetCookie(setCookie)
+	invariant(parsedCookie, `Unable to parse set-cookie header: ${setCookie}`)
+	return parsedCookie
+}
+
 export function convertSetCookieToCookie(setCookie: string) {
-	const parsedCookie = setCookieParser.parseString(setCookie)
+	const parsedCookie = parseSetCookieHeader(setCookie)
 	return new URLSearchParams({
 		[parsedCookie.name]: parsedCookie.value,
 	}).toString()

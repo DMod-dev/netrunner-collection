@@ -41,9 +41,9 @@ export async function loader({ request, params }: Route.LoaderArgs) {
 	return { target, set }
 }
 
-export const meta: Route.MetaFunction = ({ data }) => [
+export const meta: Route.MetaFunction = ({ loaderData }) => [
 	{
-		title: `${data?.set.name ?? 'Set'} | Netrunner Collection`,
+		title: `${loaderData?.set.name ?? 'Set'} | Netrunner Collection`,
 	},
 ]
 
