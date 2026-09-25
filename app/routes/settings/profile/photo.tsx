@@ -13,6 +13,10 @@ import { StatusButton } from '#app/components/ui/status-button.tsx'
 import { requireUserId } from '#app/utils/auth.server.ts'
 import { prisma } from '#app/utils/db.server.ts'
 import {
+	normalizeProfileImage,
+	UnsupportedImageError,
+} from '#app/utils/image.server.ts'
+import {
 	getUserImgSrc,
 	useDoubleCheck,
 	useIsPending,
@@ -68,13 +72,38 @@ export async function action({ request }: Route.ActionArgs) {
 
 	const formData = await parseFormData(request, { maxFileSize: MAX_SIZE })
 	const submission = await parseWithZod(formData, {
-		schema: PhotoFormSchema.transform(async (data) => {
+		schema: PhotoFormSchema.transform(async (data, ctx) => {
 			if (data.intent === 'delete') return { intent: 'delete' }
 			if (data.photoFile.size <= 0) return z.NEVER
+			// Never store what the browser sent: re-encode it so storage only ever
+			// holds a real, bounded image (see app/utils/image.server.ts).
+			let normalized: Buffer
+			try {
+				normalized = await normalizeProfileImage(
+					Buffer.from(await data.photoFile.arrayBuffer()),
+				)
+			} catch (error) {
+				ctx.addIssue({
+					path: ['photoFile'],
+					code: z.ZodIssueCode.custom,
+					message:
+						error instanceof UnsupportedImageError
+							? error.message
+							: 'That image could not be processed',
+				})
+				return z.NEVER
+			}
+			const photoFile = new File(
+				[Uint8Array.from(normalized)],
+				'profile.webp',
+				{
+					type: 'image/webp',
+				},
+			)
 			return {
 				intent: data.intent,
 				image: {
-					objectKey: await uploadProfileImage(userId, data.photoFile),
+					objectKey: await uploadProfileImage(userId, photoFile),
 				},
 			}
 		}),

@@ -8,6 +8,7 @@ import express from 'express'
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit'
 import getPort, { portNumbers } from 'get-port'
 import morgan from 'morgan'
+import { createHostAllowlist } from './allowed-hosts.ts'
 
 const MODE = process.env.NODE_ENV ?? 'development'
 const IS_PROD = MODE === 'production'
@@ -22,11 +23,31 @@ if (SENTRY_ENABLED) {
 
 const app = express()
 
+// Only `Host` is trustworthy behind Fly (see ./allowed-hosts.ts).
 const getHost = (req: { get: (key: string) => string | undefined }) =>
-	req.get('X-Forwarded-Host') ?? req.get('host') ?? ''
+	req.get('host') ?? ''
 
 // fly is our proxy
 app.set('trust proxy', true)
+
+// Pin the host. Fly passes a client-supplied X-Forwarded-Host straight through,
+// and Express (`req.hostname`, so React Router's `request.url` too) would trust
+// it because of `trust proxy`. Strip it before anything else can read it, and in
+// production refuse requests whose Host is not one of ours so a spoofed host
+// can never end up in a redirect, the sitemap, or an emailed link.
+const isAllowedHost = createHostAllowlist({
+	appOrigin: process.env.APP_ORIGIN,
+	flyAppName: process.env.FLY_APP_NAME,
+})
+app.use((req, res, next) => {
+	delete req.headers['x-forwarded-host']
+	if (!IS_PROD) return next()
+	// Fly's health probes hit the machine directly; the check no longer looks at
+	// the host, so let it through whatever Host the probe sends.
+	if (req.path === '/resources/healthcheck') return next()
+	if (isAllowedHost(req.get('host'))) return next()
+	res.status(421).type('text/plain').send('Misdirected Request')
+})
 
 // ensure HTTPS only (X-Forwarded-Proto comes from Fly)
 app.use((req, res, next) => {
@@ -131,7 +152,22 @@ const strongRateLimit = rateLimit({
 })
 
 const generalRateLimit = rateLimit(rateLimitDefault)
+
+// Image resizing is the most CPU- and memory-hungry thing an anonymous request
+// can trigger on the single 512 MB machine, so it gets its own, tighter bucket.
+// Cache hits count too, but even the user directory only shows a few dozen
+// avatars per page.
+const imageRateLimit = rateLimit({
+	...rateLimitDefault,
+	windowMs: 60 * 1000,
+	limit: 300 * maxMultiple,
+})
+
 app.use((req, res, next) => {
+	if (req.path.startsWith('/resources/images')) {
+		return imageRateLimit(req, res, next)
+	}
+
 	const strongPaths = [
 		'/login',
 		'/signup',

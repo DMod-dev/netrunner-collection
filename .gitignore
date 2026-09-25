@@ -15,6 +15,7 @@ node_modules
 /tests/fixtures/email/
 /tests/fixtures/uploaded/
 /tests/fixtures/openimg/
+/tests/fixtures/image-cache/
 /coverage
 
 /other/cache.db

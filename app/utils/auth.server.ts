@@ -6,6 +6,7 @@ import { Authenticator } from 'remix-auth'
 import { safeRedirect } from 'remix-utils/safe-redirect'
 import { providers } from './connections.server.ts'
 import { prisma } from './db.server.ts'
+import { normalizeProfileImage } from './image.server.ts'
 import { combineHeaders, downloadFile } from './misc.tsx'
 import { type ProviderUser } from './providers/provider.ts'
 import { authSessionStorage } from './session.server.ts'
@@ -175,17 +176,36 @@ export async function signupWithConnection({
 	})
 
 	if (imageUrl) {
+		// Same rules as a manual upload: re-encode so storage only ever holds an
+		// image we know we can decode. A bad avatar must not block signing up.
 		const imageFile = await downloadFile(imageUrl)
-		await prisma.user.update({
-			where: { id: user.id },
-			data: {
-				image: {
-					create: {
-						objectKey: await uploadProfileImage(user.id, imageFile),
+			.then(async (file) => {
+				const normalized = await normalizeProfileImage(
+					Buffer.from(await file.arrayBuffer()),
+				)
+				return new File([Uint8Array.from(normalized)], 'profile.webp', {
+					type: 'image/webp',
+				})
+			})
+			.catch((error: unknown) => {
+				console.warn('Skipping provider avatar', {
+					userId: user.id,
+					error: error instanceof Error ? error.message : error,
+				})
+				return null
+			})
+		if (imageFile) {
+			await prisma.user.update({
+				where: { id: user.id },
+				data: {
+					image: {
+						create: {
+							objectKey: await uploadProfileImage(user.id, imageFile),
+						},
 					},
 				},
-			},
-		})
+			})
+		}
 	}
 
 	// Create and return the session

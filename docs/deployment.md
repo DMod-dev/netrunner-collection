@@ -67,6 +67,16 @@ Prior to your first deployment, you'll need to do a few things:
   > [1Password](https://1password.com/password-generator) to generate a random
   > secret, just replace `$(openssl rand -hex 32)` with the generated secret.
 
+- Add `APP_ORIGIN`, the one public origin each app answers to (no trailing
+  slash). Emailed links, the sitemap, passkeys and the host allowlist in
+  `server/index.ts` are pinned to it instead of trusting request headers, and
+  the app refuses to start in production without it:
+
+  ```sh
+  fly secrets set APP_ORIGIN=https://nr-collection.app --app [YOUR_APP_NAME]
+  fly secrets set APP_ORIGIN=https://[YOUR_APP_NAME]-staging.fly.dev --app [YOUR_APP_NAME]-staging
+  ```
+
 - Add a `ALLOW_INDEXING` with `false` value to your non-production fly app
   secrets, this is to prevent duplicate content from being indexed multiple
   times by search engines. To do this you can run the following commands:

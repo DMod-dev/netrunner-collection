@@ -409,6 +409,32 @@ test('reset password with a link', async ({
 	await expect(page.getByRole('link', { name: 'User menu' })).toBeVisible()
 })
 
+test('reset password link ignores a spoofed X-Forwarded-Host', async ({
+	page,
+	navigate,
+	insertNewUser,
+}) => {
+	const user = await insertNewUser()
+	// Fly forwards a client-supplied X-Forwarded-Host untouched. If the server
+	// trusted it, the reset email would carry the attacker's host with the OTP
+	// in the query string.
+	await page.context().setExtraHTTPHeaders({
+		'X-Forwarded-Host': 'www.attacker.example',
+	})
+	await navigate('/forgot-password')
+
+	await page.getByRole('textbox', { name: /username/i }).fill(user.username)
+	await page.getByRole('button', { name: /recover password/i }).click()
+	await expect(page.getByText(/check your email/i)).toBeVisible()
+
+	const email = await readEmail(user.email)
+	invariant(email, 'Email not found')
+	const resetPasswordUrl = extractUrl(email.text)
+	invariant(resetPasswordUrl, 'Reset password URL not found')
+	expect(new URL(resetPasswordUrl).origin).toBe(new URL(page.url()).origin)
+	expect(resetPasswordUrl).not.toContain('attacker.example')
+})
+
 test('reset password with a short code', async ({
 	page,
 	navigate,

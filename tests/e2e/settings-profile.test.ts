@@ -90,6 +90,26 @@ test('Users can update their profile photo', async ({
 	expect(beforeSrc).not.toEqual(afterSrc)
 })
 
+test('Users cannot upload a non-image as their profile photo', async ({
+	page,
+	navigate,
+	login,
+}) => {
+	await login()
+	await navigate('/settings/profile/photo')
+
+	// The file is named .png but contains plain text; validation must look at
+	// the bytes, not the name, because every page that renders the avatar would
+	// otherwise ask the image proxy to decode it.
+	await page
+		.getByRole('button', { name: /change/i })
+		.setInputFiles('./tests/fixtures/images/not-an-image.png')
+	await page.getByRole('button', { name: /save/i }).click()
+
+	await expect(page.getByText(/choose a png, jpeg, webp/i)).toBeVisible()
+	await expect(page).toHaveURL('/settings/profile/photo')
+})
+
 test('Users can change their email address', async ({
 	page,
 	navigate,

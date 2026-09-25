@@ -8,6 +8,16 @@ const schema = z.object({
 	INTERNAL_COMMAND_TOKEN: z.string(),
 	HONEYPOT_SECRET: z.string(),
 	CACHE_DATABASE_PATH: z.string(),
+	// The one public origin this deployment answers to, e.g. "https://nr-collection.app".
+	// Every absolute URL we build (emails, sitemap, passkey rpID) uses it, so
+	// request headers such as Host / X-Forwarded-Host can never leak into
+	// password-reset links. Required in production; defaults to the request's
+	// Host header in development and tests.
+	APP_ORIGIN: z
+		.string()
+		.url()
+		.refine((s) => !s.endsWith('/'), 'APP_ORIGIN must not end with a slash')
+		.optional(),
 	// If you plan on using Sentry, remove the .optional()
 	SENTRY_DSN: z.string().optional(),
 	// If you plan to use Resend, remove the .optional()
@@ -40,7 +50,12 @@ declare global {
 }
 
 export function init() {
-	const parsed = schema.safeParse(process.env)
+	const parsed = schema
+		.refine((env) => env.NODE_ENV !== 'production' || Boolean(env.APP_ORIGIN), {
+			path: ['APP_ORIGIN'],
+			message: 'APP_ORIGIN is required in production',
+		})
+		.safeParse(process.env)
 
 	if (parsed.success === false) {
 		console.error(

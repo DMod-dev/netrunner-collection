@@ -1,18 +1,38 @@
 # Image Optimization
 
-The Epic Stack uses [openimg](https://github.com/andrelandgraf/openimg) to
-optimize images on demand, introduced via
-[this decision doc](./decisions/041-image-optimization.md).
+Images are resized on demand by
+[/resources/images](../app/routes/resources/images.tsx). The route originally
+came from the Epic Stack's openimg integration (see
+[this decision doc](./decisions/041-image-optimization.md)); the server half was
+rewritten on top of `sharp` directly so that a bad input can never crash the
+process or fill the disk. The client half still uses `openimg/react`.
 
 ## Server Part
 
-The [/resources/images](../app/routes/resources/images.tsx) endpoint accepts the
-search parameters `src`, `w` (width), `h` (height), `format`, and `fit` to
-perform image transformations and serve optimized variants. The transformations
-are performed with `sharp`, and the optimized images are cached in
-`./data/images` on the filesystem and via HTTP caching. All transformations
-happen via stream processing, so images are never loaded fully into memory at
-once.
+The endpoint accepts either `objectKey` (a profile photo in object storage) or
+`src` (a static file), plus `w`, `h`, `fit` and `format`. It is reachable
+without logging in, so it is deliberately strict:
+
+- `objectKey` must match the exact shape `uploadProfileImage` produces
+  (`users/<id>/profile-images/<name>.<ext>`); `src` must be a file under
+  `public/img` or `public/favicons`. Anything else, including absolute URLs and
+  `..` segments, is a 400 before any I/O happens.
+- `w` and `h` are snapped up to the next of a fixed set of sizes (64 … 1024),
+  which bounds both the work per request and the number of cache files a source
+  can produce. Larger values are a 400.
+- The source is probed with `sharp` metadata before decoding; non-images and
+  images larger than 4096×4096 are a 415, never an exception.
+- Results are written atomically to `/data/images` in production (the LiteFS
+  volume) or `tests/fixtures/image-cache` locally, and served with a one-year
+  immutable cache header. Object keys include a timestamp, so a new photo is a
+  new URL.
+- The route has its own rate-limit bucket in `server/index.ts`.
+
+Profile photos are also normalised on upload
+([photo.tsx](../app/routes/settings/profile/photo.tsx) →
+[image.server.ts](../app/utils/image.server.ts)): re-encoded to WebP with
+metadata stripped and at most 1024×1024, so storage only ever contains images we
+know we can decode again.
 
 ## Client Part
 
@@ -22,14 +42,13 @@ the appropriate query parameters, including the source image string. The
 component renders a picture element that requests modern formats and sets
 attributes such as `fetchpriority`, `loading`, and `decoding` to optimize image
 loading. It also computes `srcset` and `sizes` based on the provided `width` and
-`height` props. Use the `isAboveFold` prop on the `Img` component to priotize
-images that should load immediately.
+`height` props (the breakpoints it uses are all in the server's size list). Use
+the `isAboveFold` prop on the `Img` component to prioritize images that should
+load immediately.
 
 ## Image Sources
 
-If you want to add a new image storage location, update the
-[/resources/images](../app/routes/resources/images.tsx) endpoint and modify
-`getSource` and `allowlistedOrigins` to instruct openimg on how to retrieve the
-source images from the new location. Currently, the endpoint uses fetch requests
-to retrieve user images from the resource route endpoints and the filesystem to
-retrieve static application assets from the public and assets folders.
+Card art is not proxied; it is loaded straight from NetrunnerDB's image CDN. If
+you need to serve a new kind of image through the proxy, extend the allowlists
+at the top of [/resources/images](../app/routes/resources/images.tsx) rather
+than loosening them, and add a case to the unit tests next to it.

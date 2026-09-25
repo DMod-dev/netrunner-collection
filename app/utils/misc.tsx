@@ -57,12 +57,22 @@ export function cn(...inputs: ClassValue[]) {
 	return twMerge(clsx(inputs))
 }
 
+/**
+ * The origin to use for absolute URLs (emails, sitemap, passkey rpID, ...).
+ *
+ * In production this is always `APP_ORIGIN`: the value must not depend on
+ * request headers, because Fly forwards a client-supplied `X-Forwarded-Host`
+ * unchanged and a spoofed host would end up in password-reset links.
+ * Outside production (no `APP_ORIGIN`) we fall back to the `Host` header so
+ * the dev server and Playwright work on whatever port they got.
+ */
 export function getDomainUrl(request: Request) {
-	const host =
-		request.headers.get('X-Forwarded-Host') ??
-		request.headers.get('host') ??
-		new URL(request.url).host
-	const protocol = request.headers.get('X-Forwarded-Proto') ?? 'http'
+	const pinned = process.env.APP_ORIGIN
+	if (pinned) return pinned
+	const url = new URL(request.url)
+	const host = request.headers.get('host') ?? url.host
+	const protocol =
+		request.headers.get('X-Forwarded-Proto') ?? url.protocol.replace(':', '')
 	return `${protocol}://${host}`
 }
 

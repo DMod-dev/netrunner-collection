@@ -17,6 +17,37 @@ This is to prevent new users of the Epic Stack from being blocked or surprised
 by the CSP by default. However, it is recommended to enable the CSP in
 `server/index.ts` by removing the `reportOnly: true` option.
 
+## Canonical origin and the Host header
+
+Fly preserves the client's `Host` header but forwards a client-supplied
+`X-Forwarded-Host` untouched. Anything that builds an absolute URL from request
+headers (password-reset and onboarding emails, the sitemap, passkey `rpID`)
+would therefore let an attacker choose the host in a link the real site emails
+to a victim. Two things prevent that:
+
+- `getDomainUrl` in `app/utils/misc.tsx` returns `APP_ORIGIN` whenever it is set
+  (it is required in production) and only falls back to `Host` in development.
+  It never reads `X-Forwarded-Host`.
+- The first middleware in `server/index.ts` deletes `X-Forwarded-Host` from the
+  request and, in production, answers `421 Misdirected Request` for any `Host`
+  that is not `APP_ORIGIN`, its `www.` variant, `<app>.fly.dev`, loopback, or
+  Fly's private `*.internal` names (see `server/allowed-hosts.ts`).
+
+The health check at `/resources/healthcheck` only queries the database; it does
+not fetch the site itself, so it can't be used to probe other hosts.
+
+## Image proxy
+
+`/resources/images` only serves two kinds of sources: profile photos by
+`objectKey` (validated against the exact shape `uploadProfileImage` produces)
+and a short allowlist of static files under `public/img` and `public/favicons`.
+Widths and heights are snapped to a fixed set of sizes, the source is checked
+with `sharp` metadata before any decoding, and every failure turns into a 4xx or
+5xx response instead of an uncaught stream error that would take the process
+down. Profile photos are re-encoded to WebP (metadata stripped, at most
+1024×1024) when they are uploaded, so a non-image or a decompression bomb never
+reaches storage. The route also has its own, tighter rate-limit bucket.
+
 ## Fly's Internal Network
 
 The Epic Stack uses [Fly](https://fly.io) for hosting. Fly has an internal
