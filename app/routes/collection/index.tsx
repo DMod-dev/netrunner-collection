@@ -1,4 +1,4 @@
-import { useId, useRef } from 'react'
+import { useEffect, useId, useRef } from 'react'
 import { Form, Link, useSearchParams, useSubmit } from 'react-router'
 import {
 	CardArtTile,
@@ -6,7 +6,7 @@ import {
 	OverlayCounters,
 	VersionsButton,
 } from '#app/components/card-art.tsx'
-import { CollectionNav } from '#app/components/collection-ui.tsx'
+import { CollectionNav, ShortcutHint } from '#app/components/collection-ui.tsx'
 import { GeneralErrorBoundary } from '#app/components/error-boundary.tsx'
 import { FactionDot } from '#app/components/printing-tile.tsx'
 import { Button } from '#app/components/ui/button.tsx'
@@ -110,11 +110,14 @@ export default function CollectionRoute({ loaderData }: Route.ComponentProps) {
 
 			<Filters filters={filters} />
 
-			<p className="text-muted-foreground text-sm" aria-live="polite">
-				{total === 0
-					? 'No cards match these filters.'
-					: `${total.toLocaleString()} ${total === 1 ? 'card' : 'cards'}`}
-			</p>
+			<div className="flex flex-wrap items-baseline justify-between gap-2">
+				<p className="text-muted-foreground text-sm" aria-live="polite">
+					{total === 0
+						? 'No cards match these filters.'
+						: `${total.toLocaleString()} ${total === 1 ? 'card' : 'cards'}`}
+				</p>
+				<ShortcutHint />
+			</div>
 
 			<ul
 				className={cn(
@@ -145,6 +148,21 @@ function Filters({
 	const submit = useSubmit()
 	const id = useId()
 	const formRef = useRef<HTMLFormElement>(null)
+	const searchRef = useRef<HTMLInputElement>(null)
+
+	// "/" jumps to the search box. It isn't autofocused, so that card
+	// shortcuts work as soon as the page loads.
+	useEffect(() => {
+		function onKeyDown(event: KeyboardEvent) {
+			if (event.key !== '/' || event.metaKey || event.ctrlKey) return
+			const target = event.target as HTMLElement | null
+			if (target?.closest('input, textarea, select, [contenteditable]')) return
+			event.preventDefault()
+			searchRef.current?.focus()
+		}
+		document.addEventListener('keydown', onKeyDown)
+		return () => document.removeEventListener('keydown', onKeyDown)
+	}, [])
 	// Submit only the filters that are set, so URLs stay short and shareable.
 	function submitFilters(form: HTMLFormElement) {
 		const params = new URLSearchParams()
@@ -182,9 +200,12 @@ function Filters({
 					id={`${id}-q`}
 					type="search"
 					name="q"
-					placeholder="Search cards by name"
+					placeholder="Search cards by name (press / )"
 					defaultValue={searchParams.get('q') ?? ''}
-					autoFocus
+					ref={searchRef}
+					onKeyDown={(e) => {
+						if (e.key === 'Escape') e.currentTarget.blur()
+					}}
 					autoComplete="off"
 				/>
 				<Button type="submit" aria-label="Search">
@@ -360,6 +381,7 @@ function CardTile({
 									printing={printing}
 									label={labelFor(printing)}
 									heading={printing.set.name}
+									primary={printing.id === featured?.id}
 								/>
 							</li>
 						))}

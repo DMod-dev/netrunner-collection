@@ -1,10 +1,43 @@
 import { useEffect, useRef, useState } from 'react'
-import { QuantityStepper } from '#app/routes/resources/collection.tsx'
+import {
+	QuantityStepper,
+	STEPPER_SET_EVENT,
+	STEPPER_STEP_EVENT,
+} from '#app/routes/resources/collection.tsx'
 import { type PrintingWithCounts } from '#app/utils/collection.server.ts'
 import { cn } from '#app/utils/misc.tsx'
 import { PrintingTile } from './printing-tile.tsx'
 import { Button } from './ui/button.tsx'
 import { Icon } from './ui/icon.tsx'
+
+// The tile the pointer or keyboard focus most recently entered. Keyboard
+// shortcuts apply to it alone, even if the mouse rests on another tile.
+let activeTile: HTMLElement | null = null
+
+function isEditable(target: EventTarget | null) {
+	return (
+		target instanceof HTMLElement &&
+		(target.isContentEditable ||
+			['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+	)
+}
+
+/**
+ * + / − step the active tile's primary counter; a digit sets it.
+ * Returns the event to dispatch to the stepper, or null for other keys.
+ */
+function shortcutEvent(key: string) {
+	if (key === '+' || key === '=') {
+		return new CustomEvent(STEPPER_STEP_EVENT, { detail: 1 })
+	}
+	if (key === '-' || key === '_') {
+		return new CustomEvent(STEPPER_STEP_EVENT, { detail: -1 })
+	}
+	if (/^[0-9]$/.test(key)) {
+		return new CustomEvent(STEPPER_SET_EVENT, { detail: Number(key) })
+	}
+	return null
+}
 
 /**
  * Card art that reveals `overlay` on hover. Hover doesn't exist on touch
@@ -28,6 +61,34 @@ export function CardArtTile({
 	const ref = useRef<HTMLDivElement>(null)
 
 	useEffect(() => {
+		const tile = ref.current
+		function onKeyDown(event: KeyboardEvent) {
+			if (!tile || activeTile !== tile) return
+			if (event.defaultPrevented || event.metaKey || event.ctrlKey) return
+			if (event.altKey || isEditable(event.target)) return
+			const shortcut = shortcutEvent(event.key)
+			const stepper =
+				tile.querySelector('[data-primary] [data-quantity-stepper]') ??
+				tile.querySelector('[data-quantity-stepper]')
+			if (!shortcut || !stepper) return
+			event.preventDefault()
+			stepper.dispatchEvent(shortcut)
+		}
+		document.addEventListener('keydown', onKeyDown)
+		return () => {
+			document.removeEventListener('keydown', onKeyDown)
+			if (activeTile === tile) activeTile = null
+		}
+	}, [])
+
+	function activate() {
+		activeTile = ref.current
+	}
+	function deactivate() {
+		if (activeTile === ref.current) activeTile = null
+	}
+
+	useEffect(() => {
 		if (!pinned) return
 		function onPointerDown(event: PointerEvent) {
 			if (!ref.current?.contains(event.target as Node)) setPinned(false)
@@ -48,6 +109,9 @@ export function CardArtTile({
 			ref={ref}
 			data-pinned={pinned || undefined}
 			className="group bg-muted relative aspect-[5/7] overflow-hidden rounded-lg shadow-sm"
+			onPointerEnter={activate}
+			onPointerLeave={deactivate}
+			onFocus={activate}
 		>
 			<button
 				type="button"
@@ -118,13 +182,16 @@ export function OverlayCounters({
 	printing,
 	label,
 	heading,
+	primary = false,
 }: {
 	printing: PrintingWithCounts
 	label: string
 	heading?: React.ReactNode
+	/** Whether keyboard shortcuts on the tile change this printing. */
+	primary?: boolean
 }) {
 	return (
-		<div className="flex flex-col gap-1">
+		<div className="flex flex-col gap-1" data-primary={primary || undefined}>
 			{heading ? (
 				<span className="truncate text-xs font-medium">{heading}</span>
 			) : null}

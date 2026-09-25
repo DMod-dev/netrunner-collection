@@ -376,3 +376,50 @@ export async function getSetCompletion(
 		need: printings.reduce((sum, p) => sum + p.progress.need, 0),
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Bulk entry
+// ---------------------------------------------------------------------------
+
+/**
+ * Add (or with a negative `copies`, remove) whole products: each printing in
+ * the set changes by `copies` × the number that come in the product. Only
+ * plain copies change; custom versions are left alone.
+ */
+export async function addProductCopies(
+	userId: string,
+	setId: string,
+	copies: number,
+) {
+	const printings = await prisma.printing.findMany({
+		where: { setId },
+		select: {
+			id: true,
+			quantity: true,
+			collectionEntries: { where: { userId }, select: { quantity: true } },
+		},
+	})
+	if (!printings.length) return null
+
+	let changed = 0
+	const writes: Array<Prisma.PrismaPromise<unknown>> = []
+	for (const printing of printings) {
+		const current = printing.collectionEntries[0]?.quantity ?? 0
+		const next = clampQuantity(current + printing.quantity * copies)
+		if (next === current) continue
+		changed += next - current
+		writes.push(
+			next === 0
+				? prisma.collectionEntry.delete({
+						where: { userId_printingId: { userId, printingId: printing.id } },
+					})
+				: prisma.collectionEntry.upsert({
+						where: { userId_printingId: { userId, printingId: printing.id } },
+						create: { userId, printingId: printing.id, quantity: next },
+						update: { quantity: next },
+					}),
+		)
+	}
+	await prisma.$transaction(writes)
+	return { changed }
+}

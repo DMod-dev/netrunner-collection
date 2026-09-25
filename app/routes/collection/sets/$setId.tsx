@@ -8,6 +8,7 @@ import {
 } from '#app/components/card-art.tsx'
 import {
 	CollectionNav,
+	ShortcutHint,
 	formatPercent,
 	formatSetType,
 	ProgressBar,
@@ -16,6 +17,7 @@ import {
 import { GeneralErrorBoundary } from '#app/components/error-boundary.tsx'
 import { FactionDot } from '#app/components/printing-tile.tsx'
 import { Icon } from '#app/components/ui/icon.tsx'
+import { AddProductForm } from '#app/routes/resources/collection.tsx'
 import { requireUserId } from '#app/utils/auth.server.ts'
 import {
 	getSetCompletion,
@@ -106,28 +108,37 @@ export default function SetRoute({ loaderData }: Route.ComponentProps) {
 				/>
 			</div>
 
-			<div className="flex items-center gap-2 self-start text-sm">
-				{/* a link, not a checkbox, so the filter lives in the URL */}
-				<Link
-					to={{ search: showQuery ? `?${showQuery}` : '' }}
-					replace
-					preventScrollReset
-					role="switch"
-					aria-checked={missingOnly}
-					className={cn(
-						'relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors',
-						missingOnly ? 'bg-primary' : 'bg-muted-foreground/40',
-					)}
-				>
-					<span
+			<AddProductForm
+				setId={set.id}
+				setName={set.name}
+				productSize={set.printings.reduce((sum, p) => sum + p.quantity, 0)}
+			/>
+
+			<div className="flex flex-wrap items-center justify-between gap-2">
+				<div className="flex items-center gap-2 self-start text-sm">
+					{/* a link, not a checkbox, so the filter lives in the URL */}
+					<Link
+						to={{ search: showQuery ? `?${showQuery}` : '' }}
+						replace
+						preventScrollReset
+						role="switch"
+						aria-checked={missingOnly}
 						className={cn(
-							'bg-background absolute top-0.5 size-4 rounded-full shadow transition-[left]',
-							missingOnly ? 'left-[1.125rem]' : 'left-0.5',
+							'relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors',
+							missingOnly ? 'bg-primary' : 'bg-muted-foreground/40',
 						)}
-					/>
-					<span className="sr-only">Only show missing cards</span>
-				</Link>
-				<span aria-hidden>Only show missing cards</span>
+					>
+						<span
+							className={cn(
+								'bg-background absolute top-0.5 size-4 rounded-full shadow transition-[left]',
+								missingOnly ? 'left-[1.125rem]' : 'left-0.5',
+							)}
+						/>
+						<span className="sr-only">Only show missing cards</span>
+					</Link>
+					<span aria-hidden>Only show missing cards</span>
+				</div>
+				<ShortcutHint />
 			</div>
 
 			{printings.length === 0 ? (
@@ -177,7 +188,11 @@ export default function SetRoute({ loaderData }: Route.ComponentProps) {
 														: ''}
 												</p>
 											</header>
-											<OverlayCounters printing={printing} label={label} />
+											<OverlayCounters
+												printing={printing}
+												label={label}
+												primary
+											/>
 											<VersionsButton
 												title={card.title}
 												printings={[{ printing, label, heading: set.name }]}

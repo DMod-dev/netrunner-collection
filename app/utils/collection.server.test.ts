@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest'
 import { createUser } from '#tests/db-utils.ts'
 import {
+	addProductCopies,
 	createVariant,
 	deleteVariant,
 	getSetCompletion,
@@ -166,4 +167,29 @@ test('set completion counts exact printings "as printed" and any printing for pl
 	})
 
 	expect(await getSetCompletion(user.id, 'nope', 'product')).toBeNull()
+})
+
+test('addProductCopies adds and removes whole products of plain copies', async () => {
+	const printing = await insertPrinting() // 2 per product
+	const user = await insertUser()
+	await setPrintingQuantity(user.id, printing.id, 1)
+	await createVariant(user.id, { printingId: printing.id, label: 'Foil' })
+
+	expect(await addProductCopies(user.id, 'sg', 3)).toEqual({ changed: 6 })
+	const entry = () =>
+		prisma.collectionEntry.findUnique({
+			where: {
+				userId_printingId: { userId: user.id, printingId: printing.id },
+			},
+		})
+	expect(await entry()).toMatchObject({ quantity: 7 })
+
+	// removing more than is owned stops at zero and deletes the entry
+	expect(await addProductCopies(user.id, 'sg', -10)).toEqual({ changed: -7 })
+	expect(await entry()).toBeNull()
+	// custom versions are untouched
+	expect(await prisma.variant.count({ where: { userId: user.id } })).toBe(1)
+
+	expect(await addProductCopies(user.id, 'sg', -1)).toEqual({ changed: 0 })
+	expect(await addProductCopies(user.id, 'nope', 1)).toBeNull()
 })

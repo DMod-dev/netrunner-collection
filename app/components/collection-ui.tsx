@@ -138,3 +138,15 @@ const SET_TYPE_LABELS: Record<string, string> = {
 export function formatSetType(setTypeId: string) {
 	return SET_TYPE_LABELS[setTypeId] ?? setTypeId.replace(/_/g, ' ')
 }
+
+/** Explains the card tile keyboard shortcuts; hidden on touch-only devices. */
+export function ShortcutHint() {
+	const key = 'bg-muted rounded border px-1 font-mono text-[0.7rem]'
+	return (
+		<p className="text-muted-foreground hidden text-xs pointer-fine:block">
+			Hover a card and press <kbd className={key}>+</kbd> /{' '}
+			<kbd className={key}>−</kbd> to change its count, or{' '}
+			<kbd className={key}>0</kbd>–<kbd className={key}>9</kbd> to set it
+		</p>
+	)
+}

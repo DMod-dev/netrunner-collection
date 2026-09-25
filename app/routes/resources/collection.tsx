@@ -1,17 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import { data, useFetcher } from 'react-router'
+import { toast } from 'sonner'
 import { z } from 'zod'
 import { Button } from '#app/components/ui/button.tsx'
 import { Icon } from '#app/components/ui/icon.tsx'
 import { Input } from '#app/components/ui/input.tsx'
 import { requireUserId } from '#app/utils/auth.server.ts'
 import {
+	addProductCopies,
 	createVariant,
 	deleteVariant,
 	setPrintingQuantity,
 	setVariantQuantity,
 } from '#app/utils/collection.server.ts'
-import { MAX_QUANTITY } from '#app/utils/collection.ts'
+import { MAX_PRODUCT_COPIES, MAX_QUANTITY } from '#app/utils/collection.ts'
 import { cn, useDoubleCheck } from '#app/utils/misc.tsx'
 import { type Route } from './+types/collection.ts'
 
@@ -39,6 +41,16 @@ const CollectionActionSchema = z.discriminatedUnion('intent', [
 	z.object({
 		intent: z.literal('delete-variant'),
 		variantId: z.string().min(1),
+	}),
+	z.object({
+		intent: z.literal('add-product'),
+		setId: z.string().min(1),
+		copies: z.coerce
+			.number()
+			.int()
+			.min(-MAX_PRODUCT_COPIES)
+			.max(MAX_PRODUCT_COPIES)
+			.refine((n) => n !== 0),
 	}),
 ])
 
@@ -93,10 +105,29 @@ export async function action({ request }: Route.ActionArgs) {
 			await deleteVariant(userId, submission.variantId)
 			return { ok: true } as const
 		}
+		case 'add-product': {
+			const result = await addProductCopies(
+				userId,
+				submission.setId,
+				submission.copies,
+			)
+			if (!result) {
+				return data({ ok: false, error: 'Set not found' }, { status: 404 })
+			}
+			return { ok: true, changed: result.changed } as const
+		}
 	}
 }
 
 type QuantityTarget = { printingId: string } | { variantId: string }
+
+/**
+ * Events a QuantityStepper listens for on its root element, so keyboard
+ * shortcuts elsewhere can drive it: `step` adds `detail` (+1/-1), `set`
+ * sets the count to `detail`.
+ */
+export const STEPPER_STEP_EVENT = 'quantity-stepper:step'
+export const STEPPER_SET_EVENT = 'quantity-stepper:set'
 
 /**
  * −/+ buttons with an editable count. Updates are optimistic: the displayed
@@ -132,6 +163,21 @@ export function QuantityStepper({
 		submit(latestRef.current + delta)
 	}
 
+	const rootRef = useRef<HTMLDivElement>(null)
+	// re-subscribed each render so the handlers see the current target
+	useEffect(() => {
+		const root = rootRef.current
+		if (!root) return
+		const onStep = (e: Event) => step((e as CustomEvent<number>).detail)
+		const onSet = (e: Event) => submit((e as CustomEvent<number>).detail)
+		root.addEventListener(STEPPER_STEP_EVENT, onStep)
+		root.addEventListener(STEPPER_SET_EVENT, onSet)
+		return () => {
+			root.removeEventListener(STEPPER_STEP_EVENT, onStep)
+			root.removeEventListener(STEPPER_SET_EVENT, onSet)
+		}
+	})
+
 	function submit(next: number) {
 		const clamped = Math.max(0, Math.min(MAX_QUANTITY, next))
 		if (clamped === latestRef.current) return
@@ -155,7 +201,11 @@ export function QuantityStepper({
 
 	const buttonClass = size === 'sm' ? 'size-7 text-base' : 'size-8 text-lg'
 	return (
-		<div className="flex items-center gap-1">
+		<div
+			ref={rootRef}
+			data-quantity-stepper
+			className="flex items-center gap-1"
+		>
 			<Button
 				type="button"
 				variant="outline"
@@ -319,6 +369,122 @@ export function DeleteVariantButton({
 			>
 				{dc.doubleCheck ? 'Delete?' : <Icon name="trash" />}
 			</Button>
+		</fetcher.Form>
+	)
+}
+
+/**
+ * "Add N × {product}": changes every printing in a set by N × the number
+ * that come in the product. Asks for confirmation before applying.
+ */
+export function AddProductForm({
+	setId,
+	setName,
+	productSize,
+}: {
+	setId: string
+	setName: string
+	/** Total cards in one copy of the product. */
+	productSize: number
+}) {
+	const fetcher = useFetcher<typeof action>()
+	const [mode, setMode] = useState<'add' | 'remove'>('add')
+	const [copies, setCopies] = useState(1)
+	const [confirming, setConfirming] = useState(false)
+	const isPending = fetcher.state !== 'idle'
+	const signedCopies = mode === 'add' ? copies : -copies
+	const cardTotal = copies * productSize
+
+	useEffect(() => {
+		if (fetcher.state !== 'idle' || !fetcher.data) return
+		if (!fetcher.data.ok) {
+			toast.error(fetcher.data.error)
+		} else if ('changed' in fetcher.data) {
+			const changed = fetcher.data.changed ?? 0
+			toast.success(
+				changed === 0
+					? 'Nothing to change'
+					: `${changed > 0 ? 'Added' : 'Removed'} ${Math.abs(changed)} ${Math.abs(changed) === 1 ? 'card' : 'cards'}`,
+			)
+		}
+	}, [fetcher.state, fetcher.data])
+
+	return (
+		<fetcher.Form
+			method="POST"
+			action={ACTION_PATH}
+			className="bg-muted flex flex-wrap items-center gap-2 rounded-lg p-3 text-sm"
+			onSubmit={(e) => {
+				if (!confirming) {
+					e.preventDefault()
+					setConfirming(true)
+				} else {
+					setConfirming(false)
+				}
+			}}
+		>
+			<input type="hidden" name="intent" value="add-product" />
+			<input type="hidden" name="setId" value={setId} />
+			<input type="hidden" name="copies" value={signedCopies} />
+			<select
+				aria-label="Add or remove"
+				className="border-input bg-background h-8 rounded-md border px-2"
+				value={mode}
+				onChange={(e) => {
+					setMode(e.currentTarget.value === 'remove' ? 'remove' : 'add')
+					setConfirming(false)
+				}}
+			>
+				<option value="add">Add</option>
+				<option value="remove">Remove</option>
+			</select>
+			<Input
+				type="number"
+				aria-label="Number of products"
+				min={1}
+				max={MAX_PRODUCT_COPIES}
+				value={copies}
+				onChange={(e) => {
+					const n = Number.parseInt(e.currentTarget.value, 10)
+					setCopies(
+						Number.isNaN(n) ? 1 : Math.max(1, Math.min(MAX_PRODUCT_COPIES, n)),
+					)
+					setConfirming(false)
+				}}
+				className="h-8 w-16 text-center"
+			/>
+			<span>
+				× {setName}{' '}
+				<span className="text-muted-foreground">
+					({productSize} cards each)
+				</span>
+			</span>
+			<div className="ml-auto flex items-center gap-2">
+				{confirming ? (
+					<Button
+						type="button"
+						variant="ghost"
+						size="sm"
+						className="h-8"
+						onClick={() => setConfirming(false)}
+					>
+						Cancel
+					</Button>
+				) : null}
+				<Button
+					type="submit"
+					size="sm"
+					className="h-8"
+					variant={confirming && mode === 'remove' ? 'destructive' : 'default'}
+					disabled={isPending}
+				>
+					{confirming
+						? `${mode === 'add' ? 'Add' : 'Remove'} ${cardTotal} cards?`
+						: mode === 'add'
+							? 'Add'
+							: 'Remove'}
+				</Button>
+			</div>
 		</fetcher.Form>
 	)
 }
