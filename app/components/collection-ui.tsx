@@ -20,6 +20,9 @@ export function CollectionNav() {
 			<NavLink to="/collection/sets" className={tabClass}>
 				Sets
 			</NavLink>
+			<NavLink to="/collection/deck-check" className={tabClass}>
+				Deck check
+			</NavLink>
 		</nav>
 	)
 }
