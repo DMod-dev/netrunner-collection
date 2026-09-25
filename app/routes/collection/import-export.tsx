@@ -1,3 +1,4 @@
+import { type SEOHandle } from '@nasa-gcn/remix-seo'
 import { useEffect, useId, useState } from 'react'
 import { data, Link, useFetcher } from 'react-router'
 import { toast } from 'sonner'
@@ -19,6 +20,10 @@ import {
 import { prisma } from '#app/utils/db.server.ts'
 import { cn } from '#app/utils/misc.tsx'
 import { type Route } from './+types/import-export.ts'
+
+export const handle: SEOHandle = {
+	getSitemapEntries: () => null,
+}
 
 const MAX_IMPORT_BYTES = 2_000_000
 

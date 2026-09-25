@@ -12,7 +12,9 @@ import {
 	type ActionFunctionArgs,
 	type HandleDocumentRequestFunction,
 } from 'react-router'
+import { startAuthPruneScheduler } from './utils/auth-prune.server.ts'
 import { getEnv, init } from './utils/env.server.ts'
+import { applyPrivateCacheControl } from './utils/headers.server.ts'
 import { getInstanceInfo } from './utils/litefs.server.ts'
 import { NonceProvider } from './utils/nonce-provider.ts'
 import { startNrdbSyncScheduler } from './utils/nrdb-scheduler.server.ts'
@@ -22,6 +24,7 @@ import { makeTimings } from './utils/timing.server.ts'
 export const streamTimeout = 5000
 
 startNrdbSyncScheduler()
+startAuthPruneScheduler()
 
 init()
 global.ENV = getEnv()
@@ -42,6 +45,8 @@ export default async function handleRequest(...args: DocRequestArgs) {
 	if (process.env.NODE_ENV === 'production' && process.env.SENTRY_DSN) {
 		responseHeaders.append('Document-Policy', 'js-profiling')
 	}
+
+	await applyPrivateCacheControl(request, responseHeaders)
 
 	const callbackName = isbot(request.headers.get('user-agent'))
 		? 'onAllReady'
@@ -71,8 +76,6 @@ export default async function handleRequest(...args: DocRequestArgs) {
 					contentSecurity(responseHeaders, {
 						crossOriginEmbedderPolicy: false,
 						contentSecurityPolicy: {
-							// NOTE: Remove reportOnly when you're ready to enforce this CSP
-							reportOnly: true,
 							directives: {
 								fetch: {
 									'connect-src': [
@@ -89,6 +92,10 @@ export default async function handleRequest(...args: DocRequestArgs) {
 										`'nonce-${nonce}'`,
 									],
 									'script-src-attr': [`'nonce-${nonce}'`],
+									// No `https:`: every stylesheet is ours. 'unsafe-inline' stays
+									// because sonner and input-otp inject <style> tags at runtime
+									// without a nonce, and React renders style="" attributes.
+									'style-src': ["'self'", "'unsafe-inline'"],
 								},
 							},
 						},
@@ -116,8 +123,12 @@ export default async function handleRequest(...args: DocRequestArgs) {
 	})
 }
 
-export async function handleDataRequest(response: Response) {
+export async function handleDataRequest(
+	response: Response,
+	{ request }: LoaderFunctionArgs | ActionFunctionArgs,
+) {
 	const { currentInstance, primaryInstance } = await getInstanceInfo()
+	await applyPrivateCacheControl(request, response.headers)
 	response.headers.set('fly-region', process.env.FLY_REGION ?? 'unknown')
 	response.headers.set('fly-app', process.env.FLY_APP_NAME ?? 'unknown')
 	response.headers.set('fly-primary-instance', primaryInstance)

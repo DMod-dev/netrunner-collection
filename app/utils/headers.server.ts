@@ -1,5 +1,28 @@
 import { type CacheControlValue, parse, format } from '@tusbar/cache-control'
 import { type HeadersArgs } from 'react-router'
+import { sessionKey } from './auth.server.ts'
+import { authSessionStorage } from './session.server.ts'
+
+export const PRIVATE_CACHE_CONTROL = 'private, no-store'
+
+/**
+ * Pages and data rendered for a signed-in user carry that user's data (the
+ * root loader alone includes their name and roles), so neither the browser
+ * nor anything in between may keep a copy. Only the session cookie is
+ * checked, not the database: an expired session still gets `no-store`, which
+ * costs nothing.
+ */
+export async function applyPrivateCacheControl(
+	request: Request,
+	headers: Headers,
+) {
+	const cookie = request.headers.get('cookie')
+	if (!cookie) return
+	const session = await authSessionStorage.getSession(cookie)
+	if (session.get(sessionKey)) {
+		headers.set('Cache-Control', PRIVATE_CACHE_CONTROL)
+	}
+}
 
 /**
  * A utility for handling route headers, merging common use-case headers.

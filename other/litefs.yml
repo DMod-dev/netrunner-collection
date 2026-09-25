@@ -3,6 +3,9 @@ fuse:
   # Required. This is the mount directory that applications will
   # use to access their SQLite databases.
   dir: '${LITEFS_DIR}'
+  # LiteFS mounts as root but the app runs as `node`; without this only root
+  # could open the databases. (LiteFS reports every file as 0666.)
+  allow-other: true
 
 data:
   # Path to internal data storage.
@@ -43,4 +46,10 @@ exec:
   # Generate Typed SQL files
   - cmd: npx prisma generate --sql
 
-  - cmd: npm start
+  # The resized-image cache lives on the volume, which is root-owned.
+  - cmd: mkdir -p /data/images
+  - cmd: chown -R node:node /data/images
+
+  # Everything above needs root; the app itself does not. setpriv keeps the
+  # environment (secrets, DATABASE_URL) but not HOME, which npm writes to.
+  - cmd: setpriv --reuid=node --regid=node --init-groups env HOME=/home/node npm start

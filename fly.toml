@@ -9,6 +9,12 @@ swap_size_mb = 512
 size = "shared-cpu-1x"
 memory = "512mb"
 
+# One machine, so a crash is downtime until it comes back: restart it whatever
+# the exit code.
+[[restart]]
+policy = "always"
+retries = 10
+
 [experimental]
 allowed_public_ports = [ ]
 auto_rollback = true

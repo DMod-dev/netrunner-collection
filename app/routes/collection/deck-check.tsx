@@ -1,3 +1,4 @@
+import { type SEOHandle } from '@nasa-gcn/remix-seo'
 import { useState } from 'react'
 import { data, Form } from 'react-router'
 import { CountBadge } from '#app/components/card-art.tsx'
@@ -18,6 +19,10 @@ import {
 } from '#app/utils/deck-check.server.ts'
 import { cn, useIsPending } from '#app/utils/misc.tsx'
 import { type Route } from './+types/deck-check.ts'
+
+export const handle: SEOHandle = {
+	getSitemapEntries: () => null,
+}
 
 const MAX_INPUT_LENGTH = 20_000
 

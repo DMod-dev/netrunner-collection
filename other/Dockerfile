@@ -84,13 +84,21 @@ COPY --from=build /myapp/node_modules/.prisma /myapp/node_modules/.prisma
 COPY --from=build /myapp/build /myapp/build
 COPY --from=build /myapp/package.json /myapp/package.json
 COPY --from=build /myapp/prisma /myapp/prisma
-COPY --from=build /myapp/app/components/ui/icons /myapp/app/components/ui/icons
+# The server entry runs from source (node strips the types), and server/
+# imports a few modules from app/. Nothing else from the repo (docs, tests,
+# CI config) belongs in the image.
+COPY --from=build /myapp/index.ts /myapp/index.ts
+COPY --from=build /myapp/server /myapp/server
+COPY --from=build /myapp/app /myapp/app
 
 # prepare for litefs
 COPY --from=flyio/litefs:0.5.11 /usr/local/bin/litefs /usr/local/bin/litefs
 ADD other/litefs.yml /etc/litefs.yml
 RUN mkdir -p /data ${LITEFS_DIR}
 
-ADD . .
+# LiteFS stays root because it mounts a FUSE filesystem; it starts the app as
+# the unprivileged `node` user via setpriv (see other/litefs.yml). Fail the
+# build here rather than at boot if setpriv or the user ever go missing.
+RUN setpriv --version && id node
 
 CMD ["litefs", "mount"]

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { createReadStream, promises as fs, constants } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { Readable } from 'node:stream'
 import sharp from 'sharp'
@@ -64,14 +65,15 @@ async function getCacheDir() {
 
 	let dir = './tests/fixtures/image-cache'
 	if (process.env.NODE_ENV === 'production') {
+		// On Fly the volume's images/ directory is handed to the app user at
+		// boot (other/litefs.yml). Anywhere else, the app directory may not be
+		// writable (the image runs as `node`), so fall back to a temp dir.
 		const isAccessible = await fs
-			.access('/data', constants.W_OK)
+			.access('/data/images', constants.W_OK)
 			.then(() => true)
 			.catch(() => false)
 
-		if (isAccessible) {
-			dir = '/data/images'
-		}
+		dir = isAccessible ? '/data/images' : path.join(os.tmpdir(), 'images')
 	}
 	await fs.mkdir(dir, { recursive: true })
 
