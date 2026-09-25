@@ -16,6 +16,7 @@ node_modules
 /tests/fixtures/uploaded/
 /tests/fixtures/openimg/
 /tests/fixtures/image-cache/
+/tests/fixtures/github/users.*.local/
 /coverage
 
 /other/cache.db

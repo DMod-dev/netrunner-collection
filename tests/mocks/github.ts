@@ -10,16 +10,20 @@ const { json } = HttpResponse
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const here = (...s: Array<string>) => path.join(__dirname, ...s)
 
-const githubUserFixturePath = path.join(
-	here(
-		'..',
-		'fixtures',
-		'github',
-		`users.${process.env.VITEST_POOL_ID || 0}.local.json`,
-	),
+// One file per user. The server and every Playwright worker read and write
+// these at the same time; with a single shared JSON file, concurrent
+// read-modify-writes lost users and readers saw half-written files.
+const githubUserFixtureDir = here(
+	'..',
+	'fixtures',
+	'github',
+	`users.${process.env.VITEST_POOL_ID || 0}.local`,
 )
+const githubUserFile = (code: string) =>
+	path.join(githubUserFixtureDir, `${encodeURIComponent(code)}.json`)
 
-await fsExtra.ensureDir(path.dirname(githubUserFixturePath))
+await fsExtra.ensureDir(githubUserFixtureDir)
+await migrateLegacyUserFile()
 
 function createGitHubUser(code?: string | null) {
 	const createEmail = () => ({
@@ -69,45 +73,66 @@ function createGitHubUser(code?: string | null) {
 export type GitHubUser = ReturnType<typeof createGitHubUser>
 
 async function getGitHubUsers() {
+	let files: Array<string>
 	try {
-		if (await fsExtra.pathExists(githubUserFixturePath)) {
-			const json = await fsExtra.readJson(githubUserFixturePath)
-			return json as Array<GitHubUser>
-		}
-		return []
+		files = await fsExtra.readdir(githubUserFixtureDir)
 	} catch (error) {
-		console.error(error)
+		if ((error as NodeJS.ErrnoException).code !== 'ENOENT') console.error(error)
 		return []
 	}
+	const users = await Promise.all(
+		files
+			.filter((file) => file.endsWith('.json'))
+			// another process may delete a user between readdir and read
+			.map((file) =>
+				fsExtra
+					.readJson(path.join(githubUserFixtureDir, file))
+					.catch(() => null),
+			),
+	)
+	return users.filter(Boolean) as Array<GitHubUser>
 }
 
 export async function deleteGitHubUser(primaryEmail: string) {
 	const users = await getGitHubUsers()
 	const user = users.find((u) => u.primaryEmail === primaryEmail)
 	if (!user) return null
-	await setGitHubUsers(users.filter((u) => u.primaryEmail !== primaryEmail))
+	await fsExtra.remove(githubUserFile(user.code))
 	return user
 }
 
 export async function deleteGitHubUsers() {
-	await fsExtra.remove(githubUserFixturePath)
+	await fsExtra.remove(githubUserFixtureDir)
 }
 
-async function setGitHubUsers(users: Array<GitHubUser>) {
-	await fsExtra.writeJson(githubUserFixturePath, users, { spaces: 2 })
+async function setGitHubUser(user: GitHubUser) {
+	await fsExtra.ensureDir(githubUserFixtureDir)
+	// write then rename so readers never see a partial file
+	const file = githubUserFile(user.code)
+	const tmp = `${file}.${process.pid}.${Date.now()}.tmp`
+	await fsExtra.writeJson(tmp, user, { spaces: 2 })
+	await fsExtra.rename(tmp, file)
 }
 
 export async function insertGitHubUser(code?: string | null) {
-	const githubUsers = await getGitHubUsers()
-	let user = githubUsers.find((u) => u.code === code)
-	if (user) {
-		Object.assign(user, createGitHubUser(code))
-	} else {
-		user = createGitHubUser(code)
-		githubUsers.push(user)
-	}
-	await setGitHubUsers(githubUsers)
+	// a user with the same code is replaced, like the old shared file did
+	const user = createGitHubUser(code)
+	await setGitHubUser(user)
 	return user
+}
+
+// Users used to share `users.<id>.local.json`. Carry them over (the seeded
+// kody account among them) so mocked GitHub logins keep working without a
+// reseed.
+async function migrateLegacyUserFile() {
+	const legacyFile = `${githubUserFixtureDir}.json`
+	try {
+		const users = (await fsExtra.readJson(legacyFile)) as Array<GitHubUser>
+		await Promise.all(users.map((user) => setGitHubUser(user)))
+		await fsExtra.remove(legacyFile)
+	} catch {
+		// no legacy file, or another process is already migrating it
+	}
 }
 
 async function getUser(request: Request) {

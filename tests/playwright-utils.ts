@@ -75,8 +75,13 @@ export const test = base.extend<{
 	prepareGitHubUser(): Promise<GitHubUser>
 }>({
 	navigate: async ({ page }, use) => {
-		await use((...args) => {
-			return page.goto(href(...args))
+		await use(async (...args) => {
+			const response = await page.goto(href(...args))
+			// A click before hydration is a plain navigation (the user menu opens
+			// the profile page instead of the menu). On the dev server hydration
+			// can trail the load event by a second or more.
+			await page.locator('html[data-hydrated]').waitFor({ state: 'attached' })
+			return response
 		})
 	},
 	insertNewUser: async ({}, use) => {
