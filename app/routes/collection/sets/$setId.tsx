@@ -1,6 +1,12 @@
 import { invariantResponse } from '@epic-web/invariant'
 import { Link, useSearchParams } from 'react-router'
 import {
+	CardArtTile,
+	CountBadge,
+	OverlayCounters,
+	VersionsButton,
+} from '#app/components/card-art.tsx'
+import {
 	CollectionNav,
 	formatPercent,
 	formatSetType,
@@ -8,7 +14,7 @@ import {
 	TargetToggle,
 } from '#app/components/collection-ui.tsx'
 import { GeneralErrorBoundary } from '#app/components/error-boundary.tsx'
-import { FactionDot, PrintingTile } from '#app/components/printing-tile.tsx'
+import { FactionDot } from '#app/components/printing-tile.tsx'
 import { Icon } from '#app/components/ui/icon.tsx'
 import { requireUserId } from '#app/utils/auth.server.ts'
 import {
@@ -129,39 +135,54 @@ export default function SetRoute({ loaderData }: Route.ComponentProps) {
 					Nothing missing from this set. Nice!
 				</p>
 			) : (
-				<ul className="grid grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] gap-3">
+				<ul className="grid grid-cols-2 gap-3 sm:grid-cols-[repeat(auto-fill,minmax(10.5rem,1fr))] sm:gap-4">
 					{printings.map((printing) => {
-						const { have, need, owned } = printing.progress
-						const complete = have >= need
+						const { need, owned } = printing.progress
+						const { card } = printing
+						const label = `${card.title} (${set.name})`
 						return (
 							<li key={printing.id}>
-								<PrintingTile
-									printing={printing}
-									label={`${printing.card.title} (${set.name})`}
-									heading={
+								<CardArtTile
+									imageUrl={printing.imageLarge ?? printing.imageSmall}
+									alt={card.title}
+									dimmed={owned === 0}
+									overlay={
 										<>
-											<FactionDot factionId={printing.card.faction.id} />{' '}
-											{printing.card.title}
+											<header className="flex flex-col gap-1">
+												<div className="flex items-start justify-between gap-2">
+													<h2 className="leading-tight font-bold">
+														{card.title}
+													</h2>
+													<CountBadge
+														owned={owned}
+														target={need}
+														title={
+															target === 'product'
+																? `You own ${owned} of this printing; ${need} come in the product`
+																: `You own ${owned} across all printings; deck limit ${need}`
+														}
+													/>
+												</div>
+												<p className="text-muted-foreground text-xs">
+													<FactionDot factionId={card.faction.id} />{' '}
+													{card.faction.name} · {card.type.name}
+													{card.displaySubtypes
+														? `: ${card.displaySubtypes}`
+														: ''}
+												</p>
+												<p className="text-muted-foreground text-xs">
+													#{printing.position}
+													{printing.illustrator
+														? ` · ${printing.illustrator}`
+														: ''}
+												</p>
+											</header>
+											<OverlayCounters printing={printing} label={label} />
+											<VersionsButton
+												title={card.title}
+												printings={[{ printing, label, heading: set.name }]}
+											/>
 										</>
-									}
-									badge={
-										<span
-											className={cn(
-												'mt-1 rounded-full px-2 py-0.5 text-xs font-bold tabular-nums',
-												complete
-													? 'bg-green-600 text-white dark:bg-green-500'
-													: owned > 0
-														? 'bg-secondary text-secondary-foreground'
-														: 'bg-muted text-muted-foreground',
-											)}
-											title={
-												target === 'product'
-													? `You own ${owned} of this printing; ${need} come in the product`
-													: `You own ${owned} across all printings; deck limit ${need}`
-											}
-										>
-											{owned} / {need}
-										</span>
 									}
 								/>
 							</li>

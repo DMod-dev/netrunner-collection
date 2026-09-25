@@ -1,8 +1,14 @@
 import { useId, useRef } from 'react'
 import { Form, Link, useSearchParams, useSubmit } from 'react-router'
+import {
+	CardArtTile,
+	CountBadge,
+	OverlayCounters,
+	VersionsButton,
+} from '#app/components/card-art.tsx'
 import { CollectionNav } from '#app/components/collection-ui.tsx'
 import { GeneralErrorBoundary } from '#app/components/error-boundary.tsx'
-import { FactionDot, PrintingTile } from '#app/components/printing-tile.tsx'
+import { FactionDot } from '#app/components/printing-tile.tsx'
 import { Button } from '#app/components/ui/button.tsx'
 import { Icon } from '#app/components/ui/icon.tsx'
 import { Input } from '#app/components/ui/input.tsx'
@@ -84,6 +90,8 @@ export const meta: Route.MetaFunction = () => [
 export default function CollectionRoute({ loaderData }: Route.ComponentProps) {
 	const { cards, total, page, pageCount, filters, totals, cardCount } =
 		loaderData
+	const [searchParams] = useSearchParams()
+	const featuredSetId = searchParams.get('set')
 	const isPending = useDelayedIsPending({
 		formMethod: 'GET',
 		formAction: '/collection',
@@ -109,13 +117,14 @@ export default function CollectionRoute({ loaderData }: Route.ComponentProps) {
 			</p>
 
 			<ul
-				className={cn('flex flex-col gap-4 transition-opacity', {
-					'opacity-50': isPending,
-				})}
+				className={cn(
+					'grid grid-cols-2 gap-3 transition-opacity sm:grid-cols-[repeat(auto-fill,minmax(10.5rem,1fr))] sm:gap-4',
+					{ 'opacity-50': isPending },
+				)}
 			>
 				{cards.map((card) => (
 					<li key={card.id}>
-						<CardRow card={card} />
+						<CardTile card={card} featuredSetId={featuredSetId} />
 					</li>
 				))}
 			</ul>
@@ -293,7 +302,14 @@ function FilterSelect({
 	)
 }
 
-function CardRow({ card }: { card: LoaderCard }) {
+function CardTile({
+	card,
+	featuredSetId,
+}: {
+	card: LoaderCard
+	/** When filtering by set, show that set's art rather than the newest. */
+	featuredSetId: string | null
+}) {
 	const owned = card.printings.reduce(
 		(sum, p) =>
 			sum +
@@ -301,54 +317,64 @@ function CardRow({ card }: { card: LoaderCard }) {
 			p.variants.reduce((vSum, v) => vSum + v.quantity, 0),
 		0,
 	)
-	const hasPlayset = owned >= card.deckLimit
+	const featured =
+		card.printings.find((p) => p.set.id === featuredSetId) ?? card.printings[0]
+	const labelFor = (p: LoaderCard['printings'][number]) =>
+		`${card.title} (${p.set.name})`
 
 	return (
-		<article className="border-border flex flex-col gap-3 rounded-lg border p-4">
-			<header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-				<div className="flex flex-col">
-					<h2 className="text-lg font-bold">
-						<a
-							href={`https://netrunnerdb.com/en/card/${card.printings[0]?.id ?? ''}`}
-							target="_blank"
-							rel="noreferrer"
-							className="hover:underline"
-						>
-							{card.title}
-						</a>
-					</h2>
-					<p className="text-muted-foreground text-sm">
-						<FactionDot factionId={card.faction.id} /> {card.faction.name} ·{' '}
-						{card.type.name}
-						{card.displaySubtypes ? `: ${card.displaySubtypes}` : ''}
-					</p>
-				</div>
-				<span
-					className={cn(
-						'rounded-full px-3 py-1 text-sm font-bold tabular-nums',
-						owned === 0
-							? 'bg-muted text-muted-foreground'
-							: hasPlayset
-								? 'bg-primary text-primary-foreground'
-								: 'bg-secondary text-secondary-foreground',
-					)}
-					title={`You own ${owned} (deck limit ${card.deckLimit})`}
-				>
-					{owned} / {card.deckLimit}
-				</span>
-			</header>
-			<ul className="grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-3">
-				{card.printings.map((printing) => (
-					<li key={printing.id}>
-						<PrintingTile
-							printing={printing}
-							label={`${card.title} (${printing.set.name})`}
-							heading={printing.set.name}
-						/>
-					</li>
-				))}
-			</ul>
-		</article>
+		<CardArtTile
+			imageUrl={featured?.imageLarge ?? featured?.imageSmall ?? null}
+			alt={card.title}
+			dimmed={owned === 0}
+			overlay={
+				<>
+					<header className="flex flex-col gap-1">
+						<div className="flex items-start justify-between gap-2">
+							<h2 className="leading-tight font-bold">
+								<a
+									href={`https://netrunnerdb.com/en/card/${card.printings[0]?.id ?? ''}`}
+									target="_blank"
+									rel="noreferrer"
+									className="hover:underline"
+								>
+									{card.title}
+								</a>
+							</h2>
+							<CountBadge
+								owned={owned}
+								target={card.deckLimit}
+								title={`You own ${owned} (deck limit ${card.deckLimit})`}
+							/>
+						</div>
+						<p className="text-muted-foreground text-xs">
+							<FactionDot factionId={card.faction.id} /> {card.faction.name} ·{' '}
+							{card.type.name}
+							{card.displaySubtypes ? `: ${card.displaySubtypes}` : ''}
+						</p>
+					</header>
+					<ul className="flex flex-col gap-2">
+						{card.printings.map((printing) => (
+							<li key={printing.id}>
+								<OverlayCounters
+									printing={printing}
+									label={labelFor(printing)}
+									heading={printing.set.name}
+								/>
+							</li>
+						))}
+					</ul>
+					<VersionsButton
+						title={card.title}
+						printings={card.printings.map((printing) => ({
+							printing,
+							label: labelFor(printing),
+							heading: printing.set.name,
+						}))}
+					/>
+				</>
+			}
+		/>
 	)
 }
 

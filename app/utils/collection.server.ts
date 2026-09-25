@@ -2,7 +2,7 @@ import { type Prisma } from '@prisma/client'
 import { MAX_QUANTITY } from './collection.ts'
 import { prisma } from './db.server.ts'
 
-export const CARDS_PER_PAGE = 24
+export const CARDS_PER_PAGE = 30
 
 export type CardSearchParams = {
 	q?: string
@@ -343,7 +343,9 @@ export async function getSetCompletion(
 								id: true,
 								title: true,
 								deckLimit: true,
+								displaySubtypes: true,
 								faction: { select: { id: true, name: true } },
+								type: { select: { name: true } },
 							},
 						},
 					},
