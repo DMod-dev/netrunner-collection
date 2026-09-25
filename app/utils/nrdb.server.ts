@@ -2,6 +2,14 @@ import { type Prisma } from '@prisma/client'
 import { prisma } from './db.server.ts'
 
 const NRDB_API = 'https://api.netrunnerdb.com/api/v3/public'
+// Identify ourselves so NRDB's maintainers know who's calling and how to
+// reach us (the repo's issues) if our traffic ever causes trouble.
+export const NRDB_USER_AGENT =
+	'NetrunnerCollection (+https://nr-collection.app; https://github.com/DMod-dev/netrunner-collection)'
+export const NRDB_JSON_API_HEADERS = {
+	accept: 'application/vnd.api+json',
+	'user-agent': NRDB_USER_AGENT,
+}
 const PAGE_SIZE = 1000
 // Keep each transaction small enough that SQLite doesn't hold the write lock
 // for long while the app is serving requests.
@@ -72,9 +80,7 @@ async function fetchAll<Attributes>(
 	let url: string | null | undefined =
 		`${NRDB_API}/${resource}?page%5Bsize%5D=${PAGE_SIZE}`
 	while (url) {
-		const response = await fetch(url, {
-			headers: { accept: 'application/vnd.api+json' },
-		})
+		const response = await fetch(url, { headers: NRDB_JSON_API_HEADERS })
 		if (!response.ok) {
 			throw new Error(
 				`NRDB request failed (${response.status} ${response.statusText}): ${url}`,

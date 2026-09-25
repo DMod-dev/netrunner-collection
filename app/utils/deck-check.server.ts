@@ -1,4 +1,5 @@
 import { prisma } from './db.server.ts'
+import { NRDB_JSON_API_HEADERS, NRDB_USER_AGENT } from './nrdb.server.ts'
 
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i
 
@@ -43,7 +44,7 @@ export async function fetchNrdbDeck(
 	if (ref.kind === 'decklist') {
 		const response = await fetch(
 			`https://api.netrunnerdb.com/api/v3/public/decklists/${ref.id}`,
-			{ headers: { accept: 'application/vnd.api+json' } },
+			{ headers: NRDB_JSON_API_HEADERS },
 		)
 		if (response.status === 404) {
 			throw new DeckImportError(
@@ -71,6 +72,7 @@ export async function fetchNrdbDeck(
 	// Privately shared decks are only in the v2 API, keyed by printing code.
 	const response = await fetch(
 		`https://netrunnerdb.com/api/2.0/public/deck/${ref.id}`,
+		{ headers: { 'user-agent': NRDB_USER_AGENT } },
 	)
 	if (!response.ok) {
 		throw new DeckImportError(

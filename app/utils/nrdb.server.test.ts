@@ -3,6 +3,7 @@ import { prisma } from './db.server.ts'
 import {
 	isAutoSyncEnabled,
 	isSyncRunning,
+	NRDB_USER_AGENT,
 	SYNC_EVERY_MS,
 	syncIfDue,
 } from './nrdb.server.ts'
@@ -37,10 +38,12 @@ test('syncIfDue starts one scheduled sync when due and records failures', async 
 	// hold NRDB's responses until we've checked a second sync can't start
 	let openGate!: () => void
 	const gate = new Promise<void>((resolve) => (openGate = resolve))
-	vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
-		await gate
-		return new Response('down', { status: 503, statusText: 'Unavailable' })
-	})
+	const fetchSpy = vi
+		.spyOn(globalThis, 'fetch')
+		.mockImplementation(async () => {
+			await gate
+			return new Response('down', { status: 503, statusText: 'Unavailable' })
+		})
 	await prisma.nrdbSync.create({
 		data: {
 			status: 'success',
@@ -61,6 +64,13 @@ test('syncIfDue starts one scheduled sync when due and records failures', async 
 	})
 	expect(latest).toMatchObject({ status: 'error', trigger: 'schedule' })
 	expect(latest.error).toMatch(/503/)
+	// NRDB can see who's calling
+	expect(fetchSpy).toHaveBeenCalledWith(
+		expect.stringContaining('api.netrunnerdb.com'),
+		expect.objectContaining({
+			headers: expect.objectContaining({ 'user-agent': NRDB_USER_AGENT }),
+		}),
+	)
 })
 
 test('isSyncRunning clears syncs interrupted by a restart', async () => {

@@ -9,6 +9,7 @@ import {
 	parseDeckText,
 	parseNrdbDeckRef,
 } from './deck-check.server.ts'
+import { NRDB_USER_AGENT } from './nrdb.server.ts'
 
 afterEach(() => {
 	vi.restoreAllMocks()
@@ -182,6 +183,7 @@ test('fetchNrdbDeck maps shared decks from printing codes to cards', async () =>
 
 	expect(fetchSpy).toHaveBeenCalledWith(
 		`https://netrunnerdb.com/api/2.0/public/deck/${UUID}`,
+		{ headers: { 'user-agent': NRDB_USER_AGENT } },
 	)
 	expect(deck.name).toBe('Shared deck')
 	expect(Object.fromEntries(deck.cards)).toEqual({
