@@ -61,6 +61,20 @@ export const handlers = [
 		},
 	),
 
+	http.delete(
+		`${STORAGE_ENDPOINT}/${STORAGE_BUCKET}/:key*`,
+		async ({ request, params }) => {
+			if (!validateAuth(request.headers)) {
+				return new HttpResponse('Unauthorized', { status: 401 })
+			}
+			const { key } = params
+			assertKey(key)
+			// Only ever uploaded objects; the image fixtures stay put.
+			await fs.rm(path.join(MOCK_STORAGE_DIR, ...key), { force: true })
+			return new HttpResponse(null, { status: 204 })
+		},
+	),
+
 	http.get(
 		`${STORAGE_ENDPOINT}/${STORAGE_BUCKET}/:key*`,
 		async ({ params }) => {

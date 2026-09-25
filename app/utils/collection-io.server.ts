@@ -187,12 +187,13 @@ const HEADER_ALIASES: Record<string, keyof Omit<RawRow, 'line'>> = {
 }
 
 function headerKey(header: string) {
-	return HEADER_ALIASES[
-		header
-			.trim()
-			.toLowerCase()
-			.replace(/[\s-]+/g, '_')
-	]
+	const key = header
+		.trim()
+		.toLowerCase()
+		.replace(/[\s-]+/g, '_')
+	// hasOwn, so a column named "constructor" is ignored rather than resolving
+	// to Object.prototype.constructor
+	return Object.hasOwn(HEADER_ALIASES, key) ? HEADER_ALIASES[key] : undefined
 }
 
 function rawRowsFromCsv(text: string): Array<RawRow> {

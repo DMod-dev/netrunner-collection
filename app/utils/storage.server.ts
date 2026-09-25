@@ -37,6 +37,32 @@ export async function uploadProfileImage(
 	return uploadToStorage(file, key)
 }
 
+/**
+ * Removes a replaced or deleted profile image from the bucket. Best effort:
+ * the database row is already gone, so a failure only leaves an orphaned
+ * object behind, which is worth a log line but not a failed request.
+ */
+export async function deleteProfileImage(key: string) {
+	if (!key.startsWith('users/') || key.includes('..')) return
+	const { url, baseHeaders } = getBaseSignedRequestInfo({
+		method: 'DELETE',
+		key,
+	})
+	try {
+		const response = await fetch(url, {
+			method: 'DELETE',
+			headers: baseHeaders,
+		})
+		if (!response.ok && response.status !== 404) {
+			console.error(
+				`Failed to delete ${key} from storage: ${response.status} ${response.statusText}`,
+			)
+		}
+	} catch (error) {
+		console.error(`Failed to delete ${key} from storage`, error)
+	}
+}
+
 function hmacSha256(key: string | Buffer, message: string) {
 	const hmac = createHmac('sha256', key)
 	hmac.update(message)
@@ -68,7 +94,7 @@ function getBaseSignedRequestInfo({
 	contentType,
 	uploadDate,
 }: {
-	method: 'GET' | 'PUT'
+	method: 'GET' | 'PUT' | 'DELETE'
 	key: string
 	contentType?: string
 	uploadDate?: string

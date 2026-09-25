@@ -1,4 +1,5 @@
 import { invariantResponse } from '@epic-web/invariant'
+import { type SEOHandle } from '@nasa-gcn/remix-seo'
 import { Link, useSearchParams } from 'react-router'
 import {
 	CardArtTile,
@@ -25,6 +26,10 @@ import {
 } from '#app/utils/collection.server.ts'
 import { cn } from '#app/utils/misc.tsx'
 import { type Route } from './+types/$setId.ts'
+
+export const handle: SEOHandle = {
+	getSitemapEntries: () => null,
+}
 
 export async function loader({ request, params }: Route.LoaderArgs) {
 	const userId = await requireUserId(request)

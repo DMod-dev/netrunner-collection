@@ -1,3 +1,4 @@
+import { type SEOHandle } from '@nasa-gcn/remix-seo'
 import { startRegistration } from '@simplewebauthn/browser'
 import { formatDistanceToNow } from 'date-fns'
 import { useState } from 'react'
@@ -8,9 +9,11 @@ import { Icon } from '#app/components/ui/icon.tsx'
 import { requireUserId } from '#app/utils/auth.server.ts'
 import { prisma } from '#app/utils/db.server.ts'
 import { type Route } from './+types/passkeys.ts'
+import { type BreadcrumbHandle } from './_layout.tsx'
 
-export const handle = {
+export const handle: BreadcrumbHandle & SEOHandle = {
 	breadcrumb: <Icon name="passkey">Passkeys</Icon>,
+	getSitemapEntries: () => null,
 }
 
 export async function loader({ request }: Route.LoaderArgs) {

@@ -1,4 +1,4 @@
-import sharp from 'sharp'
+import sharp, { type Metadata } from 'sharp'
 
 /**
  * Shared image handling for uploads and the image proxy. Everything here is
@@ -39,7 +39,7 @@ export type ProbedImage = {
  * accepted raster formats or is larger than we are willing to decode.
  */
 export async function probeImage(input: Buffer): Promise<ProbedImage | null> {
-	let metadata: sharp.Metadata
+	let metadata: Metadata
 	try {
 		metadata = await sharp(input, {
 			limitInputPixels: MAX_SOURCE_PIXELS,

@@ -21,7 +21,10 @@ import {
 	useDoubleCheck,
 	useIsPending,
 } from '#app/utils/misc.tsx'
-import { uploadProfileImage } from '#app/utils/storage.server.ts'
+import {
+	deleteProfileImage,
+	uploadProfileImage,
+} from '#app/utils/storage.server.ts'
 import { type Route } from './+types/photo.ts'
 import { type BreadcrumbHandle } from './_layout.tsx'
 
@@ -118,19 +121,26 @@ export async function action({ request }: Route.ActionArgs) {
 	}
 
 	const { image, intent } = submission.value
+	const previous = await prisma.userImage.findUnique({
+		where: { userId },
+		select: { objectKey: true },
+	})
 
 	if (intent === 'delete') {
 		await prisma.userImage.deleteMany({ where: { userId } })
-		return redirect('/settings/profile')
+	} else {
+		await prisma.$transaction(async ($prisma) => {
+			await $prisma.userImage.deleteMany({ where: { userId } })
+			await $prisma.user.update({
+				where: { id: userId },
+				data: { image: { create: image } },
+			})
+		})
 	}
 
-	await prisma.$transaction(async ($prisma) => {
-		await $prisma.userImage.deleteMany({ where: { userId } })
-		await $prisma.user.update({
-			where: { id: userId },
-			data: { image: { create: image } },
-		})
-	})
+	// Only once the row points elsewhere, so a failed update never leaves the
+	// user with a broken image.
+	if (previous) await deleteProfileImage(previous.objectKey)
 
 	return redirect('/settings/profile')
 }

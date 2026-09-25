@@ -18,6 +18,8 @@ const IS_DEV = MODE === 'development'
 const ALLOW_INDEXING = process.env.ALLOW_INDEXING !== 'false'
 const SENTRY_ENABLED = IS_PROD && process.env.SENTRY_DSN
 const BUILD_PATH = '../build/server/index.js'
+// Nothing in the app uses these; deny them so injected content can't either.
+const PERMISSIONS_POLICY = 'camera=(), microphone=(), geolocation=()'
 
 if (SENTRY_ENABLED) {
 	void import('./utils/monitoring.ts').then(({ init }) => init())
@@ -97,8 +99,12 @@ app.use(compression())
 app.disable('x-powered-by')
 
 app.use((_, res, next) => {
-	// The referrerPolicy breaks our redirectTo logic
+	// Set by hand below: helmet's typings misspell this policy's name.
 	helmet(res, { general: { referrerPolicy: false } })
+	// Same-origin requests keep the full referrer (getReferrerRoute relies on
+	// it for redirectTo); other origins only ever see our origin.
+	res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
+	res.setHeader('Permissions-Policy', PERMISSIONS_POLICY)
 	next()
 })
 

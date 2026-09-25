@@ -6,16 +6,57 @@ that are in place and how to use them.
 
 ## Content Security Policy
 
-The Epic Stack uses a strict
-[Content Security Policy](https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP).
-This means that only resources from trusted sources are allowed to be loaded.
-However, by default, the CSP is set to `report-only` which means that the
-browser will report violations of the CSP without actually blocking the
-resource.
+Every HTML response carries an enforced
+[Content Security Policy](https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP),
+set in `app/entry.server.tsx`. Scripts need the per-request nonce
+(`'strict-dynamic'` lets those scripts load the route modules), and images may
+only come from us, `data:` URLs and NetrunnerDB's card-image host.
 
-This is to prevent new users of the Epic Stack from being blocked or surprised
-by the CSP by default. However, it is recommended to enable the CSP in
-`server/index.ts` by removing the `reportOnly: true` option.
+`style-src` is `'self' 'unsafe-inline'`. There are no third-party stylesheets,
+so `https:` is gone, but inline styles can't be: sonner and input-otp inject
+`<style>` tags at runtime without a nonce, and the collection pages render
+hundreds of `style=""` attributes (progress bars, faction colours). Inline
+styles can't run code, so this is the one relaxation we accept.
+
+`tests/e2e/security-headers.test.ts` loads the main pages and fails on any CSP
+violation, so a new external resource has to be added to the policy on purpose.
+
+## Other response headers
+
+- `Referrer-Policy: strict-origin-when-cross-origin`. Same-origin navigations
+  keep the full URL (`getReferrerRoute` uses it for `redirectTo`); other sites
+  only learn our origin.
+- `Permissions-Policy: camera=(), microphone=(), geolocation=()`, since nothing
+  here uses them.
+- No `X-Powered-By`: both Express apps (`server/index.ts` and `server/app.ts`)
+  disable it.
+- `Cache-Control: private, no-store` on every HTML page and data response for a
+  request with a session cookie (`applyPrivateCacheControl` in
+  `app/utils/headers.server.ts`), because the root loader puts the user's data
+  in all of them.
+
+## Signed-in pages
+
+The user directory (`/users`) and profiles (`/users/:username`) require an
+account. They, the collection pages, onboarding and settings are also left out
+of `/sitemap.xml` via `handle.getSitemapEntries`.
+
+## Container and dependencies
+
+The app process runs as the unprivileged `node` user. LiteFS itself stays root
+because it mounts a FUSE filesystem (with `allow-other`, so `node` can open the
+databases) and runs the migrations; its last `exec` step starts the app through
+`setpriv` (`other/litefs.yml`). The image holds only the build output, the
+server entry and `app/`, not docs or tests.
+
+CI runs `npm audit --omit=dev --audit-level=high` as a non-blocking job, and
+Dependabot opens weekly PRs for npm packages and GitHub Actions. Third-party
+actions are pinned to commit SHAs. Prisma's CLI pins a vulnerable
+`deepmerge-ts`, so `package.json` overrides it to 8.x until Prisma catches up.
+
+Expired sessions and one-time codes are deleted hourly on the primary
+(`app/utils/auth-prune.server.ts`), and replacing or removing a profile photo
+deletes the old object from the bucket.
 
 ## Canonical origin and the Host header
 

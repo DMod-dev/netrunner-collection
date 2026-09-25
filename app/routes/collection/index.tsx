@@ -1,3 +1,4 @@
+import { type SEOHandle } from '@nasa-gcn/remix-seo'
 import { useEffect, useId, useRef } from 'react'
 import { Form, Link, useSearchParams, useSubmit } from 'react-router'
 import {
@@ -22,6 +23,10 @@ import {
 import { prisma } from '#app/utils/db.server.ts'
 import { cn, useDebounce, useDelayedIsPending } from '#app/utils/misc.tsx'
 import { type Route } from './+types/index.ts'
+
+export const handle: SEOHandle = {
+	getSitemapEntries: () => null,
+}
 
 const FORMATS = [
 	{ id: 'standard', name: 'Standard' },

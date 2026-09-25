@@ -106,6 +106,10 @@ test('parseImport accepts header aliases but rejects files without the columns i
 		plain: new Map(),
 	})
 	await expect(parseImport('foo,bar\n1,2')).rejects.toThrow(ImportFormatError)
+	// prototype member names are not columns
+	await expect(
+		parseImport('constructor,__proto__,toString\n1,2,3'),
+	).rejects.toThrow(ImportFormatError)
 	await expect(parseImport('{"nope": true}')).rejects.toThrow(ImportFormatError)
 })
 

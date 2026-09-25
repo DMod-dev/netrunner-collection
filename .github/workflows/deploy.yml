@@ -11,7 +11,6 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  actions: write
   contents: read
 
 jobs:
@@ -28,7 +27,7 @@ jobs:
           node-version: 22
 
       - name: 📥 Download deps
-        uses: bahmutov/npm-install@v1
+        uses: bahmutov/npm-install@20216767ca67f0f7b4d095dc5859c5700a6581cb # v1.12.1
 
       - name: 🏄 Copy test env vars
         run: cp .env.example .env
@@ -38,6 +37,25 @@ jobs:
 
       - name: 🔬 Lint
         run: npm run lint
+
+  audit:
+    name: 🛡 npm audit
+    runs-on: ubuntu-22.04
+    # Advisories land without any change on our side, so a new one must not
+    # block unrelated PRs or deploys. Dependabot opens the fix; flip this to
+    # blocking once that has run for a while.
+    continue-on-error: true
+    steps:
+      - name: ⬇️ Checkout repo
+        uses: actions/checkout@v7
+
+      - name: ⎔ Setup node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: 🛡 Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
 
   typecheck:
     name: ʦ TypeScript
@@ -52,7 +70,7 @@ jobs:
           node-version: 22
 
       - name: 📥 Download deps
-        uses: bahmutov/npm-install@v1
+        uses: bahmutov/npm-install@20216767ca67f0f7b4d095dc5859c5700a6581cb # v1.12.1
 
       - name: 🏗 Build
         run: npm run build
@@ -79,7 +97,7 @@ jobs:
           node-version: 22
 
       - name: 📥 Download deps
-        uses: bahmutov/npm-install@v1
+        uses: bahmutov/npm-install@20216767ca67f0f7b4d095dc5859c5700a6581cb # v1.12.1
 
       - name: 🏄 Copy test env vars
         run: cp .env.example .env
@@ -107,7 +125,7 @@ jobs:
           node-version: 22
 
       - name: 📥 Download deps
-        uses: bahmutov/npm-install@v1
+        uses: bahmutov/npm-install@20216767ca67f0f7b4d095dc5859c5700a6581cb # v1.12.1
 
       - name: 📥 Install Playwright Browsers
         run: npm run test:e2e:install
@@ -159,7 +177,7 @@ jobs:
         run: echo "value=$(grep -m1 '^app' fly.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
 
       - name: 🎈 Setup Fly
-        uses: superfly/flyctl-actions/setup-flyctl@1.6
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
 
       - name: 📦 Build Staging Container
         if: ${{ github.ref == 'refs/heads/dev' }}
@@ -203,7 +221,7 @@ jobs:
         run: echo "value=$(grep -m1 '^app' fly.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
 
       - name: 🎈 Setup Fly
-        uses: superfly/flyctl-actions/setup-flyctl@1.6
+        uses: superfly/flyctl-actions/setup-flyctl@ed8efb33836e8b2096c7fd3ba1c8afe303ebbff1 # 1.6
 
       - name: 🚀 Deploy Staging
         if: ${{ github.ref == 'refs/heads/dev' }}

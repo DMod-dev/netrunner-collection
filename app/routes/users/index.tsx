@@ -1,14 +1,21 @@
+import { type SEOHandle } from '@nasa-gcn/remix-seo'
 import { searchUsers } from '@prisma/client/sql'
 import { Img } from 'openimg/react'
 import { redirect, Link } from 'react-router'
 import { GeneralErrorBoundary } from '#app/components/error-boundary.tsx'
 import { ErrorList } from '#app/components/forms.tsx'
 import { SearchBar } from '#app/components/search-bar.tsx'
+import { requireUserId } from '#app/utils/auth.server.ts'
 import { prisma } from '#app/utils/db.server.ts'
 import { cn, getUserImgSrc, useDelayedIsPending } from '#app/utils/misc.tsx'
 import { type Route } from './+types/index.ts'
 
+export const handle: SEOHandle = {
+	getSitemapEntries: () => null,
+}
+
 export async function loader({ request }: Route.LoaderArgs) {
+	await requireUserId(request)
 	const searchTerm = new URL(request.url).searchParams.get('search')
 	if (searchTerm === '') {
 		return redirect('/users')
