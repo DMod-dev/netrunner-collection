@@ -3,6 +3,8 @@ import { createUser } from '#tests/db-utils.ts'
 import {
 	createVariant,
 	deleteVariant,
+	getSetCompletion,
+	getSetsProgress,
 	searchCards,
 	setPrintingQuantity,
 	setVariantQuantity,
@@ -106,4 +108,62 @@ test('searchCards filters by ownership across printings and variants', async () 
 
 	expect((await searchCards(user.id, { format: 'eternal' })).total).toBe(0)
 	expect((await searchCards(user.id, { format: 'startup' })).total).toBe(1)
+})
+
+test('set completion counts exact printings "as printed" and any printing for playsets', async () => {
+	const sgPrinting = await insertPrinting() // Corroder, 2 per System Gateway
+	await prisma.cardCycle.create({
+		data: { id: 'core', name: 'Core Set', position: 0 },
+	})
+	await prisma.cardSet.create({
+		data: {
+			id: 'core',
+			name: 'Core Set',
+			position: 1,
+			size: 113,
+			setTypeId: 'core',
+			cycleId: 'core',
+		},
+	})
+	await prisma.printing.create({
+		data: {
+			id: '01007',
+			position: 7,
+			quantity: 3,
+			cardId: 'corroder',
+			setId: 'core',
+		},
+	})
+	const user = await insertUser()
+	// 1 plain copy and 1 alt art of the System Gateway printing
+	await setPrintingQuantity(user.id, sgPrinting.id, 1)
+	await createVariant(user.id, { printingId: sgPrinting.id, label: 'Alt art' })
+
+	const asPrinted = await getSetCompletion(user.id, 'sg', 'product')
+	expect(asPrinted).toMatchObject({ have: 2, need: 2 })
+	// the old Core Set printing isn't owned
+	expect(await getSetCompletion(user.id, 'core', 'product')).toMatchObject({
+		have: 0,
+		need: 3,
+	})
+
+	// for playing, the 2 System Gateway copies count toward Core Set's Corroder
+	const playset = await getSetCompletion(user.id, 'core', 'playset')
+	expect(playset).toMatchObject({ have: 2, need: 3 })
+	expect(playset?.printings[0]?.progress).toEqual({
+		owned: 2,
+		have: 2,
+		need: 3,
+	})
+
+	const cycles = await getSetsProgress(user.id, 'product')
+	expect(cycles.map((c) => c.id)).toEqual(['sg', 'core'])
+	expect(cycles[0]?.sets[0]).toMatchObject({
+		have: 2,
+		need: 2,
+		cardCount: 1,
+		completeCards: 1,
+	})
+
+	expect(await getSetCompletion(user.id, 'nope', 'product')).toBeNull()
 })

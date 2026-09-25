@@ -112,6 +112,10 @@ export function printingSelect(userId: string) {
 	} satisfies Prisma.PrintingSelect
 }
 
+export type PrintingWithCounts = Prisma.PrintingGetPayload<{
+	select: ReturnType<typeof printingSelect>
+}>
+
 export async function getFilterOptions() {
 	const [factions, types, cycles] = await Promise.all([
 		prisma.faction.findMany({
@@ -195,4 +199,178 @@ export async function deleteVariant(userId: string, variantId: string) {
 		where: { id: variantId, userId },
 	})
 	return count > 0
+}
+
+// ---------------------------------------------------------------------------
+// Set completion
+// ---------------------------------------------------------------------------
+
+/**
+ * - "product": own as many copies of each printing as come in the product.
+ *   Only that exact printing counts.
+ * - "playset": own a full deck limit of each card in the set. Copies of any
+ *   printing count, since a reprint plays the same.
+ */
+export type CompletionTarget = 'product' | 'playset'
+
+export function parseCompletionTarget(value: string | null): CompletionTarget {
+	return value === 'playset' ? 'playset' : 'product'
+}
+
+/** Copies a user owns (plain + custom versions) per printing and per card. */
+async function getOwnedCounts(userId: string) {
+	const select = {
+		printingId: true,
+		quantity: true,
+		printing: { select: { cardId: true } },
+	} as const
+	const [entries, variants] = await Promise.all([
+		prisma.collectionEntry.findMany({ where: { userId }, select }),
+		prisma.variant.findMany({
+			where: { userId, quantity: { gt: 0 } },
+			select,
+		}),
+	])
+	const byPrinting = new Map<string, number>()
+	const byCard = new Map<string, number>()
+	for (const { printingId, quantity, printing } of [...entries, ...variants]) {
+		byPrinting.set(printingId, (byPrinting.get(printingId) ?? 0) + quantity)
+		byCard.set(printing.cardId, (byCard.get(printing.cardId) ?? 0) + quantity)
+	}
+	return { byPrinting, byCard }
+}
+
+type OwnedCounts = Awaited<ReturnType<typeof getOwnedCounts>>
+
+function printingProgress(
+	printing: { id: string; cardId: string; quantity: number; deckLimit: number },
+	owned: OwnedCounts,
+	target: CompletionTarget,
+) {
+	const need = target === 'product' ? printing.quantity : printing.deckLimit
+	const count =
+		target === 'product'
+			? (owned.byPrinting.get(printing.id) ?? 0)
+			: (owned.byCard.get(printing.cardId) ?? 0)
+	return { owned: count, have: Math.min(count, need), need }
+}
+
+export async function getSetsProgress(
+	userId: string,
+	target: CompletionTarget,
+) {
+	const [cycles, owned] = await Promise.all([
+		prisma.cardCycle.findMany({
+			orderBy: { position: 'desc' },
+			select: {
+				id: true,
+				name: true,
+				sets: {
+					orderBy: { position: 'asc' },
+					select: {
+						id: true,
+						name: true,
+						setTypeId: true,
+						dateRelease: true,
+						printings: {
+							select: {
+								id: true,
+								cardId: true,
+								quantity: true,
+								card: { select: { deckLimit: true } },
+							},
+						},
+					},
+				},
+			},
+		}),
+		getOwnedCounts(userId),
+	])
+
+	return cycles.map((cycle) => {
+		const sets = cycle.sets.map(({ printings, ...set }) => {
+			let have = 0
+			let need = 0
+			let completeCards = 0
+			for (const p of printings) {
+				const progress = printingProgress(
+					{ ...p, deckLimit: p.card.deckLimit },
+					owned,
+					target,
+				)
+				have += progress.have
+				need += progress.need
+				if (progress.have >= progress.need) completeCards++
+			}
+			return {
+				...set,
+				have,
+				need,
+				cardCount: printings.length,
+				completeCards,
+			}
+		})
+		return {
+			id: cycle.id,
+			name: cycle.name,
+			have: sets.reduce((sum, s) => sum + s.have, 0),
+			need: sets.reduce((sum, s) => sum + s.need, 0),
+			sets,
+		}
+	})
+}
+
+export async function getSetCompletion(
+	userId: string,
+	setId: string,
+	target: CompletionTarget,
+) {
+	const [set, owned] = await Promise.all([
+		prisma.cardSet.findUnique({
+			where: { id: setId },
+			select: {
+				id: true,
+				name: true,
+				setTypeId: true,
+				dateRelease: true,
+				cycle: { select: { id: true, name: true } },
+				printings: {
+					orderBy: { position: 'asc' },
+					select: {
+						...printingSelect(userId),
+						card: {
+							select: {
+								id: true,
+								title: true,
+								deckLimit: true,
+								faction: { select: { id: true, name: true } },
+							},
+						},
+					},
+				},
+			},
+		}),
+		getOwnedCounts(userId),
+	])
+	if (!set) return null
+
+	const printings = set.printings.map((printing) => ({
+		...printing,
+		progress: printingProgress(
+			{
+				id: printing.id,
+				cardId: printing.card.id,
+				quantity: printing.quantity,
+				deckLimit: printing.card.deckLimit,
+			},
+			owned,
+			target,
+		),
+	}))
+	return {
+		...set,
+		printings,
+		have: printings.reduce((sum, p) => sum + p.progress.have, 0),
+		need: printings.reduce((sum, p) => sum + p.progress.need, 0),
+	}
 }
