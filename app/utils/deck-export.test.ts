@@ -59,11 +59,11 @@ Event (6)
 3x Diesel
 3x Wildcat Strike
 
-Hardware (1)
-1x Mayday
-
 Program (2)
 2x Carnivore ●●●●
+
+Hardware (1)
+1x Mayday
 
 9 cards (min 40)
 4 influence spent (max 15)

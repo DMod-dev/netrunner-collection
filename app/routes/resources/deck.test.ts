@@ -100,6 +100,11 @@ test('every intent 404s on someone else’s deck', async () => {
 		{ intent: 'set-notes', notes: 'mine now' },
 		{ intent: 'set-format', formatId: 'eternal' },
 		{ intent: 'set-require-legality', requireLegality: 'false' },
+		{
+			intent: 'set-from-collection',
+			cardId: 'hedge_fund',
+			fromCollection: '1',
+		},
 		{ intent: 'fill' },
 		{ intent: 'unfill' },
 		{ intent: 'import', deck: '1x Hedge Fund' },

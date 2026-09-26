@@ -17,8 +17,8 @@ export const IDENTITY_TYPES: Record<DeckSide, string> = {
 
 /** The card types a deck can hold, in the order the decklist shows them. */
 export const DECK_CARD_TYPES: Record<DeckSide, string[]> = {
-	corp: ['agenda', 'asset', 'upgrade', 'operation', 'ice'],
-	runner: ['event', 'hardware', 'resource', 'program'],
+	corp: ['agenda', 'operation', 'asset', 'upgrade', 'ice'],
+	runner: ['event', 'resource', 'program', 'hardware'],
 }
 
 export function parseDeckSide(value: string): DeckSide {
@@ -32,10 +32,16 @@ export function parseDeckFormat(value: string): DeckFormat {
 
 /**
  * The fetcher key of a card's deck stepper. The builder overlays every
- * in-flight one onto the saved decklist, so they share this prefix.
+ * in-flight one (and every "from collection" one) onto the saved decklist,
+ * so they share this prefix.
  */
 export function deckCardFetcherKey(deckId: string, cardId: string) {
 	return `${deckCardFetcherPrefix(deckId)}${cardId}`
+}
+
+/** The fetcher key of a card's "from collection" stepper. */
+export function deckCollectionFetcherKey(deckId: string, cardId: string) {
+	return `${deckCardFetcherPrefix(deckId)}collection:${cardId}`
 }
 
 export function deckCardFetcherPrefix(deckId: string) {

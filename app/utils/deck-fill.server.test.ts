@@ -7,6 +7,7 @@ import {
 	getAvailability,
 	getCopiesInUse,
 	getDeckCollection,
+	setFromCollection,
 	unfillDeck,
 } from './deck-fill.server.ts'
 import { fillStatus } from './deck-fill.ts'
@@ -330,4 +331,54 @@ test('fillStatus', () => {
 	expect(status(3, 2, 3, 3)).toEqual(['unreserved', 1, 0, 0, 1])
 	// short some that are free, some that aren't owned
 	expect(status(3, 0, 2, 2)).toEqual(['missing', 3, 1, 0, 2])
+})
+
+test('setFromCollection takes copies by hand, up to what’s free', async () => {
+	await insertCards()
+	const user = await insertUser()
+	await own(user.id, CORRODER_PRINTING, 3)
+	await own(user.id, CATALYST_PRINTING, 1)
+	const a = await insertDeck(user.id, 'A', 2)
+	const b = await insertDeck(user.id, 'B', 3)
+
+	expect(await setFromCollection(user.id, a.id, 'corroder', 1)).toEqual({
+		fromCollection: 1,
+	})
+	expect(await corroderRow(a.id)).toBe('1/2')
+	// no more than the deck plays
+	expect(await setFromCollection(user.id, a.id, 'corroder', 5)).toEqual({
+		fromCollection: 2,
+	})
+	// no more than A leaves free
+	expect(await setFromCollection(user.id, b.id, 'corroder', 3)).toEqual({
+		fromCollection: 1,
+	})
+	expect(await corroderStatus(user.id, b.id)).toMatchObject({
+		kind: 'inUseElsewhere',
+		inUse: 2,
+		reservedBy: ['2 A'],
+	})
+	// and back to none
+	expect(await setFromCollection(user.id, a.id, 'corroder', 0)).toEqual({
+		fromCollection: 0,
+	})
+	expect(await corroderRow(a.id)).toBe('0/2')
+
+	// the identity is its one copy
+	expect(await setFromCollection(user.id, a.id, 'the_catalyst', 2)).toEqual({
+		fromCollection: 1,
+	})
+	expect(
+		await prisma.deck.findUniqueOrThrow({
+			where: { id: a.id },
+			select: { identityFromCollection: true },
+		}),
+	).toEqual({ identityFromCollection: 1 })
+
+	// only cards in the deck, and only the owner's deck
+	expect(await setFromCollection(user.id, a.id, 'hedge_fund', 1)).toEqual({
+		error: 'That card isn’t in this deck',
+	})
+	const other = await insertUser()
+	expect(await setFromCollection(other.id, a.id, 'corroder', 1)).toBeNull()
 })

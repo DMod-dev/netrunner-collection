@@ -18,11 +18,13 @@ you've completed and which cards you still need for a deck. Card data comes from
   the card count, influence, agenda points and any problems (deck size,
   influence, deck limits) update as you go. Decks with problems still save. Turn
   on **Require deck legality** to see the format's bans, rotation and points as
-  warnings. One button takes out every card the format doesn't allow.
+  warnings; with it on, one button takes out every card the format doesn't
+  allow. The deck shows its cards as their faces: hover or tap one to change its
+  copies in the deck and its copies from your collection.
 - **Fill with collection:** reserve a deck's cards from your collection. Each
   card shows how many copies are yours, how many you still need, and which of
   your other decks hold the rest. The first deck filled keeps the copies; unfill
-  a deck to give them back.
+  a deck to give them back, or set a card's copies from your collection by hand.
 - **Import and export decks:** paste a NetrunnerDB link or a decklist to create
   a deck, filled from your collection, or to replace a deck's cards. Copy or
   download a deck as text in NetrunnerDB's format, or copy the cards you're

@@ -32,7 +32,6 @@ import {
 	DecklistPanel,
 	DeckStats,
 	FillStatusBadge,
-	FromCollectionCount,
 	IdentityArt,
 	InfluencePips,
 	ProblemList,
@@ -55,9 +54,11 @@ import { Textarea } from '#app/components/ui/textarea.tsx'
 import {
 	type clientAction as deckClientAction,
 	DECK_ACTION_PATH,
+	DeckCollectionStepper,
 	DeckQuantityStepper,
 	DeleteDeckButton,
 	FillControls,
+	pendingFromCollection,
 	pendingLegality,
 	pendingQuantity,
 	RefillButton,
@@ -200,13 +201,15 @@ function useOptimisticDeck(deck: Deck, browserCards: BrowserCard[]) {
 	})
 	const prefix = deckCardFetcherPrefix(deck.id)
 	const pending = new Map<string, number>()
+	const pendingFrom = new Map<string, number>()
 	for (const fetcher of fetchers) {
 		if (!fetcher.key.startsWith(prefix)) continue
-		const quantity = pendingQuantity(fetcher.formData)
 		const cardId = fetcher.formData?.get('cardId')
-		if (quantity !== null && typeof cardId === 'string') {
-			pending.set(cardId, quantity)
-		}
+		if (typeof cardId !== 'string') continue
+		const quantity = pendingQuantity(fetcher.formData)
+		if (quantity !== null) pending.set(cardId, quantity)
+		const from = pendingFromCollection(fetcher.formData)
+		if (from !== null) pendingFrom.set(cardId, from)
 	}
 
 	const entries: DecklistEntry[] = []
@@ -218,7 +221,10 @@ function useOptimisticDeck(deck: Deck, browserCards: BrowserCard[]) {
 			entries.push({
 				card,
 				quantity: next,
-				fromCollection: Math.min(fromCollection, next),
+				fromCollection: Math.min(
+					pendingFrom.get(card.id) ?? fromCollection,
+					next,
+				),
 			})
 		}
 	}
@@ -230,6 +236,12 @@ function useOptimisticDeck(deck: Deck, browserCards: BrowserCard[]) {
 	}
 	return {
 		entries,
+		identityFromCollection: deck.identity
+			? Math.min(
+					pendingFrom.get(deck.identity.id) ?? deck.identityFromCollection,
+					1,
+				)
+			: 0,
 		requireLegality:
 			pendingLegality(legalityFetcher.formData) ?? deck.requireLegality,
 	}
@@ -238,7 +250,8 @@ function useOptimisticDeck(deck: Deck, browserCards: BrowserCard[]) {
 export default function DeckBuilderRoute({ loaderData }: Route.ComponentProps) {
 	const { deck, collection, browser, filters } = loaderData
 	const [sheetOpen, setSheetOpen] = useState(false)
-	const { entries, requireLegality } = useOptimisticDeck(deck, browser.cards)
+	const { entries, identityFromCollection, requireLegality } =
+		useOptimisticDeck(deck, browser.cards)
 	// cheap (a deck is a few dozen rows), so it just runs every render
 	const evaluation = evaluateDeck({
 		identity: deck.identity,
@@ -253,12 +266,15 @@ export default function DeckBuilderRoute({ loaderData }: Route.ComponentProps) {
 	const errors = problems.filter((p) => p.severity === 'error').length
 	const text = toNrdbText({ ...deck, cards: entries }, evaluation)
 	const banList = toBanList(deck.rules)
-	// copies "Remove cards not legal" would take out
-	const illegalCopies = entries.reduce(
-		(n, e) =>
-			formatIssue(e.card, deck.formatId, banList) ? n + e.quantity : n,
-		0,
-	)
+	// copies "Remove cards not legal" would take out; only offered while the
+	// format is checked
+	const illegalCopies = requireLegality
+		? entries.reduce(
+				(n, e) =>
+					formatIssue(e.card, deck.formatId, banList) ? n + e.quantity : n,
+				0,
+			)
+		: 0
 
 	return (
 		<main className="container mb-24 flex flex-col gap-4 lg:mb-8">
@@ -267,12 +283,12 @@ export default function DeckBuilderRoute({ loaderData }: Route.ComponentProps) {
 				requireLegality={requireLegality}
 				filled={collection.filled}
 				fromCollection={
-					deck.identityFromCollection +
+					identityFromCollection +
 					entries.reduce((sum, e) => sum + e.fromCollection, 0)
 				}
 				total={(deck.identity ? 1 : 0) + stats.cardCount}
 				text={text}
-				missing={missingList(deck, entries, collection)}
+				missing={missingList(deck, identityFromCollection, entries, collection)}
 			/>
 			{collection.stale ? (
 				<div
@@ -315,7 +331,11 @@ export default function DeckBuilderRoute({ loaderData }: Route.ComponentProps) {
 						'lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto lg:pr-1',
 					)}
 				>
-					<IdentityHeader deck={deck} collection={collection} />
+					<IdentityHeader
+						deck={deck}
+						identityFromCollection={identityFromCollection}
+						collection={collection}
+					/>
 					<DeckStats stats={stats} checkFormat={requireLegality} />
 					<ProblemList problems={problems} />
 					{illegalCopies > 0 ? (
@@ -368,6 +388,7 @@ export default function DeckBuilderRoute({ loaderData }: Route.ComponentProps) {
  */
 function missingList(
 	deck: Deck,
+	identityFromCollection: number,
 	entries: DecklistEntry[],
 	collection: Collection,
 ) {
@@ -381,7 +402,7 @@ function missingList(
 							collection,
 							deck.identity.id,
 							1,
-							deck.identityFromCollection,
+							identityFromCollection,
 						),
 					},
 				]
@@ -539,15 +560,18 @@ function DeckToolbar({
 
 function IdentityHeader({
 	deck,
+	identityFromCollection,
 	collection,
 }: {
 	deck: Deck
+	/** counting a change still being saved */
+	identityFromCollection: number
 	collection: Collection
 }) {
 	const { identity } = deck
 	const fill =
 		identity && collection.filled
-			? rowFillStatus(collection, identity.id, 1, deck.identityFromCollection)
+			? rowFillStatus(collection, identity.id, 1, identityFromCollection)
 			: null
 	return (
 		<section aria-label="Identity" className="flex items-start gap-3">
@@ -569,15 +593,22 @@ function IdentityHeader({
 						{identity.influenceLimit ?? '∞'} influence
 					</p>
 				) : null}
-				{identity && fill ? (
-					<p className="flex flex-wrap items-center gap-1">
-						<FromCollectionCount
-							fromCollection={deck.identityFromCollection}
-							quantity={1}
+				{identity ? (
+					<div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+						<span className="text-xs font-medium">From collection</span>
+						<DeckCollectionStepper
+							deckId={deck.id}
+							cardId={identity.id}
 							title={identity.title}
+							fromCollection={identityFromCollection}
+							max={Math.min(
+								1,
+								(collection.availability[identity.id] ?? NO_COPIES).available,
+							)}
+							size="sm"
 						/>
-						<FillStatusBadge {...fill} />
-					</p>
+						{fill ? <FillStatusBadge {...fill} /> : null}
+					</div>
 				) : null}
 				<IdentityDialog deck={deck} />
 			</div>
