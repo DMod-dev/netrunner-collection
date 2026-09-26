@@ -6,7 +6,7 @@ export function CollectionNav() {
 		cn(
 			'rounded-md px-2.5 py-1.5 text-sm font-semibold transition-colors sm:px-4',
 			isActive
-				? 'bg-background text-foreground shadow-sm'
+				? 'bg-selected text-selected-foreground shadow-sm'
 				: 'text-muted-foreground hover:text-foreground',
 		)
 	return (
@@ -116,7 +116,7 @@ export function TargetToggle({ target }: { target: 'product' | 'playset' }) {
 						className={cn(
 							'rounded-md px-3 py-1 text-sm font-medium transition-colors',
 							target === t.id
-								? 'bg-background text-foreground shadow-sm'
+								? 'bg-selected text-selected-foreground shadow-sm'
 								: 'text-muted-foreground hover:text-foreground',
 						)}
 					>

@@ -425,7 +425,7 @@ function Filters({
 										{
 											// a group's own color would be arbitrary
 											'--faction':
-												colors.length === 1 ? colors[0] : 'var(--foreground)',
+												colors.length === 1 ? colors[0] : 'var(--selected)',
 										} as React.CSSProperties
 									}
 									className={cn(toggleClassName, factionToggleClassName)}
@@ -511,7 +511,7 @@ function Filters({
 // On the muted filter panel, toggles sit on the page background like the
 // selects, and a pressed one fills in.
 const toggleClassName =
-	'bg-background hover:bg-background dark:bg-input/30 dark:hover:bg-input/50 aria-pressed:border-primary aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:hover:bg-primary/80 aria-pressed:hover:text-primary-foreground'
+	'bg-background hover:bg-background dark:bg-input/30 dark:hover:bg-input/50 aria-pressed:border-selected aria-pressed:bg-selected aria-pressed:text-selected-foreground aria-pressed:hover:bg-selected/85 aria-pressed:hover:text-selected-foreground dark:aria-pressed:bg-selected dark:aria-pressed:hover:bg-selected/85'
 // Faction toggles take their faction's color (`--faction`) instead.
 const factionToggleClassName =
 	'hover:border-(--faction) aria-pressed:border-(--faction) aria-pressed:bg-(--faction)/15 aria-pressed:text-foreground aria-pressed:hover:bg-(--faction)/25 aria-pressed:hover:text-foreground dark:aria-pressed:bg-(--faction)/25'
