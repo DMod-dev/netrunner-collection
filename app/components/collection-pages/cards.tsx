@@ -510,7 +510,7 @@ function ToggleFilter({
 	)
 }
 
-function FilterSelect({
+export function FilterSelect({
 	name,
 	label,
 	allLabel = `Any ${label.toLowerCase()}`,
@@ -623,7 +623,13 @@ function CardTile({
 	)
 }
 
-function Pagination({ page, pageCount }: { page: number; pageCount: number }) {
+export function Pagination({
+	page,
+	pageCount,
+}: {
+	page: number
+	pageCount: number
+}) {
 	const [searchParams] = useSearchParams()
 	function pageLink(n: number) {
 		const params = new URLSearchParams(searchParams)

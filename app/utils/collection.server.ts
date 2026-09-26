@@ -2,6 +2,8 @@ import { type Prisma } from '@prisma/client'
 import { cachedUntilNextSync } from './card-data-cache.server.ts'
 import { MAX_QUANTITY, MINI_FACTIONS, NEUTRAL_FACTIONS } from './collection.ts'
 import { prisma } from './db.server.ts'
+import { CARD_LITE_SELECT } from './deck-rules.server.ts'
+import { type FormatRules } from './deck-rules.ts'
 
 export const CARDS_PER_PAGE = 30
 
@@ -15,8 +17,12 @@ export type CardSearchParams = {
 	 */
 	factions?: string[]
 	type?: string
+	/** Cards of any of these types (with `type`, cards must match both). */
+	types?: string[]
 	set?: string
 	format?: string
+	/** Only cards a deck in this format may use: in its pool, not banned. */
+	legal?: Pick<FormatRules, 'formatId' | 'banned' | 'bannedSubtypes'>
 	owned?: 'owned' | 'missing'
 	page?: number
 }
@@ -39,6 +45,20 @@ function factionWhere(factions: string[]): Prisma.CardWhereInput {
 				? [{ faction: { isMini: true } }]
 				: []),
 		],
+	}
+}
+
+function legalWhere({
+	formatId,
+	banned,
+	bannedSubtypes,
+}: NonNullable<CardSearchParams['legal']>): Prisma.CardWhereInput {
+	return {
+		legalFormats: { contains: `,${formatId},` },
+		id: { notIn: banned },
+		NOT: bannedSubtypes.map((subtype) => ({
+			subtypes: { contains: `,${subtype},` },
+		})),
 	}
 }
 
@@ -74,7 +94,9 @@ export async function searchCards(
 			params.sides?.length ? { sideId: { in: params.sides } } : {},
 			params.factions?.length ? factionWhere(params.factions) : {},
 			params.type ? { typeId: params.type } : {},
+			params.types?.length ? { typeId: { in: params.types } } : {},
 			params.format ? { legalFormats: { contains: `,${params.format},` } } : {},
+			params.legal ? legalWhere(params.legal) : {},
 			params.set ? { printings: { some: { setId: params.set } } } : {},
 			params.owned === 'owned'
 				? { printings: { some: ownedPrintingWhere(userId) } }
@@ -94,14 +116,11 @@ export async function searchCards(
 			skip: (page - 1) * CARDS_PER_PAGE,
 			take: CARDS_PER_PAGE,
 			select: {
-				id: true,
-				title: true,
-				sideId: true,
+				// id, title and what the deck rules need (for the deck builder)
+				...CARD_LITE_SELECT,
 				displaySubtypes: true,
 				text: true,
-				deckLimit: true,
 				cost: true,
-				influenceCost: true,
 				faction: { select: { id: true, name: true } },
 				type: { select: { id: true, name: true } },
 				printings: {

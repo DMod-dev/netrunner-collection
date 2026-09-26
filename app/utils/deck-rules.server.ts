@@ -119,11 +119,23 @@ type CardRow = {
 		: CardLite[K]
 }
 
-/** A Card row as the deck rules take it (id lists split into arrays). */
+/**
+ * A Card row as the deck rules take it (id lists split into arrays). Takes
+ * just those fields, so a row selected with more doesn't carry them along.
+ */
 export function toCardLite(card: CardRow): CardLite {
 	return {
-		...card,
+		id: card.id,
+		title: card.title,
+		sideId: card.sideId,
+		factionId: card.factionId,
+		typeId: card.typeId,
 		subtypes: splitWrapped(card.subtypes),
+		deckLimit: card.deckLimit,
+		influenceCost: card.influenceCost,
+		agendaPoints: card.agendaPoints,
+		minimumDeckSize: card.minimumDeckSize,
+		influenceLimit: card.influenceLimit,
 		legalFormats: splitWrapped(card.legalFormats),
 	}
 }
