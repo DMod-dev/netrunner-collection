@@ -569,7 +569,7 @@ describe('identities', () => {
 		])
 	})
 
-	test('Apex: a non-virtual resource is a warning (it can’t be installed)', () => {
+	test('Apex: non-virtual resources are left to the player', () => {
 		const apex = identity({
 			...runner,
 			id: 'apex_invasive_predator',
@@ -593,15 +593,8 @@ describe('identities', () => {
 				{ card: resource('Physical One', ['job']), quantity: 1 },
 			],
 		})
-		expect(result.problems).toEqual([
-			{
-				code: 'identity_restriction',
-				severity: 'warning',
-				cardId: 'physical_one',
-				message: 'Apex can’t install non-virtual resources: Physical One',
-			},
-		])
-		expect(result.isLegal).toBe(true)
+		// Apex can't install it, but that's for game time
+		expect(result.problems).toEqual([])
 	})
 
 	test('Adam: directives sit outside the deck size, unchecked', () => {

@@ -169,31 +169,22 @@ export const SINGLETON_IDENTITIES = new Set([
 
 /**
  * Identities whose text limits what else the deck can hold. `allows` is
- * false for a card that breaks the rule.
+ * false for a card that breaks the rule. Text that limits play rather than
+ * deckbuilding (Apex can't install non-virtual resources) is left to the
+ * player.
  */
 export const IDENTITY_RESTRICTIONS: Record<
 	string,
 	{
 		allows: (card: CardLite) => boolean
-		severity: Problem['severity']
 		message: (card: CardLite) => string
 	}
 > = {
 	// Custom Biotics: "You cannot include Jinteki cards in this deck."
 	custom_biotics_engineered_for_success: {
 		allows: (card) => card.factionId !== 'jinteki',
-		severity: 'error',
 		message: (card) =>
 			`Custom Biotics can’t include Jinteki cards: ${card.title}`,
-	},
-	// Apex: "You cannot install non-virtual resources." That limits play, not
-	// deckbuilding, so the deck is still legal; the card just can't be used.
-	apex_invasive_predator: {
-		allows: (card) =>
-			card.typeId !== 'resource' || card.subtypes.includes('virtual'),
-		severity: 'warning',
-		message: (card) =>
-			`Apex can’t install non-virtual resources: ${card.title}`,
 	},
 }
 
@@ -534,7 +525,7 @@ export function checkIdentityRestrictions(ctx: DeckContext): Problem[] {
 		.filter(({ card }) => !restriction.allows(card))
 		.map(({ card }) => ({
 			code: 'identity_restriction',
-			severity: restriction.severity,
+			severity: 'error',
 			cardId: card.id,
 			message: restriction.message(card),
 		}))
