@@ -6,6 +6,10 @@ import { z } from 'zod'
 import { Button } from '#app/components/ui/button.tsx'
 import { Icon } from '#app/components/ui/icon.tsx'
 import { Input } from '#app/components/ui/input.tsx'
+import {
+	NativeSelect,
+	NativeSelectOption,
+} from '#app/components/ui/native-select.tsx'
 import { requireUserId } from '#app/utils/auth.server.ts'
 import {
 	addProductCopies,
@@ -120,6 +124,22 @@ export async function action({ request }: Route.ActionArgs) {
 	}
 }
 
+/**
+ * A 500 or a dropped connection would otherwise replace the whole page with
+ * the error boundary. Report it like any other failed change instead; the
+ * loaders still revalidate, so the page goes back to what's saved.
+ */
+export async function clientAction({ serverAction }: Route.ClientActionArgs) {
+	try {
+		return await serverAction()
+	} catch {
+		return {
+			ok: false,
+			error: 'Couldn’t save your change. Please try again.',
+		} as const
+	}
+}
+
 type QuantityTarget = { printingId: string } | { variantId: string }
 
 /**
@@ -147,7 +167,7 @@ export function QuantityStepper({
 	size?: 'default' | 'sm'
 }) {
 	const targetId = 'printingId' in target ? target.printingId : target.variantId
-	const fetcher = useFetcher<typeof action>({ key: `qty-${targetId}` })
+	const fetcher = useFetcher<typeof clientAction>({ key: `qty-${targetId}` })
 	// The value we last asked the server for, shown until the fetcher settles
 	// and the loader has revalidated with the saved quantity.
 	const [pendingValue, setPendingValue] = useState<number | null>(null)
@@ -160,6 +180,14 @@ export function QuantityStepper({
 		if (fetcher.state === 'idle') setPendingValue(null)
 	}
 	const displayed = pendingValue ?? quantity
+
+	// The number reverts on its own once the fetcher settles; say why. The
+	// same printing can have a stepper in the tile and in the versions
+	// dialog, so the toast id keeps it to one message.
+	useEffect(() => {
+		if (fetcher.state !== 'idle' || !fetcher.data || fetcher.data.ok) return
+		toast.error(`${label}: ${fetcher.data.error}`, { id: `qty-${targetId}` })
+	}, [fetcher.state, fetcher.data, label, targetId])
 	// Clicks can land faster than React re-renders, so step from a ref that is
 	// updated synchronously rather than from the rendered value.
 	const latestRef = useRef(displayed)
@@ -303,7 +331,7 @@ export function AddVariantForm({
 	printingId: string
 	onDone: () => void
 }) {
-	const fetcher = useFetcher<typeof action>()
+	const fetcher = useFetcher<typeof clientAction>()
 	const inputRef = useRef<HTMLInputElement>(null)
 	const isPending = fetcher.state !== 'idle'
 	const error =
@@ -362,7 +390,7 @@ export function DeleteVariantButton({
 	variantId: string
 	label: string
 }) {
-	const fetcher = useFetcher<typeof action>()
+	const fetcher = useFetcher<typeof clientAction>()
 	const dc = useDoubleCheck()
 	return (
 		<fetcher.Form method="POST" action={ACTION_PATH}>
@@ -397,7 +425,7 @@ export function AddProductForm({
 	/** Total cards in one copy of the product. */
 	productSize: number
 }) {
-	const fetcher = useFetcher<typeof action>()
+	const fetcher = useFetcher<typeof clientAction>()
 	const [mode, setMode] = useState<'add' | 'remove'>('add')
 	const [copies, setCopies] = useState(1)
 	const [confirming, setConfirming] = useState(false)
@@ -436,18 +464,17 @@ export function AddProductForm({
 			<input type="hidden" name="intent" value="add-product" />
 			<input type="hidden" name="setId" value={setId} />
 			<input type="hidden" name="copies" value={signedCopies} />
-			<select
+			<NativeSelect
 				aria-label="Add or remove"
-				className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 h-8 rounded-lg border px-2 text-sm outline-none focus-visible:ring-3"
 				value={mode}
 				onChange={(e) => {
 					setMode(e.currentTarget.value === 'remove' ? 'remove' : 'add')
 					setConfirming(false)
 				}}
 			>
-				<option value="add">Add</option>
-				<option value="remove">Remove</option>
-			</select>
+				<NativeSelectOption value="add">Add</NativeSelectOption>
+				<NativeSelectOption value="remove">Remove</NativeSelectOption>
+			</NativeSelect>
 			<Input
 				type="number"
 				aria-label="Number of products"

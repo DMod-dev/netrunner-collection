@@ -1,4 +1,4 @@
-import { XClose } from '@untitledui/icons'
+import { DotsHorizontal, XClose } from '@untitledui/icons'
 import { useEffect, useRef, useState } from 'react'
 import {
 	QuantityStepper,
@@ -50,12 +50,18 @@ export function CardArtTile({
 	imageUrl,
 	alt,
 	dimmed = false,
+	badge,
 	overlay,
 }: {
 	imageUrl: string | null
 	alt: string
 	/** Grey out the art, e.g. when none are owned. */
 	dimmed?: boolean
+	/**
+	 * Shown in the corner of the art while the overlay is closed, e.g. the
+	 * owned count. Hidden from screen readers: repeat it in the overlay.
+	 */
+	badge?: React.ReactNode
 	overlay: React.ReactNode
 }) {
 	const [pinned, setPinned] = useState(false)
@@ -137,15 +143,38 @@ export function CardArtTile({
 					<span className="text-muted-foreground p-2 text-sm">{alt}</span>
 				)}
 			</button>
+			{badge ? (
+				<div
+					aria-hidden
+					className={cn(
+						'pointer-events-none absolute top-1.5 right-1.5 flex rounded-full shadow-sm transition-opacity duration-150',
+						'group-hover:opacity-0 group-has-[:focus-visible]:opacity-0 group-data-[pinned]:opacity-0',
+					)}
+				>
+					{badge}
+				</div>
+			) : null}
+			{/* touch screens can't hover: hint that tapping opens the details */}
+			<span
+				aria-hidden
+				className="bg-background/80 pointer-events-none absolute right-1.5 bottom-1.5 hidden size-6 items-center justify-center rounded-full shadow-sm backdrop-blur-sm group-data-[pinned]:hidden pointer-coarse:flex"
+			>
+				<Icon icon={DotsHorizontal} size="sm" />
+			</span>
 			<div
 				className={cn(
-					'bg-background/80 invisible absolute inset-0 flex flex-col gap-2 overflow-y-auto p-3 text-sm opacity-0 backdrop-blur-md transition-opacity duration-150',
+					'bg-background/80 invisible absolute inset-0 text-sm opacity-0 backdrop-blur-md transition-opacity duration-150',
 					'group-hover:visible group-hover:opacity-100',
 					'group-has-[:focus-visible]:visible group-has-[:focus-visible]:opacity-100',
 					'group-data-[pinned]:visible group-data-[pinned]:opacity-100',
 				)}
 			>
-				{overlay}
+				{/* Cards with several printings overflow the tile. The bottom
+				    padding is where the content fades out, so the fade only
+				    shows while there's more to scroll to. */}
+				<div className="flex h-full flex-col gap-2 overflow-y-auto [mask-image:linear-gradient(to_top,transparent,black_1.5rem)] p-3 pb-6">
+					{overlay}
+				</div>
 			</div>
 		</div>
 	)

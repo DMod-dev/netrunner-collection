@@ -163,6 +163,7 @@ export default function SetRoute({ loaderData }: Route.ComponentProps) {
 									imageUrl={printing.imageLarge ?? printing.imageSmall}
 									alt={card.title}
 									dimmed={owned === 0}
+									badge={<CountBadge owned={owned} target={need} />}
 									overlay={
 										<>
 											<header className="flex flex-col gap-1">

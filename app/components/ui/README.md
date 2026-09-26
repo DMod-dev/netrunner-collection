@@ -21,7 +21,10 @@ Then re-apply our changes and review the diff:
   `CheckIcon` → `Check`, `ChevronRightIcon` → `ChevronRight`, `MinusIcon` →
   `Minus`). We don't depend on `lucide-react`.
 - `button.tsx`: keep the `ButtonVariant` type export, and keep `buttonVariants`
-  running its result through `cn` (links styled as buttons rely on it).
+  running its result through `cn` (links styled as buttons rely on it). Keep the
+  `aria-disabled:` classes next to the `disabled:` ones: with
+  `focusableWhenDisabled`, Base UI marks the button `aria-disabled` instead of
+  `disabled`.
 - `checkbox.tsx`: keep the `CheckboxProps` type export (used by `forms.tsx`).
 - `input-otp.tsx`: keep `inputMode="text"`; our one-time codes allow letters.
 - `sonner.tsx`: exported as `EpicToaster` and takes `theme` as a prop from our

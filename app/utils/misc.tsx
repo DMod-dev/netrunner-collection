@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from 'clsx'
 import { type GetSrcArgs, defaultGetSrc } from 'openimg/react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useFormAction, useNavigation } from 'react-router'
 import { useSpinDelay } from 'spin-delay'
 import { twMerge } from 'tailwind-merge'
@@ -258,7 +258,9 @@ export function useDoubleCheck() {
 }
 
 /**
- * Debounce a callback function
+ * Debounce a callback function. Call `.cancel()` on the result to drop a
+ * pending call, e.g. when the same work is about to run right away. A pending
+ * call is also dropped when the component unmounts.
  */
 export function useDebounce<
 	Callback extends (...args: Parameters<Callback>) => ReturnType<Callback>,
@@ -268,14 +270,16 @@ export function useDebounce<
 	useEffect(() => {
 		callbackRef.current = callback
 	})
+	useEffect(() => () => clearTimeout(timerRef.current), [])
 	// Refs are only read when the returned function runs, never during render
-	return useCallback(
-		(...args: Parameters<Callback>) => {
+	return useMemo(() => {
+		function debounced(...args: Parameters<Callback>) {
 			clearTimeout(timerRef.current)
 			timerRef.current = setTimeout(() => callbackRef.current(...args), delay)
-		},
-		[delay],
-	)
+		}
+		debounced.cancel = () => clearTimeout(timerRef.current)
+		return debounced
+	}, [delay])
 }
 
 export async function downloadFile(url: string, retries: number = 0) {

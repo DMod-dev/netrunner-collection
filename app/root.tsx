@@ -9,6 +9,7 @@ import {
 	Outlet,
 	Scripts,
 	ScrollRestoration,
+	type ShouldRevalidateFunction,
 	useLoaderData,
 } from 'react-router'
 import { HoneypotProvider } from 'remix-utils/honeypot/react'
@@ -132,6 +133,28 @@ export async function loader({ request, url }: Route.LoaderArgs) {
 			),
 		},
 	)
+}
+
+/**
+ * Searching, filtering and paging only change the query string, and nothing
+ * the root loader returns (user, theme, hints, toast, honeypot) depends on
+ * it. Skip it on those GET navigations so they only run the page's loader.
+ * Submissions, revalidations (same URL) and other pages revalidate as usual.
+ */
+export const shouldRevalidate: ShouldRevalidateFunction = ({
+	currentUrl,
+	nextUrl,
+	formMethod,
+	defaultShouldRevalidate,
+}) => {
+	if (
+		(!formMethod || formMethod === 'GET') &&
+		currentUrl.pathname === nextUrl.pathname &&
+		currentUrl.search !== nextUrl.search
+	) {
+		return false
+	}
+	return defaultShouldRevalidate
 }
 
 export const headers: Route.HeadersFunction = pipeHeaders
