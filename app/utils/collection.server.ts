@@ -351,17 +351,27 @@ export function parseCompletionTarget(value: string | null): CompletionTarget {
 	return value === 'playset' ? 'playset' : 'product'
 }
 
-/** Copies a user owns (plain + custom versions) per printing and per card. */
-async function getOwnedCounts(userId: string) {
+/**
+ * Copies a user owns (plain + custom versions) per printing and per card.
+ * With `cardIds`, only those cards'. `db` lets a transaction read them.
+ */
+export async function getOwnedCounts(
+	userId: string,
+	{
+		cardIds,
+		db = prisma,
+	}: { cardIds?: string[]; db?: Prisma.TransactionClient } = {},
+) {
 	const select = {
 		printingId: true,
 		quantity: true,
 		printing: { select: { cardId: true } },
 	} as const
+	const printing = cardIds ? { cardId: { in: cardIds } } : undefined
 	const [entries, variants] = await Promise.all([
-		prisma.collectionEntry.findMany({ where: { userId }, select }),
-		prisma.variant.findMany({
-			where: { userId, quantity: { gt: 0 } },
+		db.collectionEntry.findMany({ where: { userId, printing }, select }),
+		db.variant.findMany({
+			where: { userId, printing, quantity: { gt: 0 } },
 			select,
 		}),
 	])

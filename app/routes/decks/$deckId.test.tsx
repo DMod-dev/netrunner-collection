@@ -136,6 +136,65 @@ test('turning off "Require deck legality" makes format problems warnings', async
 		.toEqual({ requireLegality: false })
 })
 
+test('filling from the collection shows what’s missing and what’s in use', async () => {
+	const user = userEvent.setup()
+	await insertCards()
+	const owner = await insertUser()
+	// 3 Hedge Funds (printing 30001); no copy of the identity
+	await prisma.collectionEntry.create({
+		data: { userId: owner.id, printingId: '30001', quantity: 3 },
+	})
+	const other = await createDeck(owner.id, {
+		identityCardId: 'precision_design',
+		formatId: 'standard',
+		name: 'Glacier',
+	})
+	await prisma.deckCard.create({
+		data: {
+			deckId: other!.id,
+			cardId: 'hedge_fund',
+			quantity: 1,
+			fromCollection: 1,
+		},
+	})
+	const deck = await createDeck(owner.id, {
+		identityCardId: 'precision_design',
+		formatId: 'standard',
+	})
+	await prisma.deckCard.create({
+		data: { deckId: deck!.id, cardId: 'hedge_fund', quantity: 3 },
+	})
+	renderBuilder(owner.cookie, `/decks/${deck!.id}`)
+
+	const browser = await screen.findByRole('region', { name: 'Card browser' })
+	// before filling, the browser counts every copy owned
+	expect(
+		within(browser).getAllByTitle(/^You own 3; deck limit 3$/),
+	).not.toEqual([])
+	await user.click(screen.getByRole('button', { name: 'Fill with collection' }))
+
+	const panel = screen.getByRole('complementary', { name: 'Deck' })
+	await within(panel).findByText('1 in use: Glacier')
+	const row = panel.querySelector('[data-deck-card="hedge_fund"]')!
+	expect(within(row as HTMLElement).getByText('2/3')).toBeInTheDocument()
+	// the identity isn't owned
+	const identity = within(panel).getByRole('region', { name: 'Identity' })
+	expect(within(identity).getByText('need 1')).toBeInTheDocument()
+	expect(
+		screen.getByRole('button', { name: /From collection\s*2\/4/ }),
+	).toBeInTheDocument()
+	// and the browser counts only the copies other decks don't hold
+	expect(within(browser).getAllByTitle(/^2 free of the 3 you own/)).not.toEqual(
+		[],
+	)
+	expect(
+		await prisma.deckCard.findUniqueOrThrow({
+			where: { deckId_cardId: { deckId: deck!.id, cardId: 'hedge_fund' } },
+			select: { fromCollection: true },
+		}),
+	).toEqual({ fromCollection: 2 })
+})
+
 test('someone else’s deck is a 404', async () => {
 	await insertCards()
 	const owner = await insertUser()

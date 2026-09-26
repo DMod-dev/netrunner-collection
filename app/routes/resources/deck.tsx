@@ -1,17 +1,25 @@
-import { Trash01 } from '@untitledui/icons'
+import { ChevronDown, Trash01 } from '@untitledui/icons'
 import { useEffect, useId, useRef } from 'react'
 import { data, Form, useFetcher } from 'react-router'
 import { toast } from 'sonner'
 import { z } from 'zod'
 import { Button } from '#app/components/ui/button.tsx'
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from '#app/components/ui/dropdown-menu.tsx'
 import { Icon } from '#app/components/ui/icon.tsx'
 import { Label } from '#app/components/ui/label.tsx'
+import { StatusButton } from '#app/components/ui/status-button.tsx'
 import { Switch } from '#app/components/ui/switch.tsx'
 import {
 	STEPPER_SET_EVENT,
 	STEPPER_STEP_EVENT,
 } from '#app/routes/resources/collection.tsx'
 import { requireUserId } from '#app/utils/auth.server.ts'
+import { fillDeck, unfillDeck } from '#app/utils/deck-fill.server.ts'
 import { DECK_FORMATS } from '#app/utils/deck-formats.ts'
 import {
 	deleteDeck,
@@ -29,15 +37,17 @@ import {
 } from '#app/utils/deck.ts'
 import { ensurePrimary } from '#app/utils/litefs.server.ts'
 import { cn, useDoubleCheck } from '#app/utils/misc.tsx'
-import { redirectWithToast } from '#app/utils/toast.server.ts'
+import {
+	createToastHeaders,
+	redirectWithToast,
+} from '#app/utils/toast.server.ts'
 import { type Route } from './+types/deck.ts'
 
 export const DECK_ACTION_PATH = '/resources/deck'
 
 const deckId = z.string().min(1)
 
-// `fill`/`unfill` (reserving copies from the collection) and `import` join
-// this union later.
+// `import` joins this union later.
 const DeckActionSchema = z.discriminatedUnion('intent', [
 	z.object({
 		intent: z.literal('set-card-quantity'),
@@ -79,8 +89,28 @@ const DeckActionSchema = z.discriminatedUnion('intent', [
 		deckId,
 		requireLegality: z.enum(['true', 'false']).transform((v) => v === 'true'),
 	}),
+	z.object({ intent: z.literal('fill'), deckId }),
+	z.object({ intent: z.literal('unfill'), deckId }),
 	z.object({ intent: z.literal('delete'), deckId }),
 ])
+
+/** "Took 41 of 45 cards from your collection", and so on. */
+export function fillMessage({
+	taken,
+	total,
+}: {
+	taken: number
+	total: number
+}) {
+	const cards = (n: number) => `${n} ${n === 1 ? 'card' : 'cards'}`
+	if (total === 0) return 'This deck has no cards to fill yet'
+	if (taken === total) {
+		return `Took ${total === 1 ? 'the card' : `all ${cards(total)}`} from your collection`
+	}
+	if (taken === 0)
+		return 'None of this deck’s cards are free in your collection'
+	return `Took ${taken} of ${cards(total)} from your collection`
+}
 
 function refused({ error, status }: DeckWriteError) {
 	return data({ ok: false, error } as const, { status })
@@ -149,6 +179,25 @@ export async function action({ request }: Route.ActionArgs) {
 				return notFound()
 			}
 			return { ok: true } as const
+		}
+		case 'fill': {
+			const report = await fillDeck(userId, submission.deckId)
+			if (!report) return notFound()
+			return data({ ok: true } as const, {
+				headers: await createToastHeaders({
+					type: report.taken === report.total ? 'success' : 'message',
+					description: fillMessage(report),
+				}),
+			})
+		}
+		case 'unfill': {
+			if (!(await unfillDeck(userId, submission.deckId))) return notFound()
+			return data({ ok: true } as const, {
+				headers: await createToastHeaders({
+					type: 'success',
+					description: 'Gave this deck’s cards back to your collection',
+				}),
+			})
 		}
 		case 'delete': {
 			if (!(await deleteDeck(userId, submission.deckId))) return notFound()
@@ -378,5 +427,114 @@ export function DeleteDeckButton({
 				<Icon icon={Trash01}>{dc.doubleCheck ? 'Delete?' : 'Delete'}</Icon>
 			</Button>
 		</Form>
+	)
+}
+
+/** The intent a fill fetcher is submitting, while it's in flight. */
+function pendingFillIntent(formData: FormData | undefined) {
+	const intent = formData?.get('intent')
+	return intent === 'fill' || intent === 'unfill' ? intent : null
+}
+
+/**
+ * "Fill with collection" until the deck is filled; then a "From collection"
+ * menu to fill again (after the collection or the deck changed) or unfill.
+ */
+export function FillControls({
+	deckId,
+	filled,
+	fromCollection,
+	total,
+}: {
+	deckId: string
+	filled: boolean
+	/** copies reserved from the collection, the identity included */
+	fromCollection: number
+	/** copies the deck plays, the identity included */
+	total: number
+}) {
+	const fetcher = useFetcher<typeof clientAction>({
+		key: deckSettingsFetcherKey(deckId, 'fill'),
+	})
+	useErrorToast(fetcher, 'Fill with collection', `fill-${deckId}`)
+	const pending = pendingFillIntent(fetcher.formData)
+	const submit = (intent: 'fill' | 'unfill') =>
+		fetcher.submit(
+			{ intent, deckId },
+			{ method: 'POST', action: DECK_ACTION_PATH },
+		)
+
+	if (!filled || pending === 'fill') {
+		return (
+			<StatusButton
+				type="button"
+				variant="outline"
+				status={pending ? 'pending' : 'idle'}
+				disabled={pending !== null}
+				onClick={() => void submit('fill')}
+			>
+				Fill with collection
+			</StatusButton>
+		)
+	}
+	return (
+		<DropdownMenu>
+			<DropdownMenuTrigger
+				render={
+					<Button
+						variant="secondary"
+						className="rounded-full"
+						disabled={pending !== null}
+					/>
+				}
+			>
+				{pending === 'unfill' ? (
+					'Unfilling…'
+				) : (
+					<>
+						From collection{' '}
+						<span className="tabular-nums">
+							{fromCollection}/{total}
+						</span>
+					</>
+				)}
+				<Icon icon={ChevronDown} size="sm" />
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end">
+				<DropdownMenuItem onClick={() => void submit('fill')}>
+					Fill again
+				</DropdownMenuItem>
+				<DropdownMenuItem onClick={() => void submit('unfill')}>
+					Unfill (give the cards back)
+				</DropdownMenuItem>
+			</DropdownMenuContent>
+		</DropdownMenu>
+	)
+}
+
+/**
+ * The stale-fill hint's button: the same fetcher as `FillControls`, so both
+ * show it filling.
+ */
+export function RefillButton({ deckId }: { deckId: string }) {
+	const fetcher = useFetcher<typeof clientAction>({
+		key: deckSettingsFetcherKey(deckId, 'fill'),
+	})
+	const pending = pendingFillIntent(fetcher.formData)
+	return (
+		<Button
+			type="button"
+			size="sm"
+			variant="outline"
+			disabled={pending !== null}
+			onClick={() =>
+				void fetcher.submit(
+					{ intent: 'fill', deckId },
+					{ method: 'POST', action: DECK_ACTION_PATH },
+				)
+			}
+		>
+			{pending === 'fill' ? 'Filling…' : 'Fill again'}
+		</Button>
 	)
 }

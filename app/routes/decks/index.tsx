@@ -1,5 +1,5 @@
 import { type SEOHandle } from '@nasa-gcn/remix-seo'
-import { Plus } from '@untitledui/icons'
+import { AlertTriangle, Plus } from '@untitledui/icons'
 import { Link } from 'react-router'
 import { GeneralErrorBoundary } from '#app/components/error-boundary.tsx'
 import { FactionDot } from '#app/components/printing-tile.tsx'
@@ -94,8 +94,25 @@ function DeckCard({ deck }: { deck: DeckSummary }) {
 				<div className="mt-auto flex flex-wrap items-center gap-1.5 pt-1">
 					<LegalityBadge deck={deck} />
 					{deck.filledFromCollection ? (
-						<span className="bg-secondary text-secondary-foreground rounded-full px-2 py-0.5 text-xs font-semibold">
-							From collection
+						<span
+							className="bg-secondary text-secondary-foreground flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums"
+							title={
+								deck.shortFromCollection
+									? 'Some cards aren’t from your collection'
+									: undefined
+							}
+						>
+							{deck.shortFromCollection ? (
+								<Icon
+									icon={AlertTriangle}
+									size="xs"
+									className="text-amber-600 dark:text-amber-400"
+									title="Some cards aren’t from your collection"
+								/>
+							) : null}
+							{deck.copiesFromCollection}{' '}
+							{deck.copiesFromCollection === 1 ? 'card' : 'cards'} from
+							collection
 						</span>
 					) : null}
 					<span className="text-muted-foreground ml-auto text-xs">

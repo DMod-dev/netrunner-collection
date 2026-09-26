@@ -1,6 +1,13 @@
 import { AlertCircle, AlertTriangle, CheckCircle } from '@untitledui/icons'
 import { DeckQuantityStepper } from '#app/routes/resources/deck.tsx'
 import {
+	type Availability,
+	fillStatus,
+	type FillStatus,
+	NO_COPIES,
+	type Reservation,
+} from '#app/utils/deck-fill.ts'
+import {
 	type CardLite,
 	type DeckEvaluation,
 	type DeckStats as DeckStatsData,
@@ -17,7 +24,117 @@ export type DeckCardInfo = CardLite & {
 	imageUrl: string | null
 }
 
-export type DecklistEntry = { card: DeckCardInfo; quantity: number }
+export type DecklistEntry = {
+	card: DeckCardInfo
+	quantity: number
+	/** copies reserved from the collection */
+	fromCollection: number
+}
+
+/** A deck's view of the collection, for its rows' badges. */
+export type DeckCollection = {
+	filled: boolean
+	availability: Record<string, Availability>
+}
+
+/** How a row of a filled deck stands against the collection. */
+export function rowFillStatus(
+	collection: DeckCollection,
+	cardId: string,
+	quantity: number,
+	fromCollection: number,
+) {
+	const availability = collection.availability[cardId] ?? NO_COPIES
+	return {
+		status: fillStatus({
+			quantity,
+			fromCollection,
+			owned: availability.owned,
+			available: availability.available,
+		}),
+		reservedBy: availability.reservedBy,
+	}
+}
+
+const pill = 'rounded-full px-1.5 py-0.5 text-xs font-semibold tabular-nums'
+
+/**
+ * Why a row of a filled deck is short: copies the user doesn't own (amber),
+ * copies their other decks hold (violet), and free copies that filling again
+ * would take.
+ */
+export function FillStatusBadge({
+	status,
+	reservedBy,
+}: {
+	status: FillStatus
+	reservedBy: Reservation[]
+}) {
+	if (status.kind === 'ok') return null
+	return (
+		<>
+			{status.need > 0 ? (
+				<span
+					className={cn(
+						pill,
+						'bg-amber-500/15 text-amber-700 dark:text-amber-300',
+					)}
+					title={`You own ${status.need} too few`}
+				>
+					need {status.need}
+				</span>
+			) : null}
+			{status.inUse > 0 ? (
+				<span
+					className={cn(
+						pill,
+						'max-w-full truncate bg-violet-500/15 text-violet-700 dark:text-violet-300',
+					)}
+					title={`In use by ${reservedBy
+						.map((r) => `${r.name} (${r.quantity})`)
+						.join(', ')}`}
+				>
+					{status.inUse} in use: {reservedBy.map((r) => r.name).join(', ')}
+				</span>
+			) : null}
+			{status.unreserved > 0 ? (
+				<span
+					className={cn(pill, 'bg-muted text-muted-foreground')}
+					title="Free in your collection; fill again to reserve"
+				>
+					{status.unreserved} not reserved
+				</span>
+			) : null}
+		</>
+	)
+}
+
+/** "2/3": copies from the collection out of the copies the deck plays. */
+export function FromCollectionCount({
+	fromCollection,
+	quantity,
+	title,
+}: {
+	fromCollection: number
+	quantity: number
+	title: string
+}) {
+	return (
+		<span
+			className={cn(
+				pill,
+				'shrink-0',
+				fromCollection >= quantity
+					? 'bg-success text-success-foreground'
+					: 'bg-secondary text-secondary-foreground',
+			)}
+			title={`${fromCollection} of ${quantity} ${title} from your collection`}
+		>
+			<span className="sr-only">From collection: </span>
+			{fromCollection}/{quantity}
+		</span>
+	)
+}
 
 /**
  * One dot per point of influence, in the card's faction color. Nothing for
@@ -209,11 +326,13 @@ export function DecklistPanel({
 	side,
 	entries,
 	perCard,
+	collection,
 }: {
 	deckId: string
 	side: DeckSide
 	entries: DecklistEntry[]
 	perCard: DeckEvaluation['perCard']
+	collection: DeckCollection
 }) {
 	if (entries.length === 0) {
 		return (
@@ -230,8 +349,11 @@ export function DecklistPanel({
 						{group.name} ({group.count})
 					</h3>
 					<ul className="flex flex-col">
-						{group.entries.map(({ card, quantity }) => {
+						{group.entries.map(({ card, quantity, fromCollection }) => {
 							const info = perCard[card.id]
+							const fill = collection.filled
+								? rowFillStatus(collection, card.id, quantity, fromCollection)
+								: null
 							const problems = info?.problems ?? []
 							const worst = problems.some((p) => p.severity === 'error')
 								? 'error'
@@ -242,7 +364,7 @@ export function DecklistPanel({
 								<li
 									key={card.id}
 									data-deck-card={card.id}
-									className="flex items-center gap-2 py-0.5 text-sm"
+									className="flex flex-wrap items-center gap-x-2 py-0.5 text-sm"
 								>
 									<span className="w-6 shrink-0 text-right font-bold tabular-nums">
 										{quantity}×
@@ -266,6 +388,13 @@ export function DecklistPanel({
 											</span>
 										</span>
 									) : null}
+									{fill ? (
+										<FromCollectionCount
+											fromCollection={fromCollection}
+											quantity={quantity}
+											title={card.title}
+										/>
+									) : null}
 									<DeckQuantityStepper
 										deckId={deckId}
 										cardId={card.id}
@@ -274,6 +403,12 @@ export function DecklistPanel({
 										deckLimit={card.deckLimit}
 										size="sm"
 									/>
+									{fill && fill.status.kind !== 'ok' ? (
+										// a line of its own, under the title
+										<span className="flex w-full min-w-0 flex-wrap gap-1 pb-1 pl-8">
+											<FillStatusBadge {...fill} />
+										</span>
+									) : null}
 								</li>
 							)
 						})}

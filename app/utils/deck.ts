@@ -45,7 +45,7 @@ export function deckCardFetcherPrefix(deckId: string) {
 /** Fetcher keys for a deck's own settings (not its cards). */
 export function deckSettingsFetcherKey(
 	deckId: string,
-	setting: 'identity' | 'legality' | 'format' | 'name' | 'notes',
+	setting: 'identity' | 'legality' | 'format' | 'name' | 'notes' | 'fill',
 ) {
 	return `deck-settings-${deckId}-${setting}`
 }

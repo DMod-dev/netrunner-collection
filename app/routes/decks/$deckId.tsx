@@ -1,5 +1,6 @@
 import { type SEOHandle } from '@nasa-gcn/remix-seo'
 import {
+	AlertTriangle,
 	ChevronDown,
 	ChevronUp,
 	Loading02,
@@ -30,9 +31,12 @@ import {
 	type DecklistEntry,
 	DecklistPanel,
 	DeckStats,
+	FillStatusBadge,
+	FromCollectionCount,
 	IdentityArt,
 	InfluencePips,
 	ProblemList,
+	rowFillStatus,
 } from '#app/components/deck-ui.tsx'
 import { GeneralErrorBoundary } from '#app/components/error-boundary.tsx'
 import { FactionDot } from '#app/components/printing-tile.tsx'
@@ -52,14 +56,18 @@ import {
 	DECK_ACTION_PATH,
 	DeckQuantityStepper,
 	DeleteDeckButton,
+	FillControls,
 	pendingLegality,
 	pendingQuantity,
+	RefillButton,
 	RequireLegalitySwitch,
 	useErrorToast,
 } from '#app/routes/resources/deck.tsx'
 import { requireUserId } from '#app/utils/auth.server.ts'
 import { getFilterOptions, searchCards } from '#app/utils/collection.server.ts'
 import { pickArtPrinting } from '#app/utils/collection.ts'
+import { getDeckCollection } from '#app/utils/deck-fill.server.ts'
+import { NO_COPIES } from '#app/utils/deck-fill.ts'
 import {
 	DECK_FORMAT_NAMES,
 	DECK_FORMATS,
@@ -120,9 +128,16 @@ export async function loader({ request, params }: Route.LoaderArgs) {
 		}),
 		getFilterOptions(),
 	])
+	// what the collection has for the deck, and for the browser's page
+	const collection = await getDeckCollection(
+		userId,
+		deck,
+		results.cards.map((c) => c.id),
+	)
 
 	return {
 		deck,
+		collection,
 		browser: {
 			total: results.total,
 			page: results.page,
@@ -166,6 +181,7 @@ export const meta: Route.MetaFunction = ({ loaderData }) => [
 type LoaderData = Route.ComponentProps['loaderData']
 type BrowserCard = LoaderData['browser']['cards'][number]
 type Deck = LoaderData['deck']
+type Collection = LoaderData['collection']
 
 /**
  * The deck as the user has asked for it to be: the saved cards with every
@@ -189,15 +205,23 @@ function useOptimisticDeck(deck: Deck, browserCards: BrowserCard[]) {
 	}
 
 	const entries: DecklistEntry[] = []
-	for (const { card, quantity } of deck.cards) {
+	for (const { card, quantity, fromCollection } of deck.cards) {
 		const next = pending.get(card.id) ?? quantity
 		pending.delete(card.id)
-		if (next > 0) entries.push({ card, quantity: next })
+		// fewer copies give reserved ones back, as the server will
+		if (next > 0) {
+			entries.push({
+				card,
+				quantity: next,
+				fromCollection: Math.min(fromCollection, next),
+			})
+		}
 	}
 	// cards being added: the browser has what the rules need
 	for (const [cardId, quantity] of pending) {
 		const card = browserCards.find((c) => c.id === cardId)
-		if (card && quantity > 0) entries.push({ card, quantity })
+		if (card && quantity > 0)
+			entries.push({ card, quantity, fromCollection: 0 })
 	}
 	return {
 		entries,
@@ -207,7 +231,7 @@ function useOptimisticDeck(deck: Deck, browserCards: BrowserCard[]) {
 }
 
 export default function DeckBuilderRoute({ loaderData }: Route.ComponentProps) {
-	const { deck, browser, filters } = loaderData
+	const { deck, collection, browser, filters } = loaderData
 	const [sheetOpen, setSheetOpen] = useState(false)
 	const { entries, requireLegality } = useOptimisticDeck(deck, browser.cards)
 	// cheap (a deck is a few dozen rows), so it just runs every render
@@ -225,7 +249,31 @@ export default function DeckBuilderRoute({ loaderData }: Route.ComponentProps) {
 
 	return (
 		<main className="container mb-24 flex flex-col gap-4 lg:mb-8">
-			<DeckToolbar deck={deck} requireLegality={requireLegality} />
+			<DeckToolbar
+				deck={deck}
+				requireLegality={requireLegality}
+				filled={collection.filled}
+				fromCollection={
+					deck.identityFromCollection +
+					entries.reduce((sum, e) => sum + e.fromCollection, 0)
+				}
+				total={(deck.identity ? 1 : 0) + stats.cardCount}
+			/>
+			{collection.stale ? (
+				<div
+					role="status"
+					className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm"
+				>
+					<Icon
+						icon={AlertTriangle}
+						size="sm"
+						className="text-amber-600 dark:text-amber-400"
+					>
+						Your collection changed since this deck was filled.
+					</Icon>
+					<RefillButton deckId={deck.id} />
+				</div>
+			) : null}
 
 			<div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_24rem] xl:grid-cols-[minmax(0,1fr)_28rem]">
 				<CardBrowser
@@ -234,6 +282,7 @@ export default function DeckBuilderRoute({ loaderData }: Route.ComponentProps) {
 					filters={filters}
 					inDeck={inDeck}
 					saved={saved}
+					collection={collection}
 				/>
 
 				<aside
@@ -250,7 +299,7 @@ export default function DeckBuilderRoute({ loaderData }: Route.ComponentProps) {
 						'lg:sticky lg:top-4 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto lg:pr-1',
 					)}
 				>
-					<IdentityHeader deck={deck} />
+					<IdentityHeader deck={deck} collection={collection} />
 					<DeckStats stats={stats} />
 					<ProblemList problems={problems} />
 					<DecklistPanel
@@ -258,6 +307,7 @@ export default function DeckBuilderRoute({ loaderData }: Route.ComponentProps) {
 						side={deck.sideId}
 						entries={entries}
 						perCard={evaluation.perCard}
+						collection={collection}
 					/>
 					<DeckNotes deck={deck} />
 				</aside>
@@ -292,9 +342,15 @@ export default function DeckBuilderRoute({ loaderData }: Route.ComponentProps) {
 function DeckToolbar({
 	deck,
 	requireLegality,
+	filled,
+	fromCollection,
+	total,
 }: {
 	deck: Deck
 	requireLegality: boolean
+	filled: boolean
+	fromCollection: number
+	total: number
 }) {
 	const id = useId()
 	const nameFetcher = useFetcher<typeof deckClientAction>({
@@ -386,6 +442,12 @@ function DeckToolbar({
 						requireLegality={requireLegality}
 					/>
 				</div>
+				<FillControls
+					deckId={deck.id}
+					filled={filled}
+					fromCollection={fromCollection}
+					total={total}
+				/>
 				<DeleteDeckButton deckId={deck.id} name={deck.name} />
 			</div>
 			{deck.rules?.restrictionName ? (
@@ -397,8 +459,18 @@ function DeckToolbar({
 	)
 }
 
-function IdentityHeader({ deck }: { deck: Deck }) {
+function IdentityHeader({
+	deck,
+	collection,
+}: {
+	deck: Deck
+	collection: Collection
+}) {
 	const { identity } = deck
+	const fill =
+		identity && collection.filled
+			? rowFillStatus(collection, identity.id, 1, deck.identityFromCollection)
+			: null
 	return (
 		<section aria-label="Identity" className="flex items-start gap-3">
 			<div className="w-16 shrink-0">
@@ -417,6 +489,16 @@ function IdentityHeader({ deck }: { deck: Deck }) {
 						<FactionDot factionId={identity.factionId} /> {identity.factionName}{' '}
 						· {identity.minimumDeckSize ?? '–'} cards ·{' '}
 						{identity.influenceLimit ?? '∞'} influence
+					</p>
+				) : null}
+				{identity && fill ? (
+					<p className="flex flex-wrap items-center gap-1">
+						<FromCollectionCount
+							fromCollection={deck.identityFromCollection}
+							quantity={1}
+							title={identity.title}
+						/>
+						<FillStatusBadge {...fill} />
 					</p>
 				) : null}
 				<IdentityDialog deck={deck} />
@@ -606,10 +688,12 @@ function CardBrowser({
 	filters,
 	inDeck,
 	saved,
+	collection,
 }: {
 	deck: Deck
 	browser: LoaderData['browser']
 	filters: LoaderData['filters']
+	collection: Collection
 	/** Copies in the deck, counting changes still being saved. */
 	inDeck: Map<string, number>
 	/** Copies in the deck as last saved. */
@@ -679,6 +763,7 @@ function CardBrowser({
 									deck={deck}
 									inDeck={inDeck.get(card.id) ?? 0}
 									saved={saved.get(card.id) ?? 0}
+									collection={collection}
 								/>
 							</li>
 						))}
@@ -857,14 +942,27 @@ function BrowserCardTile({
 	deck,
 	inDeck,
 	saved,
+	collection,
 }: {
 	card: BrowserCard & DeckCardInfo
 	deck: Deck
 	inDeck: number
 	saved: number
+	collection: Collection
 }) {
 	const status = formatStatus(card, deck.formatId, deck.rules)
-	const ownedTitle = `You own ${card.owned}; deck limit ${card.deckLimit}`
+	// a filled deck counts only the copies other decks don't hold
+	const availability = collection.availability[card.id] ?? NO_COPIES
+	const count = collection.filled ? availability.available : card.owned
+	const ownedTitle = collection.filled
+		? `${availability.available} free of the ${card.owned} you own` +
+			(availability.reservedBy.length
+				? ` (in use by ${availability.reservedBy
+						.map((r) => `${r.name}: ${r.quantity}`)
+						.join(', ')})`
+				: '') +
+			`; deck limit ${card.deckLimit}`
+		: `You own ${card.owned}; deck limit ${card.deckLimit}`
 	return (
 		<CardArtTile
 			imageUrl={card.imageUrl}
@@ -883,7 +981,7 @@ function BrowserCardTile({
 						</span>
 					) : null}
 					<CountBadge
-						owned={card.owned}
+						owned={count}
 						target={card.deckLimit}
 						title={ownedTitle}
 					/>
@@ -908,7 +1006,7 @@ function BrowserCardTile({
 								)}
 							</h3>
 							<CountBadge
-								owned={card.owned}
+								owned={count}
 								target={card.deckLimit}
 								title={ownedTitle}
 							/>

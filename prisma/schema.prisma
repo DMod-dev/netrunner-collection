@@ -428,12 +428,15 @@ model Deck {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  userId         String
+  user                   User       @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  userId                 String
   /// a column rather than a DeckCard, so a deck can't have two
-  identity       Card?      @relation("DeckIdentity", fields: [identityCardId], references: [id])
-  identityCardId String?
-  cards          DeckCard[]
+  identity               Card?      @relation("DeckIdentity", fields: [identityCardId], references: [id])
+  identityCardId         String?
+  /// 0 or 1: whether the identity is reserved from the owner's collection,
+  /// like DeckCard.fromCollection
+  identityFromCollection Int        @default(0)
+  cards                  DeckCard[]
 
   @@index([userId, updatedAt])
   @@index([identityCardId])
