@@ -1,4 +1,5 @@
 import { type Prisma } from '@prisma/client'
+import { cachedUntilNextSync } from './card-data-cache.server.ts'
 import { MAX_QUANTITY } from './collection.ts'
 import { prisma } from './db.server.ts'
 
@@ -116,7 +117,17 @@ export type PrintingWithCounts = Prisma.PrintingGetPayload<{
 	select: ReturnType<typeof printingSelect>
 }>
 
-export async function getFilterOptions() {
+/** Factions, types and sets to filter by. Only a sync changes them. */
+export function getFilterOptions() {
+	return cachedUntilNextSync('filter-options', getFreshFilterOptions)
+}
+
+/** How many cards exist in total. Only a sync changes it. */
+export function getCardCount() {
+	return cachedUntilNextSync('card-count', () => prisma.card.count())
+}
+
+async function getFreshFilterOptions() {
 	const [factions, types, cycles] = await Promise.all([
 		prisma.faction.findMany({
 			orderBy: [{ sideId: 'asc' }, { isMini: 'asc' }, { name: 'asc' }],
