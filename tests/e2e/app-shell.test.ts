@@ -41,8 +41,13 @@ function escapeRegExp(text: string) {
 	return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
+test('the landing page is titled with the site name', async ({ page }) => {
+	await goto(page, '/')
+	await expect(page).toHaveTitle('Netrunner Collection')
+})
+
 test('logged-out pages have a site title', async ({ page }) => {
-	for (const path of ['/', '/about', '/support', '/privacy', '/tos']) {
+	for (const path of ['/about', '/support', '/privacy', '/tos']) {
 		await test.step(path, async () => {
 			await goto(page, path)
 			await expectSiteTitle(page)
