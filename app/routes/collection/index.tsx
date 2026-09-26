@@ -425,7 +425,7 @@ function Filters({
 										{
 											// a group's own color would be arbitrary
 											'--faction':
-												colors.length === 1 ? colors[0] : 'var(--selected)',
+												colors.length === 1 ? colors[0] : 'var(--foreground)',
 										} as React.CSSProperties
 									}
 									className={cn(toggleClassName, factionToggleClassName)}
