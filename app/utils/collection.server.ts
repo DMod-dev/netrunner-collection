@@ -1,14 +1,18 @@
 import { type Prisma } from '@prisma/client'
 import { cachedUntilNextSync } from './card-data-cache.server.ts'
-import { MAX_QUANTITY } from './collection.ts'
+import { MAX_QUANTITY, MINI_FACTIONS, NEUTRAL_FACTIONS } from './collection.ts'
 import { prisma } from './db.server.ts'
 
 export const CARDS_PER_PAGE = 30
 
 export type CardSearchParams = {
 	q?: string
-	side?: string
-	/** Cards from any of these factions. */
+	/** Cards from any of these sides. */
+	sides?: string[]
+	/**
+	 * Cards from any of these factions. `NEUTRAL_FACTIONS` and `MINI_FACTIONS`
+	 * each stand for a group of them.
+	 */
 	factions?: string[]
 	type?: string
 	set?: string
@@ -19,6 +23,23 @@ export type CardSearchParams = {
 
 function clampQuantity(quantity: number) {
 	return Math.max(0, Math.min(MAX_QUANTITY, Math.trunc(quantity)))
+}
+
+function factionWhere(factions: string[]): Prisma.CardWhereInput {
+	const ids = factions.filter(
+		(f) => f !== NEUTRAL_FACTIONS && f !== MINI_FACTIONS,
+	)
+	return {
+		OR: [
+			...(ids.length ? [{ factionId: { in: ids } }] : []),
+			...(factions.includes(NEUTRAL_FACTIONS)
+				? [{ factionId: { startsWith: 'neutral' } }]
+				: []),
+			...(factions.includes(MINI_FACTIONS)
+				? [{ faction: { isMini: true } }]
+				: []),
+		],
+	}
 }
 
 /** Matches printings the user owns at least one copy of (plain or variant). */
@@ -43,8 +64,8 @@ export async function searchCards(userId: string, params: CardSearchParams) {
 						],
 					}
 				: {},
-			params.side ? { sideId: params.side } : {},
-			params.factions?.length ? { factionId: { in: params.factions } } : {},
+			params.sides?.length ? { sideId: { in: params.sides } } : {},
+			params.factions?.length ? factionWhere(params.factions) : {},
 			params.type ? { typeId: params.type } : {},
 			params.format ? { legalFormats: { contains: `,${params.format},` } } : {},
 			params.set ? { printings: { some: { setId: params.set } } } : {},
@@ -132,7 +153,7 @@ async function getFreshFilterOptions() {
 	const [factions, types, cycles] = await Promise.all([
 		prisma.faction.findMany({
 			orderBy: [{ sideId: 'asc' }, { isMini: 'asc' }, { name: 'asc' }],
-			select: { id: true, name: true, sideId: true },
+			select: { id: true, name: true, sideId: true, isMini: true },
 		}),
 		prisma.cardType.findMany({
 			orderBy: { name: 'asc' },
@@ -150,7 +171,50 @@ async function getFreshFilterOptions() {
 			},
 		}),
 	])
-	return { factions, types, cycles }
+	return { factionToggles: getFactionToggles(factions), types, cycles }
+}
+
+type FactionToggle = {
+	/** The `faction` filter value. */
+	value: string
+	name: string
+	/** What it covers, for its colors and to tell which sides it belongs to. */
+	factions: { id: string; name: string; sideId: string }[]
+}
+
+/**
+ * One toggle per main faction, then one for all the mini-factions and one for
+ * both sides' neutrals.
+ */
+function getFactionToggles(
+	factions: { id: string; name: string; sideId: string; isMini: boolean }[],
+) {
+	const isNeutral = (f: { id: string }) => f.id.startsWith('neutral')
+	const toggles: FactionToggle[] = factions
+		.filter((f) => !f.isMini && !isNeutral(f))
+		.map(({ id, name, sideId }) => ({
+			value: id,
+			name,
+			factions: [{ id, name, sideId }],
+		}))
+	const groups = [
+		{
+			value: MINI_FACTIONS,
+			name: 'Mini-factions',
+			match: (f: { isMini: boolean }) => f.isMini,
+		},
+		{ value: NEUTRAL_FACTIONS, name: 'Neutral', match: isNeutral },
+	]
+	for (const { value, name, match } of groups) {
+		const members = factions.filter(match)
+		if (!members.length) continue
+		toggles.push({
+			value,
+			name,
+			factions: members.map(({ id, name, sideId }) => ({ id, name, sideId })),
+		})
+	}
+	return toggles
 }
 
 export async function setPrintingQuantity(

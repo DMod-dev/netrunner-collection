@@ -68,7 +68,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 	const owned = get('owned')
 	const params: CardSearchParams = {
 		q: get('q'),
-		side: get('side'),
+		sides: url.searchParams.getAll('side').filter(Boolean),
 		factions: url.searchParams.getAll('faction').filter(Boolean),
 		type: get('type'),
 		set: get('set'),
@@ -286,10 +286,20 @@ function Filters({
 	const formRef = useRef<HTMLFormElement>(null)
 	// Toggles aren't form controls, so they're mirrored into hidden inputs and
 	// submit the form themselves.
-	const [side, setSide] = useState(searchParams.get('side') ?? '')
+	const [sides, setSides] = useState(() =>
+		searchParams.getAll('side').filter(Boolean),
+	)
 	const [factions, setFactions] = useState(() =>
 		searchParams.getAll('faction').filter(Boolean),
 	)
+	// With no side picked, every faction can be; otherwise only the ones that
+	// have cards on a picked side.
+	const inPickedSides = (
+		toggle: (typeof filters.factionToggles)[number],
+		picked = sides,
+	) =>
+		picked.length === 0 ||
+		toggle.factions.some((f) => picked.includes(f.sideId))
 
 	// "/" jumps to the search box. It isn't autofocused, so that card
 	// shortcuts work as soon as the page loads.
@@ -361,21 +371,19 @@ function Filters({
 					<ToggleGroup
 						aria-label="Side"
 						variant="outline"
-						spacing={0}
-						value={side ? [side] : []}
+						multiple
+						value={sides}
 						onValueChange={(value: string[]) => {
-							const next = value[0] ?? ''
-							setSide(next)
-							// a side drops the other side's factions
-							if (next) {
-								setFactions((current) =>
-									current.filter((id) =>
-										filters.factions.some(
-											(f) => f.id === id && f.sideId === next,
-										),
-									),
-								)
-							}
+							setSides(value)
+							// drop factions the picked sides don't have
+							setFactions((current) =>
+								current.filter((faction) => {
+									const toggle = filters.factionToggles.find(
+										(t) => t.value === faction,
+									)
+									return !toggle || inPickedSides(toggle, value)
+								}),
+							)
 							if (formRef.current) autoSubmit(formRef.current)
 						}}
 					>
@@ -399,34 +407,47 @@ function Filters({
 							if (formRef.current) autoSubmit(formRef.current)
 						}}
 					>
-						{filters.factions.map((f) => (
-							<ToggleGroupItem
-								key={f.id}
-								value={f.id}
-								disabled={Boolean(side) && f.sideId !== side}
-								// both sides have a "Neutral"
-								aria-label={
-									filters.factions.some(
-										(o) => o.id !== f.id && o.name === f.name,
-									)
-										? `${f.name} (${f.sideId === 'corp' ? 'Corp' : 'Runner'})`
-										: undefined
-								}
-								style={
-									{ '--faction': factionColor(f.id) } as React.CSSProperties
-								}
-								className={cn(toggleClassName, factionToggleClassName)}
-							>
-								<span
-									aria-hidden
-									className="size-2.5 shrink-0 rounded-full bg-(--faction) transition-colors group-disabled/toggle:bg-current"
-								/>
-								{f.name}
-							</ToggleGroupItem>
-						))}
+						{filters.factionToggles.map((toggle) => {
+							const colors = [
+								...new Set(toggle.factions.map((f) => factionColor(f.id))),
+							]
+							return (
+								<ToggleGroupItem
+									key={toggle.value}
+									value={toggle.value}
+									disabled={!inPickedSides(toggle)}
+									title={
+										toggle.factions.length > 1
+											? toggle.factions.map((f) => f.name).join(', ')
+											: undefined
+									}
+									style={
+										{
+											// a group's own color would be arbitrary
+											'--faction':
+												colors.length === 1 ? colors[0] : 'var(--foreground)',
+										} as React.CSSProperties
+									}
+									className={cn(toggleClassName, factionToggleClassName)}
+								>
+									<span aria-hidden className="flex shrink-0">
+										{colors.map((color) => (
+											<span
+												key={color}
+												style={{ '--dot': color } as React.CSSProperties}
+												className="ring-background size-2.5 rounded-full bg-(--dot) transition-colors not-first:-ml-1 not-only:ring-1 group-disabled/toggle:bg-current"
+											/>
+										))}
+									</span>
+									{toggle.name}
+								</ToggleGroupItem>
+							)
+						})}
 					</ToggleGroup>
 				</ToggleFilter>
-				{side ? <input type="hidden" name="side" value={side} /> : null}
+				{sides.map((side) => (
+					<input key={side} type="hidden" name="side" value={side} />
+				))}
 				{factions.map((id) => (
 					<input key={id} type="hidden" name="faction" value={id} />
 				))}

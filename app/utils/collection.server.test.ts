@@ -116,6 +116,48 @@ test('searchCards filters by ownership across printings and variants', async () 
 	expect(await factions(['criminal', 'anarch'])).toBe(1)
 })
 
+test('searchCards groups neutrals and mini-factions, and takes several sides', async () => {
+	await prisma.cardType.create({ data: { id: 'event', name: 'Event' } })
+	const factions = [
+		{ id: 'anarch', sideId: 'runner', isMini: false },
+		{ id: 'neutral_runner', sideId: 'runner', isMini: false },
+		{ id: 'neutral_corp', sideId: 'corp', isMini: false },
+		{ id: 'apex', sideId: 'runner', isMini: true },
+		{ id: 'adam', sideId: 'runner', isMini: true },
+	]
+	for (const { id, sideId, isMini } of factions) {
+		await prisma.faction.create({ data: { id, name: id, sideId, isMini } })
+		await prisma.card.create({
+			data: {
+				id,
+				title: id,
+				strippedTitle: id,
+				sideId,
+				deckLimit: 3,
+				factionId: id,
+				typeId: 'event',
+			},
+		})
+	}
+	const user = await insertUser()
+	const titles = (params: Parameters<typeof searchCards>[1]) =>
+		searchCards(user.id, params).then((r) => r.cards.map((c) => c.title))
+
+	expect(await titles({ factions: ['neutral'] })).toEqual([
+		'neutral_corp',
+		'neutral_runner',
+	])
+	expect(await titles({ factions: ['neutral'], sides: ['corp'] })).toEqual([
+		'neutral_corp',
+	])
+	expect(await titles({ factions: ['mini', 'anarch'] })).toEqual([
+		'adam',
+		'anarch',
+		'apex',
+	])
+	expect(await titles({ sides: ['corp', 'runner'] })).toHaveLength(5)
+})
+
 test('set completion counts exact printings "as printed" and any printing for playsets', async () => {
 	const sgPrinting = await insertPrinting() // Corroder, 2 per System Gateway
 	await prisma.cardCycle.create({

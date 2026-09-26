@@ -239,8 +239,13 @@ test('picking a side turns off the other side’s factions', async ({
 	await expect(faction).toHaveAttribute('aria-pressed', 'true')
 	await expect(page).toHaveURL(/faction=/)
 
+	// both sides: the faction stays
 	const corp = sideToggle(page, 'Corp')
 	await corp.click()
+	await expect(page).toHaveURL(/side=runner&side=corp&faction=/)
+	await expect(faction).toHaveAttribute('aria-pressed', 'true')
+
+	await sideToggle(page, 'Runner').click()
 	await expect(page).toHaveURL('/collection?side=corp')
 	await expect(faction).toHaveAttribute('aria-pressed', 'false')
 	await expect(faction).toBeDisabled()
