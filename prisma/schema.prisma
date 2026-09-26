@@ -23,6 +23,7 @@ model User {
   password          Password?
   collectionEntries CollectionEntry[]
   variants          Variant[]
+  preferredArt      PreferredPrinting[]
   roles             Role[]
   sessions          Session[]
   connections       Connection[]
@@ -226,7 +227,8 @@ model Card {
   type      CardType @relation(fields: [typeId], references: [id])
   typeId    String
 
-  printings Printing[]
+  printings    Printing[]
+  preferredArt PreferredPrinting[]
 
   @@index([strippedTitle])
   @@index([sideId, factionId])
@@ -252,6 +254,7 @@ model Printing {
 
   collectionEntries CollectionEntry[]
   variants          Variant[]
+  preferredArt      PreferredPrinting[]
 
   @@index([cardId])
   @@index([setId, position])
@@ -306,5 +309,22 @@ model Variant {
   printingId String
 
   @@unique([userId, printingId, label])
+  @@index([printingId])
+}
+
+/// The printing whose art a user wants to see for a card, instead of the one
+/// picked for them (the newest printing they own, else the newest printing).
+model PreferredPrinting {
+  updatedAt DateTime @updatedAt
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  userId     String
+  card       Card     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  cardId     String
+  printing   Printing @relation(fields: [printingId], references: [id], onDelete: Cascade)
+  printingId String
+
+  @@id([userId, cardId])
+  @@index([cardId])
   @@index([printingId])
 }

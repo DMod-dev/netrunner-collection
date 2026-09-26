@@ -2,11 +2,13 @@ import { expect, test } from 'vitest'
 import { createUser } from '#tests/db-utils.ts'
 import {
 	addProductCopies,
+	clearPreferredPrinting,
 	createVariant,
 	deleteVariant,
 	getSetCompletion,
 	getSetsProgress,
 	searchCards,
+	setPreferredPrinting,
 	setPrintingQuantity,
 	setVariantQuantity,
 } from './collection.server.ts'
@@ -239,4 +241,42 @@ test('addProductCopies adds and removes whole products of plain copies', async (
 
 	expect(await addProductCopies(user.id, 'sg', -1)).toEqual({ changed: 0 })
 	expect(await addProductCopies(user.id, 'nope', 1)).toBeNull()
+})
+
+test('setPreferredPrinting saves one art per card, and clearPreferredPrinting forgets it', async () => {
+	const sgPrinting = await insertPrinting()
+	await prisma.cardCycle.create({
+		data: { id: 'core', name: 'Core', position: 0 },
+	})
+	await prisma.cardSet.create({
+		data: {
+			id: 'core',
+			name: 'Core Set',
+			position: 0,
+			size: 113,
+			setTypeId: 'core',
+			cycleId: 'core',
+		},
+	})
+	const corePrinting = await prisma.printing.create({
+		data: {
+			id: '01007',
+			position: 7,
+			quantity: 2,
+			cardId: 'corroder',
+			setId: 'core',
+		},
+	})
+	const user = await insertUser()
+	const preferred = () =>
+		searchCards(user.id, {}).then((r) => r.cards[0]?.preferredArt)
+
+	expect(await preferred()).toEqual([])
+	expect(await setPreferredPrinting(user.id, corePrinting.id)).toBe(true)
+	expect(await setPreferredPrinting(user.id, sgPrinting.id)).toBe(true)
+	expect(await preferred()).toEqual([{ printingId: sgPrinting.id }])
+	expect(await setPreferredPrinting(user.id, 'no-such-printing')).toBe(false)
+
+	await clearPreferredPrinting(user.id, 'corroder')
+	expect(await preferred()).toEqual([])
 })

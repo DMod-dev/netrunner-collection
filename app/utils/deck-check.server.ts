@@ -1,4 +1,5 @@
 import { cachedUntilNextSync } from './card-data-cache.server.ts'
+import { pickArtPrinting } from './collection.ts'
 import { prisma } from './db.server.ts'
 import { NRDB_JSON_API_HEADERS, NRDB_USER_AGENT } from './nrdb.server.ts'
 
@@ -282,6 +283,7 @@ export async function checkDeckAgainstCollection(
 					},
 				},
 			},
+			preferredArt: { where: { userId }, select: { printingId: true } },
 		},
 	})
 
@@ -305,7 +307,9 @@ export async function checkDeckAgainstCollection(
 			typeId: card.typeId,
 			typeName: card.type.name,
 			factionId: card.faction.id,
-			imageSmall: card.printings[0]?.imageSmall ?? null,
+			imageSmall:
+				pickArtPrinting(card.printings, card.preferredArt[0]?.printingId)
+					?.imageSmall ?? null,
 			isIdentity: card.typeId.endsWith('_identity'),
 			need,
 			owned,

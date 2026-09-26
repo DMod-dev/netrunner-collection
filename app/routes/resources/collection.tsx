@@ -1,4 +1,4 @@
-import { Trash01, XClose } from '@untitledui/icons'
+import { Check, Trash01, XClose } from '@untitledui/icons'
 import { useEffect, useRef, useState } from 'react'
 import { data, useFetcher } from 'react-router'
 import { toast } from 'sonner'
@@ -14,8 +14,10 @@ import {
 import { requireUserId } from '#app/utils/auth.server.ts'
 import {
 	addProductCopies,
+	clearPreferredPrinting,
 	createVariant,
 	deleteVariant,
+	setPreferredPrinting,
 	setPrintingQuantity,
 	setVariantQuantity,
 } from '#app/utils/collection.server.ts'
@@ -47,6 +49,14 @@ const CollectionActionSchema = z.discriminatedUnion('intent', [
 	z.object({
 		intent: z.literal('delete-variant'),
 		variantId: z.string().min(1),
+	}),
+	z.object({
+		intent: z.literal('set-default-art'),
+		printingId: z.string().min(1),
+	}),
+	z.object({
+		intent: z.literal('clear-default-art'),
+		cardId: z.string().min(1),
 	}),
 	z.object({
 		intent: z.literal('add-product'),
@@ -109,6 +119,16 @@ export async function action({ request }: Route.ActionArgs) {
 		}
 		case 'delete-variant': {
 			await deleteVariant(userId, submission.variantId)
+			return { ok: true } as const
+		}
+		case 'set-default-art': {
+			if (!(await setPreferredPrinting(userId, submission.printingId))) {
+				return data({ ok: false, error: 'Printing not found' }, { status: 404 })
+			}
+			return { ok: true } as const
+		}
+		case 'clear-default-art': {
+			await clearPreferredPrinting(userId, submission.cardId)
 			return { ok: true } as const
 		}
 		case 'add-product': {
@@ -407,6 +427,57 @@ export function DeleteVariantButton({
 				}
 			>
 				{dc.doubleCheck ? 'Delete?' : <Icon icon={Trash01} />}
+			</Button>
+		</fetcher.Form>
+	)
+}
+
+/**
+ * Makes a printing's art the one shown for its card, or (pressed again) goes
+ * back to picking it automatically.
+ */
+export function DefaultArtButton({
+	cardId,
+	printingId,
+	label,
+	isDefault,
+}: {
+	cardId: string
+	printingId: string
+	label: string
+	isDefault: boolean
+}) {
+	const fetcher = useFetcher<typeof clientAction>()
+	const pending = fetcher.formData?.get('intent')
+	const pressed = pending ? pending === 'set-default-art' : isDefault
+	return (
+		<fetcher.Form method="POST" action={ACTION_PATH}>
+			{pressed ? (
+				<>
+					<input type="hidden" name="intent" value="clear-default-art" />
+					<input type="hidden" name="cardId" value={cardId} />
+				</>
+			) : (
+				<>
+					<input type="hidden" name="intent" value="set-default-art" />
+					<input type="hidden" name="printingId" value={printingId} />
+				</>
+			)}
+			<Button
+				type="submit"
+				variant="outline"
+				size="sm"
+				aria-pressed={pressed}
+				aria-label={`Default art: ${label}`}
+				title={
+					pressed
+						? 'Always shown for this card. Press again to show the art you own instead.'
+						: 'Always show this art for the card, whichever printings you own'
+				}
+				className="aria-pressed:border-selected aria-pressed:bg-selected aria-pressed:text-selected-foreground aria-pressed:hover:bg-selected/85 aria-pressed:hover:text-selected-foreground dark:aria-pressed:bg-selected dark:aria-pressed:hover:bg-selected/85 h-6 gap-1 px-2 text-xs"
+			>
+				{pressed ? <Icon icon={Check} size="xs" /> : null}
+				Default art
 			</Button>
 		</fetcher.Form>
 	)

@@ -2,7 +2,11 @@ import { type SEOHandle } from '@nasa-gcn/remix-seo'
 import { useState } from 'react'
 import { data, Form } from 'react-router'
 import { toast } from 'sonner'
-import { CountBadge } from '#app/components/card-art.tsx'
+import {
+	CountBadge,
+	washedOut,
+	washedOutBackdrop,
+} from '#app/components/card-art.tsx'
 import { CollectionNav } from '#app/components/collection-ui.tsx'
 import { GeneralErrorBoundary } from '#app/components/error-boundary.tsx'
 import { FactionDot } from '#app/components/printing-tile.tsx'
@@ -196,17 +200,24 @@ function DeckResult({ result }: { result: Result }) {
 						)}
 					>
 						{row.imageSmall ? (
-							<img
-								src={row.imageSmall}
-								alt=""
-								loading="lazy"
-								width={40}
-								height={56}
+							<span
 								className={cn(
-									'h-14 w-10 shrink-0 rounded object-cover',
-									row.owned === 0 && 'opacity-60 grayscale',
+									'shrink-0 rounded',
+									row.owned === 0 && washedOutBackdrop,
 								)}
-							/>
+							>
+								<img
+									src={row.imageSmall}
+									alt=""
+									loading="lazy"
+									width={40}
+									height={56}
+									className={cn(
+										'h-14 w-10 rounded object-cover',
+										row.owned === 0 && washedOut,
+									)}
+								/>
+							</span>
 						) : null}
 						<div className="flex min-w-0 flex-1 flex-col">
 							<span className="leading-tight font-semibold">

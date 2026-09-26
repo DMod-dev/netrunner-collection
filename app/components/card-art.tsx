@@ -1,6 +1,7 @@
 import { DotsHorizontal, XClose } from '@untitledui/icons'
 import { useEffect, useRef, useState } from 'react'
 import {
+	DefaultArtButton,
 	QuantityStepper,
 	STEPPER_SET_EVENT,
 	STEPPER_STEP_EVENT,
@@ -55,7 +56,7 @@ export function CardArtTile({
 }: {
 	imageUrl: string | null
 	alt: string
-	/** Grey out the art, e.g. when none are owned. */
+	/** Wash out the art, e.g. when none are owned. */
 	dimmed?: boolean
 	/**
 	 * Shown in the corner of the art while the overlay is closed, e.g. the
@@ -122,7 +123,10 @@ export function CardArtTile({
 		>
 			<button
 				type="button"
-				className="focus-visible:ring-ring absolute inset-0 rounded-lg focus-visible:ring-2 focus-visible:outline-none"
+				className={cn(
+					'focus-visible:ring-ring absolute inset-0 rounded-lg focus-visible:ring-2 focus-visible:outline-none',
+					dimmed && washedOutBackdrop,
+				)}
 				aria-expanded={pinned}
 				aria-label={`${alt}: show details`}
 				onClick={() => setPinned((p) => !p)}
@@ -136,7 +140,7 @@ export function CardArtTile({
 						height={420}
 						className={cn(
 							'size-full object-cover transition-[filter,opacity]',
-							dimmed && 'opacity-60 grayscale',
+							dimmed && washedOut,
 						)}
 					/>
 				) : (
@@ -179,6 +183,11 @@ export function CardArtTile({
 		</div>
 	)
 }
+
+// Unowned art fades toward white, keeping enough colour to recognise it. The
+// image goes see-through over a white backdrop.
+export const washedOutBackdrop = 'bg-white'
+export const washedOut = 'opacity-45 saturate-75'
 
 /** Owned vs target pill, green once the target is met. */
 export function CountBadge({
@@ -258,6 +267,7 @@ export function OverlayCounters({
 export function VersionsButton({
 	title,
 	printings,
+	defaultArt,
 }: {
 	title: string
 	printings: Array<{
@@ -265,6 +275,8 @@ export function VersionsButton({
 		label: string
 		heading: string
 	}>
+	/** Lets each printing be picked as the card's art, if it has several. */
+	defaultArt?: { cardId: string; printingId: string | null }
 }) {
 	const dialogRef = useRef<HTMLDialogElement>(null)
 	return (
@@ -313,6 +325,16 @@ export function VersionsButton({
 									printing={printing}
 									label={label}
 									heading={heading}
+									badge={
+										defaultArt && printings.length > 1 ? (
+											<DefaultArtButton
+												cardId={defaultArt.cardId}
+												printingId={printing.id}
+												label={label}
+												isDefault={printing.id === defaultArt.printingId}
+											/>
+										) : null
+									}
 								/>
 							</li>
 						))}

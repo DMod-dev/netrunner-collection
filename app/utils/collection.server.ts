@@ -101,6 +101,7 @@ export async function searchCards(userId: string, params: CardSearchParams) {
 					orderBy: { dateRelease: 'desc' },
 					select: printingSelect(userId),
 				},
+				preferredArt: { where: { userId }, select: { printingId: true } },
 			},
 		}),
 	])
@@ -275,6 +276,30 @@ export async function deleteVariant(userId: string, variantId: string) {
 		where: { id: variantId, userId },
 	})
 	return count > 0
+}
+
+/**
+ * Show this printing's art for its card from now on. Returns false if the
+ * printing doesn't exist.
+ */
+export async function setPreferredPrinting(userId: string, printingId: string) {
+	const printing = await prisma.printing.findUnique({
+		where: { id: printingId },
+		select: { cardId: true },
+	})
+	if (!printing) return false
+	const { cardId } = printing
+	await prisma.preferredPrinting.upsert({
+		where: { userId_cardId: { userId, cardId } },
+		create: { userId, cardId, printingId },
+		update: { printingId },
+	})
+	return true
+}
+
+/** Go back to picking a card's art automatically. */
+export async function clearPreferredPrinting(userId: string, cardId: string) {
+	await prisma.preferredPrinting.deleteMany({ where: { userId, cardId } })
 }
 
 // ---------------------------------------------------------------------------

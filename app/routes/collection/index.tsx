@@ -47,6 +47,7 @@ import {
 	getFilterOptions,
 	searchCards,
 } from '#app/utils/collection.server.ts'
+import { pickArtPrinting } from '#app/utils/collection.ts'
 import { prisma } from '#app/utils/db.server.ts'
 import { cn, useDebounce } from '#app/utils/misc.tsx'
 import { type Route } from './+types/index.ts'
@@ -580,8 +581,10 @@ function CardTile({
 			p.variants.reduce((vSum, v) => vSum + v.quantity, 0),
 		0,
 	)
+	const preferredId = card.preferredArt[0]?.printingId ?? null
 	const featured =
-		card.printings.find((p) => p.set.id === featuredSetId) ?? card.printings[0]
+		card.printings.find((p) => p.set.id === featuredSetId) ??
+		pickArtPrinting(card.printings, preferredId)
 	const labelFor = (p: LoaderCard['printings'][number]) =>
 		`${card.title} (${p.set.name})`
 
@@ -636,6 +639,7 @@ function CardTile({
 							label: labelFor(printing),
 							heading: printing.set.name,
 						}))}
+						defaultArt={{ cardId: card.id, printingId: preferredId }}
 					/>
 				</>
 			}

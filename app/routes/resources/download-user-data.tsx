@@ -33,6 +33,9 @@ export async function loader({ request }: Route.LoaderArgs) {
 					updatedAt: true,
 				},
 			},
+			preferredArt: {
+				select: { cardId: true, printingId: true, updatedAt: true },
+			},
 			password: false, // <-- intentionally omit password
 			sessions: true,
 			roles: true,
