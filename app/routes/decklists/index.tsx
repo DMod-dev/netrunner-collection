@@ -40,17 +40,19 @@ export async function loader({ request }: Route.LoaderArgs) {
 	const get = (key: string) => url.searchParams.get(key) || undefined
 	const side = DECK_SIDES.find((s) => s === get('side'))
 	const formatId = DECK_FORMATS.find((f) => f === get('format'))
-	const [results, factions] = await Promise.all([
-		searchPublicDecks({
-			q: get('q'),
-			side,
-			factionId: get('faction'),
-			formatId,
-			author: get('author'),
-			page: Number(get('page')) || 1,
-		}),
-		getIdentityFactions(),
-	])
+	const factions = await getIdentityFactions()
+	// the form only offers the side's factions; one from the other side
+	// would filter out everything without showing why
+	const faction = factions.find((f) => f.id === get('faction'))
+	const results = await searchPublicDecks({
+		q: get('q'),
+		side,
+		factionId:
+			faction && (!side || faction.sideId === side) ? faction.id : undefined,
+		formatId,
+		author: get('author'),
+		page: Number(get('page')) || 1,
+	})
 	return { ...results, factions }
 }
 
@@ -163,6 +165,30 @@ function SearchForm({
 	// the form remounts when the search changes from outside it, so the
 	// input only needs the URL's value once
 	const [initialQuery] = useState(() => searchParams.get('q') ?? '')
+	// the faction list follows the side as soon as it's picked
+	const [side, setSide] = useState(() =>
+		DECK_SIDES.find((s) => s === searchParams.get('side')),
+	)
+
+	const factionOptions = (sideId: string) =>
+		factions
+			.filter((f) => f.sideId === sideId)
+			.map((f) => (
+				<NativeSelectOption key={f.id} value={f.id}>
+					{f.name}
+				</NativeSelectOption>
+			))
+
+	/** Pick a side, and drop a faction from the other one. */
+	function changeSide(form: HTMLFormElement, value: string) {
+		const next = DECK_SIDES.find((s) => s === value)
+		setSide(next)
+		const faction = form.elements.namedItem('faction')
+		if (!(faction instanceof HTMLSelectElement) || !next) return
+		if (factions.find((f) => f.id === faction.value)?.sideId !== next) {
+			faction.value = ''
+		}
+	}
 
 	// Submit only what's set, so URLs stay short; a new search starts on
 	// page 1.
@@ -189,7 +215,13 @@ function SearchForm({
 			method="GET"
 			role="search"
 			className="bg-muted flex flex-col gap-3 rounded-lg p-3"
-			onChange={(e) => autoSubmit(e.currentTarget)}
+			onChange={(e) => {
+				const target = e.target
+				if (target instanceof HTMLSelectElement && target.name === 'side') {
+					changeSide(e.currentTarget, target.value)
+				}
+				autoSubmit(e.currentTarget)
+			}}
 			onSubmit={(e) => {
 				e.preventDefault()
 				autoSubmit.cancel()
@@ -240,17 +272,13 @@ function SearchForm({
 					label="Faction"
 					searchParams={searchParams}
 				>
-					{DECK_SIDES.map((side) => (
-						<NativeSelectOptGroup key={side} label={SIDE_NAMES[side]}>
-							{factions
-								.filter((f) => f.sideId === side)
-								.map((f) => (
-									<NativeSelectOption key={f.id} value={f.id}>
-										{f.name}
-									</NativeSelectOption>
-								))}
-						</NativeSelectOptGroup>
-					))}
+					{side
+						? factionOptions(side)
+						: DECK_SIDES.map((s) => (
+								<NativeSelectOptGroup key={s} label={SIDE_NAMES[s]}>
+									{factionOptions(s)}
+								</NativeSelectOptGroup>
+							))}
 				</FilterSelect>
 				<FilterSelect name="format" label="Format" searchParams={searchParams}>
 					{DECK_FORMATS.map((f) => (
