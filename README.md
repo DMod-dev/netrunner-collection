@@ -20,8 +20,8 @@ you've completed and which cards you still need for a deck. Card data comes from
   **Require deck legality** to see format problems as warnings.
 - **Fill with collection:** reserve a deck's cards from your collection. Each
   card shows how many copies are yours, how many you still need, and which of
-  your other decks hold the rest. The first deck filled keeps the copies;
-  unfill a deck to give them back.
+  your other decks hold the rest. The first deck filled keeps the copies; unfill
+  a deck to give them back.
 - **Deck check:** paste a decklist and see what you're short.
 - **Import and export:** a CSV of your collection.
 - **Sharing:** let other users browse your collection, read-only, from
