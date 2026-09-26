@@ -190,21 +190,24 @@ export function CardArtTile({
 export const washedOutBackdrop = 'bg-white dark:bg-background'
 export const washedOut = 'opacity-45 saturate-75'
 
-/** Owned vs target pill, green once the target is met. */
+/**
+ * How many are owned, as a pill. With a target (set completion, a deck) it
+ * reads "owned / target" and turns green once the target is met.
+ */
 export function CountBadge({
 	owned,
 	target,
-	title,
+	title = target === undefined ? `You own ${owned}` : undefined,
 }: {
 	owned: number
-	target: number
+	target?: number
 	title?: string
 }) {
 	return (
 		<span
 			className={cn(
 				'shrink-0 rounded-full px-2 py-0.5 text-xs font-bold tabular-nums',
-				owned >= target
+				target !== undefined && owned >= target
 					? 'bg-success text-success-foreground'
 					: owned > 0
 						? 'bg-secondary text-secondary-foreground'
@@ -212,7 +215,7 @@ export function CountBadge({
 			)}
 			title={title}
 		>
-			{owned} / {target}
+			{target === undefined ? owned : `${owned} / ${target}`}
 		</span>
 	)
 }

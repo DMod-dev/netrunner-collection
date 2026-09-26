@@ -272,7 +272,7 @@ test('tiles show the owned count and change it', async ({
 	const tile = cardTile(page, title)
 
 	// visible without hovering (the overlay has its own copy)
-	await expect(tile.getByText('0 / 3').first()).toBeVisible()
+	await expect(tile.getByTitle('You own 0').first()).toBeVisible()
 
 	const add = tile.getByRole('button', {
 		name: `Add one ${title} (${setName})`,
@@ -292,6 +292,8 @@ test('tiles show the owned count and change it', async ({
 		await route.continue().catch(() => {})
 	})
 	await tile.hover()
+	// the deck limit is only information, not a target
+	await expect(tile.getByText('Deck limit 3')).toBeVisible()
 	await add.click()
 	await add.click()
 	await expect(quantity).toHaveValue('2')
@@ -319,7 +321,7 @@ test('tiles show the owned count and change it', async ({
 		.toEqual({ quantity: 3 })
 
 	await page.mouse.move(0, 0)
-	await expect(tile.getByText('3 / 3').first()).toBeVisible()
+	await expect(tile.getByTitle('You own 3').first()).toHaveText('3')
 })
 
 test('a failed quantity change is reported and undone', async ({

@@ -613,7 +613,7 @@ function CardTile({
 			imageUrl={featured?.imageLarge ?? featured?.imageSmall ?? null}
 			alt={card.title}
 			dimmed={owned === 0}
-			badge={<CountBadge owned={owned} target={card.deckLimit} />}
+			badge={<CountBadge owned={owned} />}
 			overlay={
 				<>
 					<header className="flex flex-col gap-1">
@@ -628,16 +628,16 @@ function CardTile({
 									{card.title}
 								</a>
 							</h2>
-							<CountBadge
-								owned={owned}
-								target={card.deckLimit}
-								title={`You own ${owned} (deck limit ${card.deckLimit})`}
-							/>
+							<CountBadge owned={owned} />
 						</div>
 						<p className="text-muted-foreground text-xs">
 							<FactionDot factionId={card.faction.id} /> {card.faction.name} ·{' '}
 							{card.type.name}
 							{card.displaySubtypes ? `: ${card.displaySubtypes}` : ''}
+						</p>
+						{/* a deck building limit, not a collection target */}
+						<p className="text-muted-foreground text-xs">
+							Deck limit {card.deckLimit}
 						</p>
 					</header>
 					<ul className="flex flex-col gap-2">
