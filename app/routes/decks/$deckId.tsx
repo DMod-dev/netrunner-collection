@@ -38,6 +38,7 @@ import {
 	ProblemList,
 	rowFillStatus,
 } from '#app/components/deck-ui.tsx'
+import { DeckExportMenu, ImportDeckDialog } from '#app/components/deck-io.tsx'
 import { GeneralErrorBoundary } from '#app/components/error-boundary.tsx'
 import { FactionDot } from '#app/components/printing-tile.tsx'
 import { Button, buttonVariants } from '#app/components/ui/button.tsx'
@@ -67,6 +68,7 @@ import { requireUserId } from '#app/utils/auth.server.ts'
 import { getFilterOptions, searchCards } from '#app/utils/collection.server.ts'
 import { pickArtPrinting } from '#app/utils/collection.ts'
 import { getDeckCollection } from '#app/utils/deck-fill.server.ts'
+import { toNrdbText } from '#app/utils/deck-export.ts'
 import { NO_COPIES } from '#app/utils/deck-fill.ts'
 import {
 	DECK_FORMAT_NAMES,
@@ -246,6 +248,7 @@ export default function DeckBuilderRoute({ loaderData }: Route.ComponentProps) {
 	const saved = new Map(deck.cards.map((e) => [e.card.id, e.quantity]))
 	const { stats, problems } = evaluation
 	const errors = problems.filter((p) => p.severity === 'error').length
+	const text = toNrdbText({ ...deck, cards: entries }, evaluation)
 
 	return (
 		<main className="container mb-24 flex flex-col gap-4 lg:mb-8">
@@ -258,6 +261,8 @@ export default function DeckBuilderRoute({ loaderData }: Route.ComponentProps) {
 					entries.reduce((sum, e) => sum + e.fromCollection, 0)
 				}
 				total={(deck.identity ? 1 : 0) + stats.cardCount}
+				text={text}
+				missing={missingList(deck, entries, collection)}
 			/>
 			{collection.stale ? (
 				<div
@@ -339,18 +344,57 @@ export default function DeckBuilderRoute({ loaderData }: Route.ComponentProps) {
 	)
 }
 
+/**
+ * "2x Card" for each copy a filled deck needs that the collection doesn't
+ * have, identity first; null if there are none (or the deck isn't filled).
+ */
+function missingList(
+	deck: Deck,
+	entries: DecklistEntry[],
+	collection: Collection,
+) {
+	if (!collection.filled) return null
+	const rows = [
+		...(deck.identity
+			? [
+					{
+						title: deck.identity.title,
+						...rowFillStatus(
+							collection,
+							deck.identity.id,
+							1,
+							deck.identityFromCollection,
+						),
+					},
+				]
+			: []),
+		...entries.map((e) => ({
+			title: e.card.title,
+			...rowFillStatus(collection, e.card.id, e.quantity, e.fromCollection),
+		})),
+	]
+	const lines = rows
+		.filter((row) => row.status.need > 0)
+		.map((row) => `${row.status.need}x ${row.title}`)
+	return lines.length ? lines.join('\n') : null
+}
+
 function DeckToolbar({
 	deck,
 	requireLegality,
 	filled,
 	fromCollection,
 	total,
+	text,
+	missing,
 }: {
 	deck: Deck
 	requireLegality: boolean
 	filled: boolean
 	fromCollection: number
 	total: number
+	text: string
+	missing: string | null
 }) {
 	const id = useId()
 	const nameFetcher = useFetcher<typeof deckClientAction>({
@@ -448,11 +492,27 @@ function DeckToolbar({
 					fromCollection={fromCollection}
 					total={total}
 				/>
+				<ImportDeckDialog deckId={deck.id} />
+				<DeckExportMenu deckId={deck.id} text={text} missing={missing} />
 				<DeleteDeckButton deckId={deck.id} name={deck.name} />
 			</div>
-			{deck.rules?.restrictionName ? (
-				<p className="text-muted-foreground text-xs">
-					{DECK_FORMAT_NAMES[deck.formatId]}: {deck.rules.restrictionName}
+			{deck.rules?.restrictionName || deck.nrdbUrl ? (
+				<p className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 text-xs">
+					{deck.rules?.restrictionName ? (
+						<span>
+							{DECK_FORMAT_NAMES[deck.formatId]}: {deck.rules.restrictionName}
+						</span>
+					) : null}
+					{deck.nrdbUrl ? (
+						<a
+							href={deck.nrdbUrl}
+							target="_blank"
+							rel="noreferrer"
+							className="hover:text-foreground underline"
+						>
+							Imported from NetrunnerDB
+						</a>
+					) : null}
 				</p>
 			) : null}
 		</header>

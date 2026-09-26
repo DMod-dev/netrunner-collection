@@ -22,7 +22,12 @@ you've completed and which cards you still need for a deck. Card data comes from
   card shows how many copies are yours, how many you still need, and which of
   your other decks hold the rest. The first deck filled keeps the copies; unfill
   a deck to give them back.
-- **Deck check:** paste a decklist and see what you're short.
+- **Import and export decks:** paste a NetrunnerDB link or a decklist to create
+  a deck, filled from your collection, or to replace a deck's cards. Copy or
+  download a deck as text in NetrunnerDB's format, or copy the cards you're
+  missing.
+- **Deck check:** paste a decklist and see what you're short, and which copies
+  your decks already use, without saving anything; save it as a deck from there.
 - **Import and export:** a CSV of your collection.
 - **Sharing:** let other users browse your collection, read-only, from
   **Settings → Share your collection**. Collections shared with you are under

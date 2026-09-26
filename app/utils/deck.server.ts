@@ -314,8 +314,9 @@ export async function createDeck(
 
 /**
  * Set how many copies of a card the deck has; 0 takes it out. Copies reserved
- * from the collection never exceed the new count. Cards from the other side,
- * and identities (a deck's identity is set on its own), are refused.
+ * from the collection never exceed the new count. Adding cards from the other
+ * side, or identities (a deck's identity is set on its own), is refused;
+ * taking them out isn't.
  */
 export async function setDeckCardQuantity(
 	userId: string,
@@ -331,20 +332,21 @@ export async function setDeckCardQuantity(
 		select: { title: true, sideId: true, typeId: true },
 	})
 	if (!card) return { error: 'Card not found', status: 404 }
-	if (isIdentity(card)) {
-		return {
-			error: `${card.title} is an identity; change the deck’s identity instead`,
-			status: 400,
-		}
-	}
-	if (card.sideId !== deck.sideId) {
-		return {
-			error: `${card.title} is a ${card.sideId} card; this is a ${deck.sideId} deck`,
-			status: 400,
-		}
+	const key = { deckId_cardId: { deckId, cardId } }
+	const misfit = isIdentity(card)
+		? `${card.title} is an identity; change the deck’s identity instead`
+		: card.sideId !== deck.sideId
+			? `${card.title} is a ${card.sideId} card; this is a ${deck.sideId} deck`
+			: null
+	if (misfit) {
+		// an import can bring them in; they can only be taken out
+		const row = await prisma.deckCard.findUnique({
+			where: key,
+			select: { quantity: true },
+		})
+		if (clamped > (row?.quantity ?? 0)) return { error: misfit, status: 400 }
 	}
 
-	const key = { deckId_cardId: { deckId, cardId } }
 	await prisma.$transaction(async (tx) => {
 		if (clamped === 0) {
 			await tx.deckCard.deleteMany({ where: { deckId, cardId } })

@@ -195,6 +195,37 @@ test('filling from the collection shows what’s missing and what’s in use', a
 	).toEqual({ fromCollection: 2 })
 })
 
+test('"Copy as text" copies the decklist; an imported deck links back', async () => {
+	const user = userEvent.setup()
+	await insertCards()
+	const owner = await insertUser()
+	const deck = await prisma.deck.create({
+		data: {
+			userId: owner.id,
+			name: 'Glacier',
+			sideId: 'corp',
+			identityCardId: 'precision_design',
+			nrdbUrl: 'https://netrunnerdb.com/en/decklist/abc',
+			cards: { create: { cardId: 'hedge_fund', quantity: 3 } },
+		},
+	})
+	renderBuilder(owner.cookie, `/decks/${deck.id}`)
+
+	expect(
+		await screen.findByRole('link', { name: 'Imported from NetrunnerDB' }),
+	).toHaveAttribute('href', 'https://netrunnerdb.com/en/decklist/abc')
+	await user.click(screen.getByRole('button', { name: 'Export' }))
+	expect(
+		await screen.findByRole('menuitem', { name: 'Download .txt' }),
+	).toHaveAttribute('href', `/resources/deck-export?deckId=${deck.id}`)
+	await user.click(screen.getByRole('menuitem', { name: 'Copy as text' }))
+	await expect
+		.poll(() => navigator.clipboard.readText())
+		.toMatch(
+			/^Glacier\nHaas-Bioroid: Precision Design\n\nOperation \(3\)\n3x Hedge Fund\n/,
+		)
+})
+
 test('someone else’s deck is a 404', async () => {
 	await insertCards()
 	const owner = await insertUser()

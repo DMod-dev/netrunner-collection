@@ -13,7 +13,7 @@ import {
 	type DeckStats as DeckStatsData,
 	type Problem,
 } from '#app/utils/deck-rules.ts'
-import { DECK_CARD_TYPES, type DeckSide } from '#app/utils/deck.ts'
+import { type DeckSide, groupByType } from '#app/utils/deck.ts'
 import { cn } from '#app/utils/misc.tsx'
 import { FactionDot, factionColor } from './printing-tile.tsx'
 import { Icon } from './ui/icon.tsx'
@@ -293,32 +293,6 @@ export function ProblemList({ problems }: { problems: Problem[] }) {
 			</ul>
 		</section>
 	)
-}
-
-/** The decklist grouped by type, in the order players expect for the side. */
-function groupByType(entries: DecklistEntry[], side: DeckSide) {
-	const order = DECK_CARD_TYPES[side]
-	const groups = new Map<string, { name: string; entries: DecklistEntry[] }>()
-	for (const entry of entries) {
-		const { typeId, typeName } = entry.card
-		const group = groups.get(typeId)
-		if (group) group.entries.push(entry)
-		else groups.set(typeId, { name: typeName, entries: [entry] })
-	}
-	const rank = (typeId: string) => {
-		const i = order.indexOf(typeId)
-		return i === -1 ? order.length : i
-	}
-	return [...groups.entries()]
-		.sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
-		.map(([typeId, group]) => ({
-			typeId,
-			name: group.name,
-			count: group.entries.reduce((n, e) => n + e.quantity, 0),
-			entries: [...group.entries].sort((a, b) =>
-				a.card.title.localeCompare(b.card.title),
-			),
-		}))
 }
 
 export function DecklistPanel({

@@ -6,7 +6,7 @@ import { createUser } from '#tests/db-utils.ts'
 import { insertCards } from '#tests/deck-db.ts'
 import { getSessionCookieHeader } from '#tests/utils.ts'
 import { getToast } from '#app/utils/toast.server.ts'
-import { action, fillMessage } from './deck.tsx'
+import { action, fillMessage, importToast } from './deck.tsx'
 
 async function insertUser() {
 	const user = await prisma.user.create({
@@ -102,6 +102,7 @@ test('every intent 404s on someone else’s deck', async () => {
 		{ intent: 'set-require-legality', requireLegality: 'false' },
 		{ intent: 'fill' },
 		{ intent: 'unfill' },
+		{ intent: 'import', deck: '1x Hedge Fund' },
 		{ intent: 'delete' },
 	]
 	for (const fields of attempts) {
@@ -188,7 +189,13 @@ async function toastOf(result: Awaited<ReturnType<typeof post>>) {
 	const { toast } = await getToast(
 		new Request('http://localhost/', { headers: { cookie } }),
 	)
-	return toast && { type: toast.type, description: toast.description }
+	return (
+		toast && {
+			type: toast.type,
+			description: toast.description,
+			...(toast.details ? { details: toast.details } : {}),
+		}
+	)
 }
 
 test('fill and unfill reserve copies and say how it went', async () => {
@@ -236,6 +243,70 @@ test('fill and unfill reserve copies and say how it went', async () => {
 			},
 		}),
 	).toEqual({ identityFromCollection: 0, cards: [{ fromCollection: 0 }] })
+})
+
+test('import replaces the cards, fills a filled deck again, and lists unknown lines', async () => {
+	await insertCards()
+	const user = await insertUser()
+	const deck = await insertDeck(user.id)
+	await prisma.deckCard.create({
+		data: { deckId: deck.id, cardId: 'hedge_fund', quantity: 1 },
+	})
+	await prisma.collectionEntry.create({
+		data: { userId: user.id, printingId: '30001', quantity: 3 },
+	})
+	const send = (text: string) =>
+		post(user.cookie, { intent: 'import', deckId: deck.id, deck: text })
+
+	// not filled: it stays that way
+	const plain = await send('2x Hedge Fund')
+	expect(outcome(plain)).toEqual({ status: 200, ok: true })
+	expect(await toastOf(plain)).toEqual({
+		type: 'success',
+		description: 'Replaced this deck’s cards',
+	})
+	expect(
+		await prisma.deckCard.findMany({
+			select: { quantity: true, fromCollection: true },
+		}),
+	).toEqual([{ quantity: 2, fromCollection: 0 }])
+
+	await post(user.cookie, { intent: 'fill', deckId: deck.id })
+	const filled = await send('3x Hedge Fund\n1x Nope')
+	expect(await toastOf(filled)).toEqual({
+		type: 'message',
+		// no copy of the identity
+		description:
+			'Took 3 of 4 cards from your collection. Couldn’t match 1 line:',
+		details: ['1x Nope'],
+	})
+	expect(
+		await prisma.deckCard.findMany({
+			select: { quantity: true, fromCollection: true },
+		}),
+	).toEqual([{ quantity: 3, fromCollection: 3 }])
+
+	expect(outcome(await send('nothing here'))).toMatchObject({
+		status: 400,
+		ok: false,
+		error: expect.stringMatching(/couldn’t find any cards/i),
+	})
+})
+
+test('importToast lists at most a few unknown lines, shortened', () => {
+	const lines = Array.from({ length: 12 }, (_, i) => `${i}x ${'x'.repeat(90)}`)
+	const toast = importToast({
+		title: 'Deck imported',
+		report: { taken: 45, total: 45 },
+		unfilled: '',
+		unrecognized: lines,
+	})
+	expect(toast.description).toBe(
+		'Took all 45 cards from your collection. Couldn’t match 12 lines:',
+	)
+	expect(toast.details).toHaveLength(11)
+	expect(toast.details?.[0]).toHaveLength(80)
+	expect(toast.details?.at(-1)).toBe('…and 2 more')
 })
 
 test('fillMessage', () => {

@@ -282,3 +282,40 @@ test('the title index is kept until the next successful NRDB sync', async () => 
 		'dirty_laundry',
 	])
 })
+
+test('checkDeckAgainstCollection shows copies other decks hold', async () => {
+	await insertCards()
+	const user = await prisma.user.create({
+		data: createUser(),
+		select: { id: true },
+	})
+	await prisma.collectionEntry.create({
+		data: { userId: user.id, printingId: '30002', quantity: 3 },
+	})
+	await prisma.deck.create({
+		data: {
+			userId: user.id,
+			name: 'Filled',
+			sideId: 'runner',
+			cards: {
+				create: { cardId: 'wildcat_strike', quantity: 2, fromCollection: 2 },
+			},
+		},
+	})
+
+	const result = await checkDeckAgainstCollection(user.id, {
+		name: null,
+		nrdbUrl: null,
+		cards: new Map([['wildcat_strike', 3]]),
+		unrecognized: [],
+	})
+
+	expect(result).toMatchObject({ missingCards: 0, inUseCards: 2 })
+	expect(result.rows[0]).toMatchObject({
+		owned: 3,
+		missing: 0,
+		reservedElsewhere: 2,
+		reservedBy: [{ name: 'Filled', quantity: 2 }],
+		status: { kind: 'inUseElsewhere', need: 0, inUse: 2 },
+	})
+})

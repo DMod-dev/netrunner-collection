@@ -1,6 +1,9 @@
 import { cachedUntilNextSync } from './card-data-cache.server.ts'
 import { pickArtPrinting } from './collection.ts'
 import { prisma } from './db.server.ts'
+import { getAvailability } from './deck-fill.server.ts'
+import { fillStatus, NO_COPIES } from './deck-fill.ts'
+import { isIdentity } from './deck-rules.ts'
 import { NRDB_JSON_API_HEADERS, NRDB_USER_AGENT } from './nrdb.server.ts'
 
 /** How long a deck check waits for NetrunnerDB before giving up. */
@@ -184,7 +187,10 @@ export function parseDeckLine(rawLine: string): ParsedLine | null {
 		count = Number(trailing[2])
 	}
 	// deck summary lines like "45 cards" or "15 influence spent"
-	if (count !== null && /^(cards?|influence|agenda points?)\b/i.test(name)) {
+	if (
+		count !== null &&
+		/^(cards?|influence|agenda points?|format points?)\b/i.test(name)
+	) {
 		return null
 	}
 	// "(System Gateway)" or "[sg]" set annotations
@@ -254,38 +260,46 @@ export async function parseDeckText(text: string): Promise<DeckRequirements> {
 	return { name, nrdbUrl: null, cards, unrecognized }
 }
 
-/** Compare a deck's requirements with what the user owns. */
+/**
+ * Compare a deck's requirements with what the user owns, and with what
+ * their decks filled from the collection already hold: each row is what
+ * filling a deck with these cards would find.
+ */
 export async function checkDeckAgainstCollection(
 	userId: string,
 	requirements: DeckRequirements,
 ) {
-	const cards = await prisma.card.findMany({
-		where: { id: { in: [...requirements.cards.keys()] } },
-		select: {
-			id: true,
-			title: true,
-			typeId: true,
-			type: { select: { name: true } },
-			faction: { select: { id: true, name: true } },
-			printings: {
-				orderBy: { dateRelease: 'desc' },
-				select: {
-					id: true,
-					imageSmall: true,
-					set: { select: { name: true } },
-					collectionEntries: {
-						where: { userId },
-						select: { quantity: true },
-					},
-					variants: {
-						where: { userId, quantity: { gt: 0 } },
-						select: { label: true, quantity: true },
+	const cardIds = [...requirements.cards.keys()]
+	const [cards, availability] = await Promise.all([
+		prisma.card.findMany({
+			where: { id: { in: cardIds } },
+			select: {
+				id: true,
+				title: true,
+				typeId: true,
+				type: { select: { name: true } },
+				faction: { select: { id: true, name: true } },
+				printings: {
+					orderBy: { dateRelease: 'desc' },
+					select: {
+						id: true,
+						imageSmall: true,
+						set: { select: { name: true } },
+						collectionEntries: {
+							where: { userId },
+							select: { quantity: true },
+						},
+						variants: {
+							where: { userId, quantity: { gt: 0 } },
+							select: { label: true, quantity: true },
+						},
 					},
 				},
+				preferredArt: { where: { userId }, select: { printingId: true } },
 			},
-			preferredArt: { where: { userId }, select: { printingId: true } },
-		},
-	})
+		}),
+		getAvailability(userId, cardIds, null),
+	])
 
 	const rows = cards.map((card) => {
 		const need = requirements.cards.get(card.id) ?? 0
@@ -301,6 +315,9 @@ export async function checkDeckAgainstCollection(
 			}
 		}
 		const owned = sources.reduce((sum, s) => sum + s.quantity, 0)
+		const { reservedElsewhere, reservedBy } =
+			availability.get(card.id) ?? NO_COPIES
+		const available = Math.max(0, owned - reservedElsewhere)
 		return {
 			id: card.id,
 			title: card.title,
@@ -310,10 +327,19 @@ export async function checkDeckAgainstCollection(
 			imageSmall:
 				pickArtPrinting(card.printings, card.preferredArt[0]?.printingId)
 					?.imageSmall ?? null,
-			isIdentity: card.typeId.endsWith('_identity'),
+			isIdentity: isIdentity(card),
 			need,
 			owned,
 			missing: Math.max(0, need - owned),
+			reservedElsewhere,
+			reservedBy,
+			// as if filled: whatever is free is taken
+			status: fillStatus({
+				quantity: need,
+				fromCollection: Math.min(need, available),
+				owned,
+				available,
+			}),
 			sources,
 		}
 	})
@@ -333,5 +359,7 @@ export async function checkDeckAgainstCollection(
 		totalCards: rows.reduce((sum, r) => sum + r.need, 0),
 		missingCards: missingRows.reduce((sum, r) => sum + r.missing, 0),
 		missingUnique: missingRows.length,
+		/** copies owned but held by decks filled from the collection */
+		inUseCards: rows.reduce((sum, r) => sum + r.status.inUse, 0),
 	}
 }
