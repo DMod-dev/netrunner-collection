@@ -1,5 +1,4 @@
 import {
-	Camera01,
 	Download01,
 	Link01,
 	Lock01,
@@ -14,17 +13,16 @@ import { getFormProps, getInputProps, useForm } from '@conform-to/react'
 import { getZodConstraint, parseWithZod } from '@conform-to/zod/v4'
 import { invariantResponse } from '@epic-web/invariant'
 import { type SEOHandle } from '@nasa-gcn/remix-seo'
-import { Img } from 'openimg/react'
 import { data, Link, useFetcher } from 'react-router'
 import { z } from 'zod'
 import { ErrorList, Field } from '#app/components/forms.tsx'
-import { buttonVariants } from '#app/components/ui/button.tsx'
 import { Icon } from '#app/components/ui/icon.tsx'
 import { StatusButton } from '#app/components/ui/status-button.tsx'
+import { UserIcon } from '#app/components/user-icon.tsx'
 import { requireUserId, sessionKey } from '#app/utils/auth.server.ts'
 import { getEnabledProviderNames } from '#app/utils/connections.server.ts'
 import { prisma } from '#app/utils/db.server.ts'
-import { getUserImgSrc, useDoubleCheck, cn } from '#app/utils/misc.tsx'
+import { useDoubleCheck } from '#app/utils/misc.tsx'
 import { authSessionStorage } from '#app/utils/session.server.ts'
 import { redirectWithToast } from '#app/utils/toast.server.ts'
 import { NameSchema, UsernameSchema } from '#app/utils/user-validation.ts'
@@ -49,9 +47,6 @@ export async function loader({ request }: Route.LoaderArgs) {
 			name: true,
 			username: true,
 			email: true,
-			image: {
-				select: { objectKey: true },
-			},
 			_count: {
 				select: {
 					sessions: {
@@ -117,28 +112,7 @@ export default function EditUserProfile({ loaderData }: Route.ComponentProps) {
 	return (
 		<div className="flex flex-col gap-12">
 			<div className="flex justify-center">
-				<div className="relative size-52">
-					<Img
-						src={getUserImgSrc(loaderData.user.image?.objectKey)}
-						alt={loaderData.user.name ?? loaderData.user.username}
-						className="h-full w-full rounded-full object-cover"
-						width={832}
-						height={832}
-						isAboveFold
-					/>
-					<Link
-						preventScrollReset
-						to="photo"
-						title="Change profile photo"
-						aria-label="Change profile photo"
-						className={cn(
-							buttonVariants({ variant: 'outline', size: 'icon-lg' }),
-							'absolute top-3 -right-3 size-10 rounded-full',
-						)}
-					>
-						<Icon icon={Camera01} className="size-4" />
-					</Link>
-				</div>
+				<UserIcon className="size-52" />
 			</div>
 			<UpdateProfile loaderData={loaderData} />
 

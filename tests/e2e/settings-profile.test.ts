@@ -58,19 +58,9 @@ test('Users can update their profile photo', async ({
 	login,
 }) => {
 	const user = await login()
-	await navigate('/settings/profile')
+	// photos aren't shown anywhere for now, so settings doesn't link here
+	await navigate('/settings/profile/photo')
 
-	const beforeSrc = await page
-		.getByRole('main')
-		.getByRole('img', { name: user.name ?? user.username })
-		.getAttribute('src')
-
-	await page.getByRole('link', { name: /change profile photo/i }).click()
-
-	await expect(page).toHaveURL(`/settings/profile/photo`)
-
-	// anchored: /change/i also matches the profile form's "Save changes",
-	// which can still be on screen when the URL has already changed
 	await page
 		.getByRole('button', { name: /^change$/i })
 		.setInputFiles('./tests/fixtures/images/users/seed/profile-images/kody.png')
@@ -82,13 +72,9 @@ test('Users can update their profile photo', async ({
 		'Was not redirected after saving the profile photo',
 	).toHaveURL(`/settings/profile`)
 
-	const afterSrc = await page
-		.getByRole('main')
-		.getByRole('img', { name: user.name ?? user.username })
-		.getAttribute('src')
-
-	// not sure how to get the before/after src with getAttribute inline
-	expect(beforeSrc).not.toEqual(afterSrc)
+	await expect
+		.poll(() => prisma.userImage.count({ where: { userId: user.id } }))
+		.toBe(1)
 })
 
 test('Users cannot upload a non-image as their profile photo', async ({
