@@ -195,7 +195,7 @@ export function CountBadge({
 			className={cn(
 				'shrink-0 rounded-full px-2 py-0.5 text-xs font-bold tabular-nums',
 				owned >= target
-					? 'bg-green-600 text-white dark:bg-green-500'
+					? 'bg-success text-success-foreground'
 					: owned > 0
 						? 'bg-secondary text-secondary-foreground'
 						: 'bg-muted text-muted-foreground',

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { data, useFetcher } from 'react-router'
 import { toast } from 'sonner'
 import { z } from 'zod'
+import { COMPLETION_TARGETS } from '#app/components/collection-ui.tsx'
 import { Button } from '#app/components/ui/button.tsx'
 import { Icon } from '#app/components/ui/icon.tsx'
 import { Input } from '#app/components/ui/input.tsx'
@@ -432,6 +433,19 @@ export function AddProductForm({
 	const isPending = fetcher.state !== 'idle'
 	const signedCopies = mode === 'add' ? copies : -copies
 	const cardTotal = copies * productSize
+	const asPrinted = COMPLETION_TARGETS[0]
+
+	// back to the defaults once a change is done
+	const done =
+		fetcher.state === 'idle' && fetcher.data?.ok ? fetcher.data : null
+	const [prevDone, setPrevDone] = useState(done)
+	if (done !== prevDone) {
+		setPrevDone(done)
+		if (done) {
+			setMode('add')
+			setCopies(1)
+		}
+	}
 
 	useEffect(() => {
 		if (fetcher.state !== 'idle' || !fetcher.data) return
@@ -518,6 +532,10 @@ export function AddProductForm({
 							: 'Remove'}
 				</Button>
 			</div>
+			<p className="text-muted-foreground basis-full text-xs">
+				Adds or removes plain copies of each card, as many as come in the
+				product: the same counts as the “{asPrinted.label}” target.
+			</p>
 		</fetcher.Form>
 	)
 }

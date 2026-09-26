@@ -1,7 +1,12 @@
 import { ArrowLeft } from '@untitledui/icons'
 import { invariantResponse } from '@epic-web/invariant'
 import { type SEOHandle } from '@nasa-gcn/remix-seo'
-import { Link, useSearchParams } from 'react-router'
+import {
+	type ShouldRevalidateFunctionArgs,
+	Link,
+	useNavigate,
+	useSearchParams,
+} from 'react-router'
 import {
 	CardArtTile,
 	CountBadge,
@@ -19,13 +24,15 @@ import {
 import { GeneralErrorBoundary } from '#app/components/error-boundary.tsx'
 import { FactionDot } from '#app/components/printing-tile.tsx'
 import { Icon } from '#app/components/ui/icon.tsx'
+import { Label } from '#app/components/ui/label.tsx'
+import { Switch } from '#app/components/ui/switch.tsx'
 import { AddProductForm } from '#app/routes/resources/collection.tsx'
 import { requireUserId } from '#app/utils/auth.server.ts'
 import {
 	getSetCompletion,
 	parseCompletionTarget,
 } from '#app/utils/collection.server.ts'
-import { cn } from '#app/utils/misc.tsx'
+import { formatMonthYear } from '#app/utils/dates.ts'
 import { type Route } from './+types/$setId.ts'
 
 export const handle: SEOHandle = {
@@ -42,6 +49,27 @@ export async function loader({ request, params }: Route.LoaderArgs) {
 	return { target, set }
 }
 
+// "Only show missing cards" filters on the client, so toggling it doesn't
+// need a round trip
+export function shouldRevalidate({
+	currentUrl,
+	nextUrl,
+	defaultShouldRevalidate,
+}: ShouldRevalidateFunctionArgs) {
+	const withoutShow = (url: URL) => {
+		const params = new URLSearchParams(url.search)
+		params.delete('show')
+		return `${url.pathname}?${params}`
+	}
+	if (
+		currentUrl.search !== nextUrl.search &&
+		withoutShow(currentUrl) === withoutShow(nextUrl)
+	) {
+		return false
+	}
+	return defaultShouldRevalidate
+}
+
 export const meta: Route.MetaFunction = ({ loaderData }) => [
 	{
 		title: `${loaderData?.set.name ?? 'Set'} | Netrunner Collection`,
@@ -51,6 +79,7 @@ export const meta: Route.MetaFunction = ({ loaderData }) => [
 export default function SetRoute({ loaderData }: Route.ComponentProps) {
 	const { target, set } = loaderData
 	const [searchParams] = useSearchParams()
+	const navigate = useNavigate()
 	const missingOnly = searchParams.get('show') === 'missing'
 	const printings = missingOnly
 		? set.printings.filter((p) => p.progress.have < p.progress.need)
@@ -59,10 +88,16 @@ export default function SetRoute({ loaderData }: Route.ComponentProps) {
 		(p) => p.progress.have < p.progress.need,
 	).length
 
-	const showParams = new URLSearchParams(searchParams)
-	if (missingOnly) showParams.delete('show')
-	else showParams.set('show', 'missing')
-	const showQuery = showParams.toString()
+	function setMissingOnly(checked: boolean) {
+		const params = new URLSearchParams(searchParams)
+		if (checked) params.set('show', 'missing')
+		else params.delete('show')
+		const query = params.toString()
+		void navigate(
+			{ search: query ? `?${query}` : '' },
+			{ replace: true, preventScrollReset: true },
+		)
+	}
 
 	return (
 		<main className="container mb-24 flex flex-col gap-6">
@@ -81,9 +116,7 @@ export default function SetRoute({ loaderData }: Route.ComponentProps) {
 						<p className="text-muted-foreground text-sm">
 							{set.cycle.name !== set.name ? `${set.cycle.name} · ` : ''}
 							{formatSetType(set.setTypeId)}
-							{set.dateRelease
-								? ` · ${new Date(set.dateRelease).toLocaleDateString(undefined, { year: 'numeric', month: 'long' })}`
-								: ''}
+							{set.dateRelease ? ` · ${formatMonthYear(set.dateRelease)}` : ''}
 						</p>
 					</div>
 					<TargetToggle target={target} />
@@ -121,29 +154,11 @@ export default function SetRoute({ loaderData }: Route.ComponentProps) {
 			/>
 
 			<div className="flex flex-wrap items-center justify-between gap-2">
-				<div className="flex items-center gap-2 self-start text-sm">
-					{/* a link, not a checkbox, so the filter lives in the URL */}
-					<Link
-						to={{ search: showQuery ? `?${showQuery}` : '' }}
-						replace
-						preventScrollReset
-						role="switch"
-						aria-checked={missingOnly}
-						className={cn(
-							'relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors',
-							missingOnly ? 'bg-primary' : 'bg-muted-foreground/40',
-						)}
-					>
-						<span
-							className={cn(
-								'bg-background absolute top-0.5 size-4 rounded-full shadow transition-[left]',
-								missingOnly ? 'left-[1.125rem]' : 'left-0.5',
-							)}
-						/>
-						<span className="sr-only">Only show missing cards</span>
-					</Link>
-					<span aria-hidden>Only show missing cards</span>
-				</div>
+				{/* the filter lives in the URL, so it survives a reload */}
+				<Label className="self-start font-normal">
+					<Switch checked={missingOnly} onCheckedChange={setMissingOnly} />
+					Only show missing cards
+				</Label>
 				<ShortcutHint />
 			</div>
 

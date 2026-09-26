@@ -1,17 +1,7 @@
-import { useEffect, useRef } from 'react'
-import { Link, NavLink, useLocation, useSearchParams } from 'react-router'
+import { Link, NavLink, useSearchParams } from 'react-router'
 import { cn } from '#app/utils/misc.tsx'
 
 export function CollectionNav() {
-	const navRef = useRef<HTMLElement>(null)
-	const { pathname } = useLocation()
-	// on narrow screens the tabs scroll sideways; keep the current one visible
-	useEffect(() => {
-		navRef.current
-			?.querySelector('[aria-current="page"]')
-			?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-	}, [pathname])
-
 	const tabClass = ({ isActive }: { isActive: boolean }) =>
 		cn(
 			'rounded-md px-2.5 py-1.5 text-sm font-semibold transition-colors sm:px-4',
@@ -20,10 +10,10 @@ export function CollectionNav() {
 				: 'text-muted-foreground hover:text-foreground',
 		)
 	return (
+		// wraps rather than scrolls on narrow screens, so every tab stays in view
 		<nav
-			ref={navRef}
 			aria-label="Collection views"
-			className="bg-muted inline-flex max-w-full [scrollbar-width:none] gap-1 self-start overflow-x-auto rounded-lg p-1 whitespace-nowrap"
+			className="bg-muted inline-flex max-w-full flex-wrap gap-1 self-start rounded-lg p-1 whitespace-nowrap"
 		>
 			<NavLink to="/collection" end className={tabClass}>
 				Cards
@@ -70,7 +60,7 @@ export function ProgressBar({
 			<div
 				className={cn(
 					'h-full rounded-full transition-[width]',
-					complete ? 'bg-green-600 dark:bg-green-500' : 'bg-primary',
+					complete ? 'bg-success' : 'bg-primary',
 				)}
 				style={{ width: `${percent}%` }}
 			/>
@@ -85,7 +75,7 @@ export function formatPercent(have: number, need: number) {
 	return `${percent > 99 && have < need ? 99 : Math.round(percent)}%`
 }
 
-const TARGETS = [
+export const COMPLETION_TARGETS = [
 	{
 		id: 'product',
 		label: 'As printed',
@@ -109,13 +99,13 @@ export function TargetToggle({ target }: { target: 'product' | 'playset' }) {
 		return { search: query ? `?${query}` : '' }
 	}
 	return (
-		<div className="flex flex-col gap-1">
+		<div className="flex flex-col gap-1 sm:items-end">
 			<div
 				role="group"
 				aria-label="Completion target"
-				className="bg-muted inline-flex gap-1 self-start rounded-lg p-1"
+				className="bg-muted inline-flex gap-1 self-start rounded-lg p-1 sm:self-end"
 			>
-				{TARGETS.map((t) => (
+				{COMPLETION_TARGETS.map((t) => (
 					<Link
 						key={t.id}
 						to={linkFor(t.id)}
@@ -134,8 +124,8 @@ export function TargetToggle({ target }: { target: 'product' | 'playset' }) {
 					</Link>
 				))}
 			</div>
-			<p className="text-muted-foreground text-xs">
-				{TARGETS.find((t) => t.id === target)?.description}
+			<p className="text-muted-foreground text-xs sm:text-right">
+				{COMPLETION_TARGETS.find((t) => t.id === target)?.description}
 			</p>
 		</div>
 	)
