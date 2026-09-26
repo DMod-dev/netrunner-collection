@@ -15,6 +15,9 @@ you've completed and which cards you still need for a deck. Card data comes from
 - **Set completion:** progress for every set, down to which cards are missing.
 - **Deck check:** paste a decklist and see what you're short.
 - **Import and export:** a CSV of your collection.
+- **Sharing:** let other users browse your collection, read-only, from
+  **Settings → Share your collection**. Collections shared with you are under
+  **Shared with me**.
 - **Accounts:** email and password, passkeys, two-factor authentication and
   GitHub login.
 - **Card data sync:** card data is mirrored from NetrunnerDB automatically once
@@ -69,10 +72,10 @@ whenever you want fresh card data locally.
 ```
 app/
   routes/          file-based routes (react-router-auto-routes)
-    collection/    collection, sets, deck check, import/export
+    collection/    collection, sets, deck check, import/export, shared with me
     users/         profiles, and read-only views of collections shared with you
     admin/         card data sync and cache admin
-    settings/      profile, password, passkeys, 2FA, connections
+    settings/      profile, sharing, password, passkeys, 2FA, connections
   components/      shared UI; components/ui holds the shadcn primitives
     collection-pages/  the Cards and Sets pages, used by both route trees
   utils/           server and client helpers (*.server.ts stays on the server)

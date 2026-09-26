@@ -112,6 +112,17 @@ export function CardsPage({ loaderData }: { loaderData: CardsPageData }) {
 					<p className="text-muted-foreground text-sm">
 						{totals.ownedCards.toLocaleString()} of {cardCount.toLocaleString()}{' '}
 						cards · {totals.copies.toLocaleString()} copies
+						{access.canEdit ? (
+							<>
+								{' · '}
+								<Link
+									to="/settings/profile/sharing"
+									className="hover:text-foreground underline underline-offset-2"
+								>
+									Share…
+								</Link>
+							</>
+						) : null}
 					</p>
 				</header>
 

@@ -7,6 +7,7 @@ import {
 	Passcode,
 	Trash01,
 	User01,
+	Users01,
 } from '@untitledui/icons'
 import { Passkey } from '#app/components/ui/brand-icons.tsx'
 import { getFormProps, getInputProps, useForm } from '@conform-to/react'
@@ -148,6 +149,11 @@ export default function EditUserProfile({ loaderData }: Route.ComponentProps) {
 						</Link>
 					</div>
 				) : null}
+				<div>
+					<Link to="sharing">
+						<Icon icon={Users01}>Share your collection</Icon>
+					</Link>
+				</div>
 				<div>
 					<Link to="passkeys">
 						<Icon icon={Passkey}>Manage passkeys</Icon>

@@ -47,6 +47,13 @@ controls. Notes on custom versions are left out of the loader data for viewers.
 Deck check and import/export stay owner-only, and the owner visiting their own
 shared URL is redirected to `/collection`.
 
+Owners add and remove viewers by username at `/settings/profile/sharing`, and
+viewers find collections shared with them at `/collection/shared`. Both pages
+post the same `remove-share` intent, which deletes a grant only if the caller is
+its owner or its viewer (`app/utils/collection-share.server.ts`). Adding by
+username is limited to signed-in users, like the `/users` search, and POSTs
+under `/settings/profile` use the strictest rate limit.
+
 ## Consequences
 
 - Owners choose exactly who sees their collection, and deleting either user

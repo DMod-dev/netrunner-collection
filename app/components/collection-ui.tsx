@@ -4,7 +4,8 @@ import { useCollectionAccess } from './collection-access-context.tsx'
 
 /**
  * Tabs between the collection pages. A collection shared with you only has
- * Cards and Sets, and says whose it is.
+ * Cards and Sets, and says whose it is; your own also lists the collections
+ * shared with you.
  */
 export function CollectionNav() {
 	const { canEdit, basePath, ownerName } = useCollectionAccess()
@@ -35,6 +36,9 @@ export function CollectionNav() {
 						</NavLink>
 						<NavLink to="/collection/import-export" className={tabClass}>
 							Import/Export
+						</NavLink>
+						<NavLink to="/collection/shared" className={tabClass}>
+							Shared with me
 						</NavLink>
 					</>
 				) : null}
