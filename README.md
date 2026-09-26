@@ -20,8 +20,9 @@ you've completed and which cards you still need for a deck. Card data comes from
   **Shared with me**.
 - **Accounts:** email and password, passkeys, two-factor authentication and
   GitHub login.
-- **Card data sync:** card data is mirrored from NetrunnerDB automatically once
-  a day. Admins can trigger a sync from **Card data sync** in the user menu.
+- **Card data sync:** card data, including each format's card pool and its ban,
+  restricted or points list, is mirrored from NetrunnerDB automatically once a
+  day. Admins can trigger a sync from **Card data sync** in the user menu.
 
 ## Tech stack
 

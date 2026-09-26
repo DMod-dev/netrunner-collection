@@ -4,6 +4,7 @@ import { useFetcher, useRevalidator } from 'react-router'
 import { GeneralErrorBoundary } from '#app/components/error-boundary.tsx'
 import { StatusButton } from '#app/components/ui/status-button.tsx'
 import { prisma } from '#app/utils/db.server.ts'
+import { DECK_FORMAT_NAMES, DECK_FORMATS } from '#app/utils/deck-formats.ts'
 import { ensurePrimary } from '#app/utils/litefs.server.ts'
 import { cn } from '#app/utils/misc.tsx'
 import {
@@ -21,10 +22,23 @@ export const handle: SEOHandle = {
 	getSitemapEntries: () => null,
 }
 
+// syncs from before formats and restrictions were synced didn't count them
+type StoredSyncSummary = Omit<NrdbSyncSummary, 'formats' | 'restrictions'> &
+	Partial<Pick<NrdbSyncSummary, 'formats' | 'restrictions'>>
+
 export async function loader({ request }: Route.LoaderArgs) {
 	await requireUserWithRole(request, 'admin')
 	const running = await isSyncRunning()
-	const [history, lastSuccess, cards, printings, sets] = await Promise.all([
+	const [
+		history,
+		lastSuccess,
+		cards,
+		printings,
+		sets,
+		formats,
+		restrictions,
+		deckFormats,
+	] = await Promise.all([
 		prisma.nrdbSync.findMany({
 			orderBy: { startedAt: 'desc' },
 			take: 20,
@@ -33,18 +47,48 @@ export async function loader({ request }: Route.LoaderArgs) {
 		prisma.card.count(),
 		prisma.printing.count(),
 		prisma.cardSet.count(),
+		prisma.format.count(),
+		prisma.restriction.count(),
+		prisma.format.findMany({
+			where: { id: { in: [...DECK_FORMATS] } },
+			select: { id: true, activeRestrictionId: true },
+		}),
 	])
+	const activeRestrictions = await prisma.restriction.findMany({
+		where: {
+			id: {
+				in: deckFormats.flatMap((f) =>
+					f.activeRestrictionId ? [f.activeRestrictionId] : [],
+				),
+			},
+		},
+		select: { id: true, name: true, _count: { select: { verdicts: true } } },
+	})
 	return {
 		running,
 		autoSync: isAutoSyncEnabled(),
 		nextDue: lastSuccess
 			? new Date(lastSuccess.startedAt.getTime() + SYNC_EVERY_MS)
 			: null,
-		counts: { cards, printings, sets },
+		counts: { cards, printings, sets, formats, restrictions },
+		// the lists in force for the formats players can pick
+		formatLists: DECK_FORMATS.map((id) => {
+			const restrictionId = deckFormats.find(
+				(f) => f.id === id,
+			)?.activeRestrictionId
+			const restriction = activeRestrictions.find((r) => r.id === restrictionId)
+			return {
+				id,
+				name: DECK_FORMAT_NAMES[id],
+				restriction: restriction
+					? { name: restriction.name, verdicts: restriction._count.verdicts }
+					: null,
+			}
+		}),
 		history: history.map((sync) => ({
 			...sync,
 			summary: sync.summary
-				? (JSON.parse(sync.summary) as NrdbSyncSummary)
+				? (JSON.parse(sync.summary) as StoredSyncSummary)
 				: null,
 		})),
 	}
@@ -74,7 +118,8 @@ const dateFormat = new Intl.DateTimeFormat(undefined, {
 })
 
 export default function NrdbSyncRoute({ loaderData }: Route.ComponentProps) {
-	const { running, autoSync, nextDue, counts, history } = loaderData
+	const { running, autoSync, nextDue, counts, formatLists, history } =
+		loaderData
 	const fetcher = useFetcher<typeof action>()
 	const revalidator = useRevalidator()
 	const isStarting = fetcher.state !== 'idle'
@@ -100,7 +145,7 @@ export default function NrdbSyncRoute({ loaderData }: Route.ComponentProps) {
 				</p>
 			</header>
 
-			<dl className="grid grid-cols-3 gap-3 sm:max-w-md">
+			<dl className="grid grid-cols-3 gap-3 sm:max-w-2xl sm:grid-cols-5">
 				{Object.entries(counts).map(([label, value]) => (
 					<div key={label} className="bg-muted rounded-lg p-3">
 						<dt className="text-muted-foreground text-xs capitalize">
@@ -112,6 +157,32 @@ export default function NrdbSyncRoute({ loaderData }: Route.ComponentProps) {
 					</div>
 				))}
 			</dl>
+
+			<section aria-labelledby="format-lists" className="flex flex-col gap-2">
+				<h2 id="format-lists" className="text-lg font-bold">
+					Ban and points lists
+				</h2>
+				<ul className="flex flex-col gap-1 text-sm">
+					{formatLists.map((format) => (
+						<li key={format.id}>
+							<span className="font-semibold">{format.name}:</span>{' '}
+							{format.restriction ? (
+								<>
+									{format.restriction.name}{' '}
+									<span className="text-muted-foreground">
+										({format.restriction.verdicts.toLocaleString()}{' '}
+										{format.restriction.verdicts === 1 ? 'card' : 'cards'})
+									</span>
+								</>
+							) : (
+								<span className="text-muted-foreground">
+									none (sync to fetch)
+								</span>
+							)}
+						</li>
+					))}
+				</ul>
+			</section>
 
 			<div className="flex flex-wrap items-center gap-3">
 				<fetcher.Form method="POST">
@@ -173,7 +244,7 @@ export default function NrdbSyncRoute({ loaderData }: Route.ComponentProps) {
 										</td>
 										<td className="text-muted-foreground max-w-md py-2">
 											{sync.summary ? (
-												`${sync.summary.cards} cards, ${sync.summary.printings} printings, ${sync.summary.sets} sets in ${(sync.summary.durationMs / 1000).toFixed(1)}s`
+												describeSummary(sync.summary)
 											) : sync.error ? (
 												<details>
 													<summary className="line-clamp-2 cursor-pointer">
@@ -194,6 +265,18 @@ export default function NrdbSyncRoute({ loaderData }: Route.ComponentProps) {
 			</section>
 		</main>
 	)
+}
+
+function describeSummary(summary: StoredSyncSummary) {
+	const parts = [
+		`${summary.cards} cards`,
+		`${summary.printings} printings`,
+		`${summary.sets} sets`,
+	]
+	if (summary.restrictions !== undefined) {
+		parts.push(`${summary.restrictions} ban/points lists`)
+	}
+	return `${parts.join(', ')} in ${(summary.durationMs / 1000).toFixed(1)}s`
 }
 
 export function ErrorBoundary() {

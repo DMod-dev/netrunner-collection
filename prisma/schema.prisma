@@ -222,6 +222,14 @@ model Card {
   /// comma-wrapped format ids the card is currently legal in, e.g. ",standard,startup,eternal,"
   /// (wrapped so `contains: ",standard,"` matches exactly)
   legalFormats    String   @default(",")
+  /// identities only
+  minimumDeckSize Int?
+  /// identities only; null on an identity means no limit (e.g. Ampère)
+  influenceLimit  Int?
+  /// agendas only
+  agendaPoints    Int?
+  /// comma-wrapped NRDB card_subtype_ids, e.g. ",alliance,region," (wrapped like legalFormats)
+  subtypes        String   @default(",")
   updatedAt       DateTime @updatedAt
 
   faction   Faction  @relation(fields: [factionId], references: [id])
@@ -260,6 +268,55 @@ model Printing {
 
   @@index([cardId])
   @@index([setId, position])
+}
+
+/// A NetrunnerDB format (standard, startup, eternal...) and the card pool
+/// and ban/points list currently in force for it.
+model Format {
+  id                  String   @id // e.g. "standard"
+  name                String
+  activeCardPoolId    String?
+  activeSnapshotId    String?
+  activeRestrictionId String?
+  updatedAt           DateTime @updatedAt
+
+  restrictions Restriction[]
+}
+
+/// A ban list, restricted list or points list for a format. Every list NRDB
+/// has is kept, current or not; Format.activeRestrictionId says which applies.
+model Restriction {
+  id             String    @id // e.g. "standard_ban_list_26_03"
+  name           String
+  dateStart      DateTime?
+  /// the most points a deck may spend (points lists only)
+  pointLimit     Int?
+  /// comma-wrapped card_subtype_ids that are banned outright
+  bannedSubtypes String    @default(",")
+  updatedAt      DateTime  @updatedAt
+
+  format   Format               @relation(fields: [formatId], references: [id])
+  formatId String
+  verdicts RestrictionVerdict[]
+
+  @@index([formatId, dateStart])
+}
+
+/// What a restriction says about one card.
+model RestrictionVerdict {
+  /// NRDB card id; not a foreign key, so a card NRDB hasn't published yet
+  /// can't break a sync
+  cardId  String
+  /// "banned" | "restricted" | "points" | "global_penalty" | "universal_faction_cost"
+  verdict String
+  /// points, or extra influence, for verdicts that carry a number
+  value   Int?
+
+  restriction   Restriction @relation(fields: [restrictionId], references: [id], onDelete: Cascade)
+  restrictionId String
+
+  @@id([restrictionId, cardId, verdict])
+  @@index([cardId])
 }
 
 model NrdbSync {
