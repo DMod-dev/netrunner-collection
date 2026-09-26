@@ -36,6 +36,18 @@ export async function loader({ request }: Route.LoaderArgs) {
 			preferredArt: {
 				select: { cardId: true, printingId: true, updatedAt: true },
 			},
+			sharesGiven: {
+				select: {
+					createdAt: true,
+					viewer: { select: { id: true, username: true } },
+				},
+			},
+			sharesReceived: {
+				select: {
+					createdAt: true,
+					owner: { select: { id: true, username: true } },
+				},
+			},
 			password: false, // <-- intentionally omit password
 			sessions: true,
 			roles: true,

@@ -71,6 +71,8 @@ const CollectionActionSchema = z.discriminatedUnion('intent', [
 ])
 
 export async function action({ request }: Route.ActionArgs) {
+	// Invariant: this only ever writes the caller's own rows, which is what keeps
+	// shared, read-only collection views safe even if a stray fetcher fires.
 	const userId = await requireUserId(request)
 	const formData = await request.formData()
 	const parsed = CollectionActionSchema.safeParse(Object.fromEntries(formData))

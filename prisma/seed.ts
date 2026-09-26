@@ -10,6 +10,7 @@ async function seed() {
 	const totalUsers = 5
 	console.time(`👤 Created ${totalUsers} users...`)
 	const userImages = await getUserImages()
+	const userIds: Array<string> = []
 
 	for (let index = 0; index < totalUsers; index++) {
 		const userData = createUser()
@@ -21,6 +22,7 @@ async function seed() {
 				roles: { connect: { name: 'user' } },
 			},
 		})
+		userIds.push(user.id)
 
 		// Upload user profile image
 		const userImage = userImages[index % userImages.length]
@@ -68,6 +70,14 @@ async function seed() {
 	})
 
 	console.timeEnd(`🐨 Created admin user "kody"`)
+
+	const [firstUserId] = userIds
+	if (firstUserId) {
+		// kody shares their collection with the first seeded user
+		await prisma.collectionShare.create({
+			data: { ownerId: kody.id, viewerId: firstUserId },
+		})
+	}
 
 	console.timeEnd(`🌱 Database has been seeded`)
 }

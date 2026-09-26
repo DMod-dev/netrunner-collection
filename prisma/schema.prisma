@@ -28,6 +28,8 @@ model User {
   sessions          Session[]
   connections       Connection[]
   passkey           Passkey[]
+  sharesGiven       CollectionShare[]   @relation("CollectionShareOwner")
+  sharesReceived    CollectionShare[]   @relation("CollectionShareViewer")
 }
 
 model UserImage {
@@ -327,4 +329,21 @@ model PreferredPrinting {
   @@id([userId, cardId])
   @@index([cardId])
   @@index([printingId])
+}
+
+/// Owner lets viewer browse their collection read-only. A row-level grant, so
+/// it deliberately isn't modelled through the role-level Permission/Role tables.
+model CollectionShare {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+
+  owner    User   @relation("CollectionShareOwner", fields: [ownerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  ownerId  String
+  viewer   User   @relation("CollectionShareViewer", fields: [viewerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  viewerId String
+
+  // one grant per pair; also serves owner -> viewers lookups
+  @@unique([ownerId, viewerId])
+  // "shared with me" listing
+  @@index([viewerId])
 }
