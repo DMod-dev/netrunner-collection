@@ -153,6 +153,8 @@ export const STEPPER_SET_EVENT = 'quantity-stepper:set'
 /**
  * −/+ buttons with an editable count. Updates are optimistic: the displayed
  * number comes from the in-flight submission until the server catches up.
+ * The buttons (and the +/−/digit shortcuts) pause while a change is being
+ * saved, so each press is one saved change.
  */
 export function QuantityStepper({
 	target,
@@ -193,7 +195,24 @@ export function QuantityStepper({
 	const latestRef = useRef(displayed)
 	latestRef.current = displayed
 
+	// Only while the request is out: once it's saved, the reload that follows
+	// already shows the new number and can be interrupted safely.
+	const isSaving = fetcher.state === 'submitting'
+	// A second click can land before the fetcher reports it's submitting, so
+	// this is set as soon as we submit and cleared once the request is done.
+	const savingRef = useRef(false)
+	const sawSubmittingRef = useRef(false)
+	useEffect(() => {
+		if (fetcher.state === 'submitting') {
+			sawSubmittingRef.current = true
+		} else if (sawSubmittingRef.current) {
+			sawSubmittingRef.current = false
+			savingRef.current = false
+		}
+	}, [fetcher.state])
+
 	function step(delta: number) {
+		if (savingRef.current) return
 		submit(latestRef.current + delta)
 	}
 
@@ -203,7 +222,9 @@ export function QuantityStepper({
 		const root = rootRef.current
 		if (!root) return
 		const onStep = (e: Event) => step((e as CustomEvent<number>).detail)
-		const onSet = (e: Event) => submit((e as CustomEvent<number>).detail)
+		const onSet = (e: Event) => {
+			if (!savingRef.current) submit((e as CustomEvent<number>).detail)
+		}
 		root.addEventListener(STEPPER_STEP_EVENT, onStep)
 		root.addEventListener(STEPPER_SET_EVENT, onSet)
 		return () => {
@@ -216,6 +237,7 @@ export function QuantityStepper({
 		const clamped = Math.max(0, Math.min(MAX_QUANTITY, next))
 		if (clamped === latestRef.current) return
 		latestRef.current = clamped
+		savingRef.current = true
 		setPendingValue(clamped)
 		void fetcher.submit(
 			'printingId' in target
@@ -246,7 +268,9 @@ export function QuantityStepper({
 				variant="outline"
 				size={buttonSize}
 				className={buttonClass}
-				disabled={displayed <= 0}
+				disabled={isSaving || displayed <= 0}
+				// keeps keyboard focus on the button while it's paused
+				focusableWhenDisabled
 				onClick={() => step(-1)}
 				aria-label={`Remove one ${label}`}
 			>
@@ -263,7 +287,8 @@ export function QuantityStepper({
 				variant="outline"
 				size={buttonSize}
 				className={buttonClass}
-				disabled={displayed >= MAX_QUANTITY}
+				disabled={isSaving || displayed >= MAX_QUANTITY}
+				focusableWhenDisabled
 				onClick={() => step(1)}
 				aria-label={`Add one ${label}`}
 			>

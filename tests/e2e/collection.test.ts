@@ -132,6 +132,13 @@ test('searching, paging and clearing filters stay in place', async ({
 	await expect(cardTile(page, titles[30]!)).toBeAttached()
 	expect(await scrollY(page)).toBe(bottom)
 
+	// a new search starts again from page 1
+	await search.fill(`${prefix} Card`)
+	await search.press('Enter')
+	await expect(page.getByText('Page 1 of 2')).toBeVisible()
+	await expect(page).not.toHaveURL(/page=/)
+	await expect(cardTile(page, titles[0]!)).toBeAttached()
+
 	await page.evaluate(() => window.scrollTo(0, 150))
 	await page.getByRole('link', { name: 'Clear filters' }).click()
 	await expect(page).toHaveURL('/collection')
@@ -242,15 +249,37 @@ test('tiles show the owned count and change it', async ({
 	// visible without hovering (the overlay has its own copy)
 	await expect(tile.getByText('0 / 3').first()).toBeVisible()
 
+	const add = tile.getByRole('button', {
+		name: `Add one ${title} (${setName})`,
+	})
+	const quantity = tile.getByRole('textbox', {
+		name: `${title} (${setName}) quantity`,
+	})
+
+	// the buttons pause while a change is saving, so a second press in that
+	// time doesn't count
+	let release = () => {}
+	const held = new Promise<void>((resolve) => (release = resolve))
+	await page.route(
+		(url) => url.pathname === '/resources/collection.data',
+		async (route) => {
+			await held
+			await route.continue()
+		},
+	)
 	await tile.hover()
-	await tile
-		.getByRole('button', { name: `Add one ${title} (${setName})` })
-		.click()
+	await add.click()
+	await expect(quantity).toHaveValue('1')
+	await expect(add).toBeDisabled()
+	await page.keyboard.press('+')
+	release()
+	await expect(add).toBeEnabled()
+	await expect(quantity).toHaveValue('1')
+	await page.unroute((url) => url.pathname === '/resources/collection.data')
+
 	// keyboard shortcuts change the hovered tile
 	await page.keyboard.press('+')
-	await expect(
-		tile.getByRole('textbox', { name: `${title} (${setName}) quantity` }),
-	).toHaveValue('2')
+	await expect(quantity).toHaveValue('2')
 	await expect
 		.poll(() =>
 			prisma.collectionEntry.findFirst({
