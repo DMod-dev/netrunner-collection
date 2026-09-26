@@ -8,7 +8,12 @@ import {
 	getFormatRules,
 	toCardLite,
 } from './deck-rules.server.ts'
-import { evaluateDeck, isIdentity } from './deck-rules.ts'
+import {
+	evaluateDeck,
+	formatIssue,
+	isIdentity,
+	toBanList,
+} from './deck-rules.ts'
 import {
 	IDENTITY_TYPES,
 	MAX_DECK_QUANTITY,
@@ -164,6 +169,7 @@ export async function listDecks(userId: string) {
 			name: deck.name,
 			sideId: deck.sideId,
 			formatId,
+			requireLegality: deck.requireLegality,
 			updatedAt: deck.updatedAt,
 			identity: deck.identity
 				? {
@@ -285,7 +291,8 @@ export type BuilderDeck = Awaited<ReturnType<typeof getDeckForBuilder>>
 
 /**
  * A new, empty deck for an identity. Returns null if the identity isn't one.
- * With no name it's named after the identity.
+ * With no name it's named after the identity. Its format isn't checked until
+ * the user turns on "Require deck legality".
  */
 export async function createDeck(
 	userId: string,
@@ -306,6 +313,7 @@ export async function createDeck(
 			name: name?.trim() || identity.title,
 			sideId: identity.sideId,
 			formatId,
+			requireLegality: false,
 			identityCardId,
 		},
 		select: { id: true },
@@ -314,8 +322,9 @@ export async function createDeck(
 
 /**
  * Set how many copies of a card the deck has; 0 takes it out. Copies reserved
- * from the collection never exceed the new count. Cards from the other side,
- * and identities (a deck's identity is set on its own), are refused.
+ * from the collection never exceed the new count. Adding cards from the other
+ * side, or identities (a deck's identity is set on its own), is refused;
+ * taking them out isn't.
  */
 export async function setDeckCardQuantity(
 	userId: string,
@@ -331,20 +340,21 @@ export async function setDeckCardQuantity(
 		select: { title: true, sideId: true, typeId: true },
 	})
 	if (!card) return { error: 'Card not found', status: 404 }
-	if (isIdentity(card)) {
-		return {
-			error: `${card.title} is an identity; change the deck’s identity instead`,
-			status: 400,
-		}
-	}
-	if (card.sideId !== deck.sideId) {
-		return {
-			error: `${card.title} is a ${card.sideId} card; this is a ${deck.sideId} deck`,
-			status: 400,
-		}
+	const key = { deckId_cardId: { deckId, cardId } }
+	const misfit = isIdentity(card)
+		? `${card.title} is an identity; change the deck’s identity instead`
+		: card.sideId !== deck.sideId
+			? `${card.title} is a ${card.sideId} card; this is a ${deck.sideId} deck`
+			: null
+	if (misfit) {
+		// an import can bring them in; they can only be taken out
+		const row = await prisma.deckCard.findUnique({
+			where: key,
+			select: { quantity: true },
+		})
+		if (clamped > (row?.quantity ?? 0)) return { error: misfit, status: 400 }
 	}
 
-	const key = { deckId_cardId: { deckId, cardId } }
 	await prisma.$transaction(async (tx) => {
 		if (clamped === 0) {
 			await tx.deckCard.deleteMany({ where: { deckId, cardId } })
@@ -425,6 +435,44 @@ export async function updateDeck(
 		data,
 	})
 	return count > 0
+}
+
+/**
+ * Take every card the deck's format doesn't allow (outside its card pool,
+ * banned, or of a banned subtype) out of the deck; their reserved copies go
+ * back to the collection. The identity stays. Returns how many copies went,
+ * or null if the user doesn't own the deck.
+ */
+export async function removeIllegalCards(userId: string, deckId: string) {
+	const deck = await prisma.deck.findFirst({
+		where: { id: deckId, userId },
+		select: {
+			formatId: true,
+			cards: {
+				select: {
+					quantity: true,
+					card: { select: CARD_LITE_SELECT },
+				},
+			},
+		},
+	})
+	if (!deck) return null
+	const formatId = parseDeckFormat(deck.formatId)
+	const banList = toBanList(await getFormatRules(formatId))
+	const illegal = deck.cards.filter(({ card }) =>
+		formatIssue(toCardLite(card), formatId, banList),
+	)
+	if (illegal.length === 0) return { removed: 0, formatId }
+	await prisma.$transaction(async (tx) => {
+		await tx.deckCard.deleteMany({
+			where: { deckId, cardId: { in: illegal.map(({ card }) => card.id) } },
+		})
+		await touchDeck(tx, deckId)
+	})
+	return {
+		removed: illegal.reduce((n, { quantity }) => n + quantity, 0),
+		formatId,
+	}
 }
 
 export async function deleteDeck(userId: string, deckId: string) {

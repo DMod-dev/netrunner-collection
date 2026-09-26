@@ -1,5 +1,5 @@
 import { type SEOHandle } from '@nasa-gcn/remix-seo'
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { data, Form } from 'react-router'
 import { toast } from 'sonner'
 import {
@@ -8,28 +8,31 @@ import {
 	washedOutBackdrop,
 } from '#app/components/card-art.tsx'
 import { CollectionNav } from '#app/components/collection-ui.tsx'
+import { DeckInputField } from '#app/components/deck-input.tsx'
+import { FillStatusBadge } from '#app/components/deck-ui.tsx'
 import { GeneralErrorBoundary } from '#app/components/error-boundary.tsx'
 import { FactionDot } from '#app/components/printing-tile.tsx'
 import { Button } from '#app/components/ui/button.tsx'
 import { Label } from '#app/components/ui/label.tsx'
+import {
+	NativeSelect,
+	NativeSelectOption,
+} from '#app/components/ui/native-select.tsx'
 import { StatusButton } from '#app/components/ui/status-button.tsx'
-import { Textarea } from '#app/components/ui/textarea.tsx'
 import { requireCollectionAccess } from '#app/utils/collection-access.server.ts'
 import {
 	checkDeckAgainstCollection,
 	DeckImportError,
-	fetchNrdbDeck,
-	parseDeckText,
-	parseNrdbDeckRef,
 } from '#app/utils/deck-check.server.ts'
+import { DECK_FORMAT_NAMES, DECK_FORMATS } from '#app/utils/deck-formats.ts'
+import { readDeckInput } from '#app/utils/deck-import.server.ts'
+import { MAX_DECK_INPUT_LENGTH } from '#app/utils/deck-import.ts'
 import { cn, useIsPending } from '#app/utils/misc.tsx'
 import { type Route } from './+types/deck-check.ts'
 
 export const handle: SEOHandle = {
 	getSitemapEntries: () => null,
 }
-
-const MAX_INPUT_LENGTH = 20_000
 
 // Owner-only: deck check isn't mounted under /users/:username/collection.
 export async function loader({ request }: Route.LoaderArgs) {
@@ -43,30 +46,10 @@ export async function action({ request }: Route.ActionArgs) {
 	const deck = formData.get('deck')
 	const input = (typeof deck === 'string' ? deck : '').slice(
 		0,
-		MAX_INPUT_LENGTH,
+		MAX_DECK_INPUT_LENGTH,
 	)
-	if (!input.trim()) {
-		return data(
-			{ input, error: 'Paste a decklist or NetrunnerDB link first.' },
-			{ status: 400 },
-		)
-	}
-
 	try {
-		const ref = parseNrdbDeckRef(input)
-		const requirements = ref
-			? await fetchNrdbDeck(ref)
-			: await parseDeckText(input)
-		if (requirements.cards.size === 0) {
-			return data(
-				{
-					input,
-					error:
-						'Couldn\'t find any cards in that. Use one card per line, like "3x Hedge Fund".',
-				},
-				{ status: 400 },
-			)
-		}
+		const requirements = await readDeckInput(input)
 		const result = await checkDeckAgainstCollection(userId, requirements)
 		return { input, result }
 	} catch (error) {
@@ -81,17 +64,9 @@ export const meta: Route.MetaFunction = () => [
 	{ title: 'Deck check | Netrunner Collection' },
 ]
 
-const PLACEHOLDER = `Paste a NetrunnerDB deck link, e.g.
-https://netrunnerdb.com/en/decklist/…
-
-or a decklist, one card per line:
-René "Loup" Arcemont: Party Animal
-3x Wildcat Strike
-2 Carnivore
-Mayday x1`
-
 export default function DeckCheckRoute({ actionData }: Route.ComponentProps) {
-	const isPending = useIsPending()
+	const id = useId()
+	const isPending = useIsPending({ formAction: '/collection/deck-check' })
 	const result = actionData && 'result' in actionData ? actionData.result : null
 	const error = actionData && 'error' in actionData ? actionData.error : null
 
@@ -104,27 +79,18 @@ export default function DeckCheckRoute({ actionData }: Route.ComponentProps) {
 					See whether your collection can build a deck, and what you'd need to
 					get. Any printing or version of a card counts.
 				</p>
+				<p className="text-muted-foreground">
+					Quick check — nothing is saved. To keep the deck and reserve cards,
+					save it as a deck.
+				</p>
 			</header>
 
 			<Form method="POST" className="flex flex-col gap-2">
-				<Label htmlFor="deck">Deck</Label>
-				<Textarea
-					id="deck"
-					name="deck"
-					rows={8}
-					required
-					maxLength={MAX_INPUT_LENGTH}
-					placeholder={PLACEHOLDER}
+				<DeckInputField
+					id={`${id}-deck`}
 					defaultValue={actionData?.input ?? ''}
-					className="font-mono text-sm"
-					aria-invalid={error ? true : undefined}
-					aria-describedby={error ? 'deck-error' : undefined}
+					error={error}
 				/>
-				{error ? (
-					<p id="deck-error" className="text-destructive text-sm">
-						{error}
-					</p>
-				) : null}
 				<StatusButton
 					type="submit"
 					status={isPending ? 'pending' : 'idle'}
@@ -134,15 +100,17 @@ export default function DeckCheckRoute({ actionData }: Route.ComponentProps) {
 				</StatusButton>
 			</Form>
 
-			{result ? <DeckResult result={result} /> : null}
+			{result && actionData ? (
+				<DeckResult result={result} input={actionData.input} />
+			) : null}
 		</main>
 	)
 }
 
 type Result = Awaited<ReturnType<typeof checkDeckAgainstCollection>>
 
-function DeckResult({ result }: { result: Result }) {
-	const complete = result.missingCards === 0
+function DeckResult({ result, input }: { result: Result; input: string }) {
+	const complete = result.missingCards === 0 && result.inUseCards === 0
 	return (
 		<section aria-labelledby="deck-result" className="flex flex-col gap-4">
 			<div
@@ -171,11 +139,20 @@ function DeckResult({ result }: { result: Result }) {
 					<p>
 						{complete
 							? `You own everything you need for all ${result.totalCards} cards.`
-							: `You're missing ${result.missingCards} of ${result.totalCards} cards (${result.missingUnique} different).`}
+							: result.missingCards > 0
+								? `You're missing ${result.missingCards} of ${result.totalCards} cards (${result.missingUnique} different).`
+								: `You own all ${result.totalCards} cards.`}
+						{result.inUseCards > 0
+							? ` ${result.inUseCards} ${result.inUseCards === 1 ? 'copy is' : 'copies are'} in use by your other decks.`
+							: null}
 					</p>
 				</div>
-				{complete ? null : <CopyMissingButton rows={result.rows} />}
+				{result.missingCards > 0 ? (
+					<CopyMissingButton rows={result.rows} />
+				) : null}
 			</div>
+
+			<SaveAsDeckForm input={input} />
 
 			{result.unrecognized.length ? (
 				<div className="text-sm">
@@ -231,11 +208,14 @@ function DeckResult({ result }: { result: Result }) {
 									: ' · none owned'}
 							</span>
 						</div>
-						{row.missing > 0 ? (
-							<span className="text-sm font-semibold whitespace-nowrap text-amber-700 dark:text-amber-300">
-								need {row.missing}
+						{row.status.kind === 'ok' ? null : (
+							<span className="flex max-w-[50%] flex-wrap justify-end gap-1">
+								<FillStatusBadge
+									status={row.status}
+									reservedBy={row.reservedBy}
+								/>
 							</span>
-						) : null}
+						)}
 						<CountBadge
 							owned={row.owned}
 							target={row.need}
@@ -245,6 +225,48 @@ function DeckResult({ result }: { result: Result }) {
 				))}
 			</ul>
 		</section>
+	)
+}
+
+/**
+ * Import the same pasted text as a new deck, filled from the collection;
+ * the import tab on /decks/new does the rest.
+ */
+function SaveAsDeckForm({ input }: { input: string }) {
+	const id = useId()
+	const isPending = useIsPending({ formAction: '/decks/new?mode=import' })
+	return (
+		<Form
+			method="POST"
+			action="/decks/new?mode=import"
+			className="flex flex-wrap items-end gap-3"
+		>
+			<input type="hidden" name="intent" value="import" />
+			<input type="hidden" name="deck" value={input} />
+			<div className="flex flex-col gap-1">
+				<Label
+					htmlFor={`${id}-format`}
+					className="text-muted-foreground text-xs"
+				>
+					Format
+				</Label>
+				<NativeSelect id={`${id}-format`} name="formatId">
+					{DECK_FORMATS.map((f) => (
+						<NativeSelectOption key={f} value={f}>
+							{DECK_FORMAT_NAMES[f]}
+						</NativeSelectOption>
+					))}
+				</NativeSelect>
+			</div>
+			<StatusButton
+				type="submit"
+				variant="outline"
+				status={isPending ? 'pending' : 'idle'}
+				disabled={isPending}
+			>
+				Save as deck
+			</StatusButton>
+		</Form>
 	)
 }
 

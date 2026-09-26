@@ -125,19 +125,24 @@ function DeckCard({ deck }: { deck: DeckSummary }) {
 }
 
 function LegalityBadge({ deck }: { deck: DeckSummary }) {
-	const { errorCount, warningCount } = deck
+	const { errorCount, warningCount, requireLegality } = deck
 	const label = errorCount
 		? `${errorCount} ${errorCount === 1 ? 'error' : 'errors'}`
 		: warningCount
-			? `Legal · ${warningCount} ${warningCount === 1 ? 'warning' : 'warnings'}`
-			: 'Legal'
+			? `${warningCount} ${warningCount === 1 ? 'warning' : 'warnings'}`
+			: // an unchecked format could still have banned cards
+				requireLegality
+				? 'Legal'
+				: 'No errors'
 	return (
 		<span
 			className={cn(
 				'rounded-full px-2 py-0.5 text-xs font-semibold',
 				errorCount
 					? 'bg-destructive/15 text-destructive'
-					: 'bg-success text-success-foreground',
+					: warningCount
+						? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+						: 'bg-success text-success-foreground',
 			)}
 		>
 			{label}

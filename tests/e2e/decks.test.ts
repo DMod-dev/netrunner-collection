@@ -299,3 +299,109 @@ test('fill a deck from the collection, then unfill it', async ({
 	// the card stays in the deck
 	await expect(row).toContainText(cardTitle)
 })
+
+test('import a pasted decklist, then replace its cards from the builder', async ({
+	page,
+	login,
+	seedDeckCards,
+}) => {
+	const { identityTitle, cardTitle, cardId } = await seedDeckCards()
+	const user = await login()
+	await prisma.collectionEntry.create({
+		data: { userId: user.id, printingId: cardId, quantity: 2 },
+	})
+
+	await goto(page, '/decks/new')
+	await page.getByRole('link', { name: 'Import instead' }).click()
+	await page
+		.getByRole('textbox', { name: 'Deck', exact: true })
+		.fill(`My import\n${identityTitle}\n3x ${cardTitle}\n2x Zq No Such Card`)
+	await page.getByRole('button', { name: 'Import and fill' }).click()
+
+	await expect(page).toHaveURL(/\/decks\/[^/]+$/)
+	await expect(
+		page.getByText(
+			'Took 2 of 4 cards from your collection. Couldn’t match 1 line:',
+		),
+	).toBeVisible()
+	// listed once, until the toast is closed
+	await expect(page.getByText('2x Zq No Such Card')).toHaveCount(1)
+	await expect(page.getByLabel('Deck name')).toHaveValue('My import')
+	const panel = page.getByRole('complementary', { name: 'Deck' })
+	await expect(
+		panel.getByRole('region', { name: 'Identity' }).getByText(identityTitle),
+	).toBeVisible()
+	const row = panel.locator(`[data-deck-card="${cardId}"]`)
+	await expect(row.getByText('2/3')).toBeVisible()
+	await expect(row.getByText('need 1')).toBeVisible()
+
+	// replace the cards: 2 copies now, and the deck keeps both reserved
+	await page.getByRole('button', { name: 'Import', exact: true }).click()
+	const dialog = page.getByRole('dialog', { name: 'Import into this deck' })
+	await dialog
+		.getByRole('textbox', { name: 'Deck', exact: true })
+		.fill(`2x ${cardTitle}`)
+	await dialog.getByRole('button', { name: 'Replace cards' }).click()
+	await dialog.getByRole('button', { name: 'Replace all cards?' }).click()
+	await expect(dialog).toBeHidden()
+	await expect(row.getByText('2/2')).toBeVisible()
+	await expect(row.getByText('need 1')).toBeHidden()
+	const deck = await prisma.deck.findFirstOrThrow({
+		where: { userId: user.id },
+		select: {
+			name: true,
+			cards: { select: { quantity: true, fromCollection: true } },
+		},
+	})
+	expect(deck).toEqual({
+		name: 'My import',
+		cards: [{ quantity: 2, fromCollection: 2 }],
+	})
+})
+
+test('deck check shows copies in use, and saves the deck', async ({
+	page,
+	login,
+	seedDeckCards,
+}) => {
+	const { identityTitle, cardTitle, cardId } = await seedDeckCards()
+	const user = await login()
+	const identity = await prisma.card.findFirstOrThrow({
+		where: { title: identityTitle },
+		select: { id: true },
+	})
+	await prisma.collectionEntry.create({
+		data: { userId: user.id, printingId: cardId, quantity: 2 },
+	})
+	// another deck already holds both copies
+	await prisma.deck.create({
+		data: {
+			userId: user.id,
+			name: 'Holder',
+			sideId: 'corp',
+			identityCardId: identity.id,
+			cards: { create: { cardId, quantity: 2, fromCollection: 2 } },
+		},
+	})
+
+	await goto(page, '/collection/deck-check')
+	await expect(page.getByText(/Quick check — nothing is saved/)).toBeVisible()
+	await page
+		.getByRole('textbox', { name: 'Deck', exact: true })
+		.fill(`${identityTitle}\n3x ${cardTitle}`)
+	await page.getByRole('button', { name: 'Check deck' }).click()
+	await expect(page.getByText('2 in use: Holder')).toBeVisible()
+	await expect(
+		page.getByText(/2 copies are in use by your other decks/),
+	).toBeVisible()
+	// nothing saved yet
+	expect(await prisma.deck.count({ where: { userId: user.id } })).toBe(1)
+
+	await page.getByRole('button', { name: 'Save as deck' }).click()
+	await expect(page).toHaveURL(/\/decks\/[^/]+$/)
+	await expect(
+		page.getByText('None of this deck’s cards are free in your collection'),
+	).toBeVisible()
+	await expect(page.getByLabel('Deck name')).toHaveValue(identityTitle)
+	expect(await prisma.deck.count({ where: { userId: user.id } })).toBe(2)
+})

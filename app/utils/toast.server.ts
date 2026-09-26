@@ -10,6 +10,8 @@ const ToastSchema = z.object({
 	id: z.string().default(() => cuid()),
 	title: z.string().optional(),
 	type: z.enum(['message', 'success', 'error']).default('message'),
+	/** lines listed under the description; the toast then stays until closed */
+	details: z.array(z.string()).optional(),
 })
 
 export type Toast = z.infer<typeof ToastSchema>

@@ -19,11 +19,22 @@ import {
 	STEPPER_STEP_EVENT,
 } from '#app/routes/resources/collection.tsx'
 import { requireUserId } from '#app/utils/auth.server.ts'
-import { fillDeck, unfillDeck } from '#app/utils/deck-fill.server.ts'
-import { DECK_FORMATS } from '#app/utils/deck-formats.ts'
+import { DeckImportError } from '#app/utils/deck-check.server.ts'
+import {
+	fillDeck,
+	type FillReport,
+	unfillDeck,
+} from '#app/utils/deck-fill.server.ts'
+import { DECK_FORMAT_NAMES, DECK_FORMATS } from '#app/utils/deck-formats.ts'
+import {
+	readDeckInput,
+	replaceDeckCards,
+} from '#app/utils/deck-import.server.ts'
+import { MAX_UNRECOGNIZED_SHOWN } from '#app/utils/deck-import.ts'
 import {
 	deleteDeck,
 	type DeckWriteError,
+	removeIllegalCards,
 	setDeckCardQuantity,
 	setDeckIdentity,
 	updateDeck,
@@ -40,6 +51,7 @@ import { cn, useDoubleCheck } from '#app/utils/misc.tsx'
 import {
 	createToastHeaders,
 	redirectWithToast,
+	type ToastInput,
 } from '#app/utils/toast.server.ts'
 import { type Route } from './+types/deck.ts'
 
@@ -47,7 +59,6 @@ export const DECK_ACTION_PATH = '/resources/deck'
 
 const deckId = z.string().min(1)
 
-// `import` joins this union later.
 const DeckActionSchema = z.discriminatedUnion('intent', [
 	z.object({
 		intent: z.literal('set-card-quantity'),
@@ -91,6 +102,14 @@ const DeckActionSchema = z.discriminatedUnion('intent', [
 	}),
 	z.object({ intent: z.literal('fill'), deckId }),
 	z.object({ intent: z.literal('unfill'), deckId }),
+	// replace the deck's cards with a pasted list or NetrunnerDB link
+	z.object({
+		intent: z.literal('import'),
+		deckId,
+		deck: z.string().default(''),
+	}),
+	// take out every card the deck's format doesn't allow
+	z.object({ intent: z.literal('remove-illegal'), deckId }),
 	z.object({ intent: z.literal('delete'), deckId }),
 ])
 
@@ -110,6 +129,43 @@ export function fillMessage({
 	if (taken === 0)
 		return 'None of this deck’s cards are free in your collection'
 	return `Took ${taken} of ${cards(total)} from your collection`
+}
+
+/**
+ * What an import did: the fill report (or `unfilled`, for a deck that isn't
+ * filled from the collection) and the lines it couldn't match, listed until
+ * the toast is closed.
+ */
+export function importToast({
+	title,
+	report,
+	unfilled,
+	unrecognized,
+}: {
+	title: string
+	report: FillReport | null
+	unfilled: string
+	unrecognized: string[]
+}): ToastInput {
+	const summary = report ? fillMessage(report) : unfilled
+	if (unrecognized.length === 0) {
+		return {
+			type: !report || report.taken === report.total ? 'success' : 'message',
+			title,
+			description: summary,
+		}
+	}
+	const shown = unrecognized
+		.slice(0, MAX_UNRECOGNIZED_SHOWN)
+		.map((line) => (line.length > 80 ? `${line.slice(0, 79)}…` : line))
+	const more = unrecognized.length - shown.length
+	const lines = `${unrecognized.length} ${unrecognized.length === 1 ? 'line' : 'lines'}`
+	return {
+		type: 'message',
+		title,
+		description: `${summary}. Couldn’t match ${lines}:`,
+		details: more > 0 ? [...shown, `…and ${more} more`] : shown,
+	}
 }
 
 function refused({ error, status }: DeckWriteError) {
@@ -196,6 +252,44 @@ export async function action({ request }: Route.ActionArgs) {
 				headers: await createToastHeaders({
 					type: 'success',
 					description: 'Gave this deck’s cards back to your collection',
+				}),
+			})
+		}
+		case 'import': {
+			const { deckId } = submission
+			try {
+				const requirements = await readDeckInput(submission.deck)
+				const result = await replaceDeckCards(userId, deckId, requirements)
+				if (!result) return notFound()
+				// a filled deck stays filled: reserve what the new cards need
+				const report = result.wasFilled ? await fillDeck(userId, deckId) : null
+				return data({ ok: true } as const, {
+					headers: await createToastHeaders(
+						importToast({
+							title: 'Cards replaced',
+							report,
+							unfilled: 'Replaced this deck’s cards',
+							unrecognized: result.unrecognized,
+						}),
+					),
+				})
+			} catch (error) {
+				if (error instanceof DeckImportError) {
+					return refused({ error: error.message, status: 400 })
+				}
+				throw error
+			}
+		}
+		case 'remove-illegal': {
+			const result = await removeIllegalCards(userId, submission.deckId)
+			if (!result) return notFound()
+			const format = DECK_FORMAT_NAMES[result.formatId]
+			return data({ ok: true } as const, {
+				headers: await createToastHeaders({
+					type: 'success',
+					description: result.removed
+						? `Removed ${result.removed} ${result.removed === 1 ? 'card' : 'cards'} not legal in ${format}`
+						: `Every card is legal in ${format}`,
 				}),
 			})
 		}
@@ -361,8 +455,9 @@ export function DeckQuantityStepper({
 }
 
 /**
- * "Require deck legality". Off, a deck's format problems (bans, rotation,
- * points) are warnings instead of errors. Optimistic via `pendingLegality`.
+ * "Require deck legality". On, a deck's format problems (bans, rotation,
+ * points) show as warnings; off, they aren't checked. Optimistic via
+ * `pendingLegality`.
  */
 export function RequireLegalitySwitch({
 	deckId,
@@ -427,6 +522,46 @@ export function DeleteDeckButton({
 				<Icon icon={Trash01}>{dc.doubleCheck ? 'Delete?' : 'Delete'}</Icon>
 			</Button>
 		</Form>
+	)
+}
+
+/**
+ * Take the cards the format doesn't allow out of the deck, after a second
+ * click to confirm. Shown whether or not legality is required.
+ */
+export function RemoveIllegalCardsButton({
+	deckId,
+	count,
+	formatName,
+}: {
+	deckId: string
+	/** copies the format doesn't allow */
+	count: number
+	formatName: string
+}) {
+	const fetcher = useFetcher<typeof clientAction>({
+		key: deckSettingsFetcherKey(deckId, 'remove-illegal'),
+	})
+	useErrorToast(fetcher, 'Remove cards', `remove-illegal-${deckId}`)
+	const dc = useDoubleCheck()
+	const busy = fetcher.state !== 'idle'
+	const cards = `${count} ${count === 1 ? 'card' : 'cards'}`
+	return (
+		<fetcher.Form method="POST" action={DECK_ACTION_PATH}>
+			<input type="hidden" name="intent" value="remove-illegal" />
+			<input type="hidden" name="deckId" value={deckId} />
+			<StatusButton
+				size="sm"
+				variant={dc.doubleCheck ? 'destructive' : 'outline'}
+				status={busy ? 'pending' : 'idle'}
+				disabled={busy}
+				{...dc.getButtonProps({ type: 'submit' })}
+			>
+				{dc.doubleCheck
+					? `Remove ${cards}?`
+					: `Remove ${cards} not legal in ${formatName}`}
+			</StatusButton>
+		</fetcher.Form>
 	)
 }
 

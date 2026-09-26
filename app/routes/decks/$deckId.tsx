@@ -38,6 +38,7 @@ import {
 	ProblemList,
 	rowFillStatus,
 } from '#app/components/deck-ui.tsx'
+import { DeckExportMenu, ImportDeckDialog } from '#app/components/deck-io.tsx'
 import { GeneralErrorBoundary } from '#app/components/error-boundary.tsx'
 import { FactionDot } from '#app/components/printing-tile.tsx'
 import { Button, buttonVariants } from '#app/components/ui/button.tsx'
@@ -60,6 +61,7 @@ import {
 	pendingLegality,
 	pendingQuantity,
 	RefillButton,
+	RemoveIllegalCardsButton,
 	RequireLegalitySwitch,
 	useErrorToast,
 } from '#app/routes/resources/deck.tsx'
@@ -67,6 +69,7 @@ import { requireUserId } from '#app/utils/auth.server.ts'
 import { getFilterOptions, searchCards } from '#app/utils/collection.server.ts'
 import { pickArtPrinting } from '#app/utils/collection.ts'
 import { getDeckCollection } from '#app/utils/deck-fill.server.ts'
+import { toNrdbText } from '#app/utils/deck-export.ts'
 import { NO_COPIES } from '#app/utils/deck-fill.ts'
 import {
 	DECK_FORMAT_NAMES,
@@ -76,8 +79,10 @@ import {
 import { toCardLite } from '#app/utils/deck-rules.server.ts'
 import {
 	type CardLite,
+	type BanList,
 	evaluateDeck,
-	type FormatRules,
+	formatIssue,
+	toBanList,
 } from '#app/utils/deck-rules.ts'
 import { getDeckForBuilder } from '#app/utils/deck.server.ts'
 import {
@@ -246,6 +251,14 @@ export default function DeckBuilderRoute({ loaderData }: Route.ComponentProps) {
 	const saved = new Map(deck.cards.map((e) => [e.card.id, e.quantity]))
 	const { stats, problems } = evaluation
 	const errors = problems.filter((p) => p.severity === 'error').length
+	const text = toNrdbText({ ...deck, cards: entries }, evaluation)
+	const banList = toBanList(deck.rules)
+	// copies "Remove cards not legal" would take out
+	const illegalCopies = entries.reduce(
+		(n, e) =>
+			formatIssue(e.card, deck.formatId, banList) ? n + e.quantity : n,
+		0,
+	)
 
 	return (
 		<main className="container mb-24 flex flex-col gap-4 lg:mb-8">
@@ -258,6 +271,8 @@ export default function DeckBuilderRoute({ loaderData }: Route.ComponentProps) {
 					entries.reduce((sum, e) => sum + e.fromCollection, 0)
 				}
 				total={(deck.identity ? 1 : 0) + stats.cardCount}
+				text={text}
+				missing={missingList(deck, entries, collection)}
 			/>
 			{collection.stale ? (
 				<div
@@ -283,6 +298,7 @@ export default function DeckBuilderRoute({ loaderData }: Route.ComponentProps) {
 					inDeck={inDeck}
 					saved={saved}
 					collection={collection}
+					checkFormat={requireLegality}
 				/>
 
 				<aside
@@ -300,8 +316,15 @@ export default function DeckBuilderRoute({ loaderData }: Route.ComponentProps) {
 					)}
 				>
 					<IdentityHeader deck={deck} collection={collection} />
-					<DeckStats stats={stats} />
+					<DeckStats stats={stats} checkFormat={requireLegality} />
 					<ProblemList problems={problems} />
+					{illegalCopies > 0 ? (
+						<RemoveIllegalCardsButton
+							deckId={deck.id}
+							count={illegalCopies}
+							formatName={DECK_FORMAT_NAMES[deck.formatId]}
+						/>
+					) : null}
 					<DecklistPanel
 						deckId={deck.id}
 						side={deck.sideId}
@@ -339,18 +362,57 @@ export default function DeckBuilderRoute({ loaderData }: Route.ComponentProps) {
 	)
 }
 
+/**
+ * "2x Card" for each copy a filled deck needs that the collection doesn't
+ * have, identity first; null if there are none (or the deck isn't filled).
+ */
+function missingList(
+	deck: Deck,
+	entries: DecklistEntry[],
+	collection: Collection,
+) {
+	if (!collection.filled) return null
+	const rows = [
+		...(deck.identity
+			? [
+					{
+						title: deck.identity.title,
+						...rowFillStatus(
+							collection,
+							deck.identity.id,
+							1,
+							deck.identityFromCollection,
+						),
+					},
+				]
+			: []),
+		...entries.map((e) => ({
+			title: e.card.title,
+			...rowFillStatus(collection, e.card.id, e.quantity, e.fromCollection),
+		})),
+	]
+	const lines = rows
+		.filter((row) => row.status.need > 0)
+		.map((row) => `${row.status.need}x ${row.title}`)
+	return lines.length ? lines.join('\n') : null
+}
+
 function DeckToolbar({
 	deck,
 	requireLegality,
 	filled,
 	fromCollection,
 	total,
+	text,
+	missing,
 }: {
 	deck: Deck
 	requireLegality: boolean
 	filled: boolean
 	fromCollection: number
 	total: number
+	text: string
+	missing: string | null
 }) {
 	const id = useId()
 	const nameFetcher = useFetcher<typeof deckClientAction>({
@@ -448,11 +510,27 @@ function DeckToolbar({
 					fromCollection={fromCollection}
 					total={total}
 				/>
+				<ImportDeckDialog deckId={deck.id} />
+				<DeckExportMenu deckId={deck.id} text={text} missing={missing} />
 				<DeleteDeckButton deckId={deck.id} name={deck.name} />
 			</div>
-			{deck.rules?.restrictionName ? (
-				<p className="text-muted-foreground text-xs">
-					{DECK_FORMAT_NAMES[deck.formatId]}: {deck.rules.restrictionName}
+			{deck.rules?.restrictionName || deck.nrdbUrl ? (
+				<p className="text-muted-foreground flex flex-wrap gap-x-4 gap-y-1 text-xs">
+					{deck.rules?.restrictionName ? (
+						<span>
+							{DECK_FORMAT_NAMES[deck.formatId]}: {deck.rules.restrictionName}
+						</span>
+					) : null}
+					{deck.nrdbUrl ? (
+						<a
+							href={deck.nrdbUrl}
+							target="_blank"
+							rel="noreferrer"
+							className="hover:text-foreground underline"
+						>
+							Imported from NetrunnerDB
+						</a>
+					) : null}
 				</p>
 			) : null}
 		</header>
@@ -689,11 +767,14 @@ function CardBrowser({
 	inDeck,
 	saved,
 	collection,
+	checkFormat,
 }: {
 	deck: Deck
 	browser: LoaderData['browser']
 	filters: LoaderData['filters']
 	collection: Collection
+	/** "Require deck legality": mark the cards the format won't take */
+	checkFormat: boolean
 	/** Copies in the deck, counting changes still being saved. */
 	inDeck: Map<string, number>
 	/** Copies in the deck as last saved. */
@@ -703,6 +784,7 @@ function CardBrowser({
 	const location = useLocation()
 	const navigation = useNavigation()
 	const navigationType = useNavigationType()
+	const banList = toBanList(deck.rules)
 	const isLoading =
 		navigation.state === 'loading' &&
 		navigation.location.pathname === location.pathname
@@ -764,6 +846,8 @@ function CardBrowser({
 									inDeck={inDeck.get(card.id) ?? 0}
 									saved={saved.get(card.id) ?? 0}
 									collection={collection}
+									checkFormat={checkFormat}
+									banList={banList}
 								/>
 							</li>
 						))}
@@ -922,19 +1006,13 @@ function BrowserFilters({
 function formatStatus(
 	card: CardLite,
 	formatId: DeckFormat,
-	rules: FormatRules | null,
+	banList: BanList | null,
 ) {
-	if (!card.legalFormats.includes(formatId)) {
-		return `Not in ${DECK_FORMAT_NAMES[formatId]}`
-	}
-	if (
-		rules &&
-		(rules.banned.includes(card.id) ||
-			card.subtypes.some((s) => rules.bannedSubtypes.includes(s)))
-	) {
-		return 'Banned'
-	}
-	return null
+	const issue = formatIssue(card, formatId, banList)
+	if (!issue) return null
+	return issue.code === 'not_in_format'
+		? `Not in ${DECK_FORMAT_NAMES[formatId]}`
+		: 'Banned'
 }
 
 function BrowserCardTile({
@@ -943,14 +1021,19 @@ function BrowserCardTile({
 	inDeck,
 	saved,
 	collection,
+	checkFormat,
+	banList,
 }: {
 	card: BrowserCard & DeckCardInfo
 	deck: Deck
 	inDeck: number
 	saved: number
 	collection: Collection
+	/** "Require deck legality": off, nothing is marked */
+	checkFormat: boolean
+	banList: BanList | null
 }) {
-	const status = formatStatus(card, deck.formatId, deck.rules)
+	const status = checkFormat ? formatStatus(card, deck.formatId, banList) : null
 	// a filled deck counts only the copies other decks don't hold
 	const availability = collection.availability[card.id] ?? NO_COPIES
 	const count = collection.filled ? availability.available : card.owned
@@ -971,7 +1054,7 @@ function BrowserCardTile({
 			badge={
 				<span className="flex gap-1">
 					{status ? (
-						<span className="bg-destructive rounded-full px-2 py-0.5 text-xs font-bold text-white">
+						<span className="rounded-full bg-amber-500/90 px-1.5 py-0.5 text-[0.65rem] font-semibold text-amber-950">
 							{status}
 						</span>
 					) : null}
@@ -1031,7 +1114,9 @@ function BrowserCardTile({
 								: null}
 						</p>
 						{status ? (
-							<p className="text-destructive text-xs font-semibold">{status}</p>
+							<p className="text-xs font-semibold text-amber-700 dark:text-amber-300">
+								{status}
+							</p>
 						) : null}
 					</header>
 					<div className="mt-auto flex flex-col gap-1">

@@ -420,7 +420,8 @@ model Deck {
   sideId          String
   /// "standard" | "startup" | "eternal" (DECK_FORMATS)
   formatId        String   @default("standard")
-  /// off: format problems (bans, rotation, points) are warnings, not errors
+  /// on: format problems (bans, rotation, points) show as warnings; off: they
+  /// aren't checked. The app starts new decks off.
   requireLegality Boolean  @default(true)
   notes           String?
   /// the NetrunnerDB deck it was imported from

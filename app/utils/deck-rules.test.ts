@@ -569,7 +569,7 @@ describe('identities', () => {
 		])
 	})
 
-	test('Apex: a non-virtual resource is a warning (it can’t be installed)', () => {
+	test('Apex: non-virtual resources are left to the player', () => {
 		const apex = identity({
 			...runner,
 			id: 'apex_invasive_predator',
@@ -593,18 +593,11 @@ describe('identities', () => {
 				{ card: resource('Physical One', ['job']), quantity: 1 },
 			],
 		})
-		expect(result.problems).toEqual([
-			{
-				code: 'identity_restriction',
-				severity: 'warning',
-				cardId: 'physical_one',
-				message: 'Apex can’t install non-virtual resources: Physical One',
-			},
-		])
-		expect(result.isLegal).toBe(true)
+		// Apex can't install it, but that's for game time
+		expect(result.problems).toEqual([])
 	})
 
-	test('Adam: 3 directives, outside the deck size', () => {
+	test('Adam: directives sit outside the deck size, unchecked', () => {
 		const adam = identity({
 			...runner,
 			id: 'adam_compulsive_hacker',
@@ -647,10 +640,9 @@ describe('identities', () => {
 				{ ...directives[1]!, quantity: 2 },
 			],
 		})
-		expect(two.problems.map((p) => p.message)).toEqual([
-			'Adam starts with 3 different directives; the deck has 2',
-			'2 copies of Find the Truth; Adam starts with 1 of each directive',
-		])
+		// which directives Adam starts with is a game-time choice
+		expect(two.problems).toEqual([])
+		expect(two.stats.cardCount).toBe(45)
 
 		// another Runner's directives are ordinary cards
 		const anarch = identity({
@@ -882,31 +874,32 @@ describe('format legality', () => {
 		expect(result.problems).toEqual([
 			{
 				code: 'not_in_format',
-				severity: 'error',
+				severity: 'warning',
 				cardId: 'rotated',
 				message: 'Rotated isn’t legal in Standard',
 			},
 			{
 				code: 'banned',
-				severity: 'error',
+				severity: 'warning',
 				cardId: 'bellona',
 				message: 'Bellona is banned in Standard',
 			},
 			{
 				code: 'restricted',
-				severity: 'error',
+				severity: 'warning',
 				cardId: 'restricted_a',
 				message: 'Restricted A is 1 of 2 restricted cards; Standard allows 1',
 			},
 			{
 				code: 'restricted',
-				severity: 'error',
+				severity: 'warning',
 				cardId: 'restricted_b',
 				message: 'Restricted B is 1 of 2 restricted cards; Standard allows 1',
 			},
 		])
 
-		const warnings = evaluate({
+		// not checked at all unless the deck is to be kept legal
+		const unchecked = evaluate({
 			cards: [
 				...corpCards(40, 20),
 				{ card: rotated, quantity: 1 },
@@ -918,13 +911,8 @@ describe('format legality', () => {
 			rules: standardRules,
 			requireLegality: false,
 		})
-		expect(warnings.problems.map((p) => p.severity)).toEqual([
-			'warning',
-			'warning',
-			'warning',
-			'warning',
-		])
-		expect(warnings.isLegal).toBe(true)
+		expect(unchecked.problems).toEqual([])
+		expect(unchecked.isLegal).toBe(true)
 	})
 
 	test('one restricted card is fine', () => {
@@ -964,7 +952,7 @@ describe('format legality', () => {
 		expect(eight.problems).toEqual([
 			{
 				code: 'points_limit',
-				severity: 'error',
+				severity: 'warning',
 				message: '8 points; Eternal allows 7',
 			},
 		])
@@ -980,7 +968,7 @@ describe('format legality', () => {
 		expect(result.problems).toEqual([
 			{
 				code: 'banned_subtype',
-				severity: 'error',
+				severity: 'warning',
 				cardId: 'a_current',
 				message: 'A Current is banned in Standard (all current cards are)',
 			},
@@ -1010,7 +998,7 @@ describe('format legality', () => {
 		).toEqual([
 			{
 				code: 'three_point_agendas',
-				severity: 'error',
+				severity: 'warning',
 				message: '5 agendas worth 3 or more points; Startup allows 4',
 			},
 		])
@@ -1023,7 +1011,7 @@ describe('format legality', () => {
 		expect(result.problems).toEqual([
 			{
 				code: 'not_in_format',
-				severity: 'error',
+				severity: 'warning',
 				cardId: HB.id,
 				message: 'Haas-Bioroid: Test ID isn’t legal in Standard',
 			},
@@ -1051,7 +1039,7 @@ describe('real decks', () => {
 		expect(result.perCard.anemone!.influence).toBe(4)
 	})
 
-	test('with a banned card: an error, or a warning when legality is optional', () => {
+	test('with a banned card: a warning, or nothing when legality is off', () => {
 		const deck: DeckList = {
 			...PRECISION_DESIGN,
 			cards: PRECISION_DESIGN.cards.map(([id, quantity]) =>
@@ -1063,12 +1051,12 @@ describe('real decks', () => {
 			cardId: 'red_level_clearance',
 			message: 'Red Level Clearance is banned in Standard',
 		}
-		expect(evaluateDeck(fromList(deck)).problems).toEqual([
-			{ ...banned, severity: 'error' },
-		])
+		const checked = evaluateDeck(fromList(deck))
+		expect(checked.problems).toEqual([{ ...banned, severity: 'warning' }])
+		// a warning: the deck can still be played casually
+		expect(checked.isLegal).toBe(true)
 		const casual = evaluateDeck(fromList(deck, { requireLegality: false }))
-		expect(casual.problems).toEqual([{ ...banned, severity: 'warning' }])
-		expect(casual.isLegal).toBe(true)
+		expect(casual.problems).toEqual([])
 	})
 
 	test('the same deck in Startup: cards outside its pool, and a ban', () => {
@@ -1078,7 +1066,7 @@ describe('real decks', () => {
 		expect(result.perCard.seamless_launch!.problems).toEqual([
 			{
 				code: 'banned',
-				severity: 'error',
+				severity: 'warning',
 				cardId: 'seamless_launch',
 				message: 'Seamless Launch is banned in Startup',
 			},
@@ -1118,7 +1106,9 @@ describe('real decks', () => {
 			expect(eternal.stats).toMatchObject(stats)
 			expect(eternal.problems).toEqual([])
 			const standard = evaluateDeck(fromList(deck))
-			expect(standard.isLegal).toBe(false)
+			expect(standard.problems.every((p) => p.severity === 'warning')).toBe(
+				true,
+			)
 			expect(new Set(standard.problems.map((p) => p.code))).toEqual(
 				new Set(['not_in_format']),
 			)
