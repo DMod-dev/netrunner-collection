@@ -48,6 +48,23 @@ export async function loader({ request }: Route.LoaderArgs) {
 					owner: { select: { id: true, username: true } },
 				},
 			},
+			decks: {
+				select: {
+					id: true,
+					name: true,
+					sideId: true,
+					formatId: true,
+					requireLegality: true,
+					notes: true,
+					nrdbUrl: true,
+					identityCardId: true,
+					createdAt: true,
+					updatedAt: true,
+					cards: {
+						select: { cardId: true, quantity: true, fromCollection: true },
+					},
+				},
+			},
 			password: false, // <-- intentionally omit password
 			sessions: true,
 			roles: true,

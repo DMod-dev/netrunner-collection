@@ -243,6 +243,13 @@ function App() {
 										>
 											Collection
 										</Link>
+										<Link
+											to="/decks"
+											prefetch="intent"
+											className="font-semibold hover:underline"
+										>
+											Decks
+										</Link>
 										<UserDropdown />
 									</>
 								) : (

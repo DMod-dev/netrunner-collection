@@ -161,6 +161,76 @@ test('searchCards groups neutrals and mini-factions, and takes several sides', a
 	expect(await titles({ sides: ['corp', 'runner'] })).toHaveLength(5)
 })
 
+test('searchCards takes several types, and a format’s legal cards', async () => {
+	await prisma.faction.create({
+		data: { id: 'anarch', name: 'Anarch', sideId: 'runner' },
+	})
+	await prisma.cardType.createMany({
+		data: [
+			{ id: 'event', name: 'Event' },
+			{ id: 'program', name: 'Program' },
+			{ id: 'runner_identity', name: 'Identity' },
+		],
+	})
+	const cards = [
+		{ id: 'sure_gamble', typeId: 'event', legalFormats: ',standard,' },
+		{ id: 'banned_event', typeId: 'event', legalFormats: ',standard,' },
+		{
+			id: 'a_current',
+			typeId: 'event',
+			legalFormats: ',standard,',
+			subtypes: ',current,',
+		},
+		{ id: 'rotated', typeId: 'program', legalFormats: ',eternal,' },
+		{ id: 'corroder', typeId: 'program', legalFormats: ',standard,' },
+		{
+			id: 'an_identity',
+			typeId: 'runner_identity',
+			legalFormats: ',standard,',
+		},
+	]
+	for (const card of cards) {
+		await prisma.card.create({
+			data: {
+				...card,
+				title: card.id,
+				strippedTitle: card.id,
+				sideId: 'runner',
+				deckLimit: 3,
+				factionId: 'anarch',
+			},
+		})
+	}
+	const user = await insertUser()
+	const ids = (params: Parameters<typeof searchCards>[1]) =>
+		searchCards(user.id, params).then((r) => r.cards.map((c) => c.id))
+
+	expect(await ids({ types: ['event', 'program'] })).toEqual([
+		'a_current',
+		'banned_event',
+		'corroder',
+		'rotated',
+		'sure_gamble',
+	])
+	expect(await ids({ types: ['event', 'program'], type: 'program' })).toEqual([
+		'corroder',
+		'rotated',
+	])
+	expect(
+		await ids({
+			types: ['event', 'program'],
+			legal: {
+				formatId: 'standard',
+				banned: ['banned_event'],
+				bannedSubtypes: ['current'],
+			},
+		}),
+	).toEqual(['corroder', 'sure_gamble'])
+	// the deck rules' fields come along, for toCardLite
+	const [card] = (await searchCards(user.id, { q: 'a_current' })).cards
+	expect(card).toMatchObject({ subtypes: ',current,', typeId: 'event' })
+})
+
 test('set completion counts exact printings "as printed" and any printing for playsets', async () => {
 	const sgPrinting = await insertPrinting() // Corroder, 2 per System Gateway
 	await prisma.cardCycle.create({

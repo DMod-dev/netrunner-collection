@@ -13,6 +13,11 @@ you've completed and which cards you still need for a deck. Card data comes from
   per printing, including alt arts and promos, and pick the default art for each
   card. Cards you don't own are shown washed out.
 - **Set completion:** progress for every set, down to which cards are missing.
+- **Decks:** build private decks for Standard, Startup or Eternal. Pick an
+  identity, add cards from a browser that searches like the collection, and see
+  the card count, influence, agenda points and any problems (bans, rotation,
+  deck limits) update as you go. Decks with problems still save; turn off
+  **Require deck legality** to see format problems as warnings.
 - **Deck check:** paste a decklist and see what you're short.
 - **Import and export:** a CSV of your collection.
 - **Sharing:** let other users browse your collection, read-only, from
@@ -74,6 +79,7 @@ whenever you want fresh card data locally.
 app/
   routes/          file-based routes (react-router-auto-routes)
     collection/    collection, sets, deck check, import/export, shared with me
+    decks/         your decks, a new deck, and the deck builder
     users/         profiles, and read-only views of collections shared with you
     admin/         card data sync and cache admin
     settings/      profile, sharing, password, passkeys, 2FA, connections

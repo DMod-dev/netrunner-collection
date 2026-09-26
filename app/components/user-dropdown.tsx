@@ -1,4 +1,5 @@
 import {
+	BookOpen01,
 	Database01,
 	LayersThree01,
 	LogOut01,
@@ -61,6 +62,11 @@ export function UserDropdown() {
 				<DropdownMenuItem render={<Link prefetch="intent" to="/collection" />}>
 					<Icon className="text-body-md" icon={LayersThree01}>
 						Collection
+					</Icon>
+				</DropdownMenuItem>
+				<DropdownMenuItem render={<Link prefetch="intent" to="/decks" />}>
+					<Icon className="text-body-md" icon={BookOpen01}>
+						Decks
 					</Icon>
 				</DropdownMenuItem>
 				<DropdownMenuItem

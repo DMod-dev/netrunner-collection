@@ -30,6 +30,7 @@ model User {
   passkey           Passkey[]
   sharesGiven       CollectionShare[]   @relation("CollectionShareOwner")
   sharesReceived    CollectionShare[]   @relation("CollectionShareViewer")
+  decks             Deck[]
 }
 
 model UserImage {
@@ -237,8 +238,10 @@ model Card {
   type      CardType @relation(fields: [typeId], references: [id])
   typeId    String
 
-  printings    Printing[]
-  preferredArt PreferredPrinting[]
+  printings     Printing[]
+  preferredArt  PreferredPrinting[]
+  deckCards     DeckCard[]
+  identityDecks Deck[]              @relation("DeckIdentity")
 
   @@index([strippedTitle])
   @@index([sideId, factionId])
@@ -403,4 +406,52 @@ model CollectionShare {
   @@unique([ownerId, viewerId])
   // "shared with me" listing
   @@index([viewerId])
+}
+
+// ---------------------------------------------------------------------------
+// Decks
+// ---------------------------------------------------------------------------
+
+/// A user's deck. Private to its owner for now (see app/utils/deck.server.ts).
+model Deck {
+  id              String   @id @default(cuid())
+  name            String
+  /// copied from the identity; the card browser only shows this side
+  sideId          String
+  /// "standard" | "startup" | "eternal" (DECK_FORMATS)
+  formatId        String   @default("standard")
+  /// off: format problems (bans, rotation, points) are warnings, not errors
+  requireLegality Boolean  @default(true)
+  notes           String?
+  /// the NetrunnerDB deck it was imported from
+  nrdbUrl         String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  userId         String
+  /// a column rather than a DeckCard, so a deck can't have two
+  identity       Card?      @relation("DeckIdentity", fields: [identityCardId], references: [id])
+  identityCardId String?
+  cards          DeckCard[]
+
+  @@index([userId, updatedAt])
+  @@index([identityCardId])
+}
+
+/// How many copies of a card a deck has.
+model DeckCard {
+  quantity       Int
+  /// copies reserved from the owner's collection; 0 <= fromCollection <= quantity.
+  /// A deck is "filled from the collection" when any card has some.
+  fromCollection Int @default(0)
+
+  deck   Deck   @relation(fields: [deckId], references: [id], onDelete: Cascade)
+  deckId String
+  card   Card   @relation(fields: [cardId], references: [id])
+  cardId String
+
+  @@id([deckId, cardId])
+  // "which of my decks use this card"
+  @@index([cardId])
 }
