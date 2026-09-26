@@ -11,15 +11,18 @@ export const handle: SEOHandle = {
 	getSitemapEntries: () => null,
 }
 
-export async function loader({ request }: Route.LoaderArgs) {
-	return loadSetsPage(request, await requireCollectionView(request))
+export async function loader({ request, params }: Route.LoaderArgs) {
+	const view = await requireCollectionView(request, params.username)
+	return loadSetsPage(request, view)
 }
 
-export const meta: Route.MetaFunction = () => [
-	{ title: 'Set completion | Netrunner Collection' },
+export const meta: Route.MetaFunction = ({ loaderData }) => [
+	{
+		title: `${loaderData ? `${loaderData.access.ownerName}’s set completion` : 'Set completion'} | Netrunner Collection`,
+	},
 ]
 
-export default function SetsRoute({ loaderData }: Route.ComponentProps) {
+export default function SharedSetsRoute({ loaderData }: Route.ComponentProps) {
 	return <SetsPage loaderData={loaderData} />
 }
 

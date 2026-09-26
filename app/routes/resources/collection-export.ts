@@ -1,4 +1,4 @@
-import { requireUserId } from '#app/utils/auth.server.ts'
+import { requireCollectionAccess } from '#app/utils/collection-access.server.ts'
 import {
 	getCollectionRows,
 	rowsToCsv,
@@ -6,8 +6,9 @@ import {
 } from '#app/utils/collection-io.server.ts'
 import { type Route } from './+types/collection-export.ts'
 
+// Always the caller's own collection: shared collections can't be exported.
 export async function loader({ request }: Route.LoaderArgs) {
-	const userId = await requireUserId(request)
+	const { ownerId: userId } = await requireCollectionAccess(request)
 	const format =
 		new URL(request.url).searchParams.get('format') === 'json' ? 'json' : 'csv'
 	const rows = await getCollectionRows(userId)

@@ -14,7 +14,7 @@ import { Button } from '#app/components/ui/button.tsx'
 import { Label } from '#app/components/ui/label.tsx'
 import { StatusButton } from '#app/components/ui/status-button.tsx'
 import { Textarea } from '#app/components/ui/textarea.tsx'
-import { requireUserId } from '#app/utils/auth.server.ts'
+import { requireCollectionAccess } from '#app/utils/collection-access.server.ts'
 import {
 	checkDeckAgainstCollection,
 	DeckImportError,
@@ -31,13 +31,14 @@ export const handle: SEOHandle = {
 
 const MAX_INPUT_LENGTH = 20_000
 
+// Owner-only: deck check isn't mounted under /users/:username/collection.
 export async function loader({ request }: Route.LoaderArgs) {
-	await requireUserId(request)
+	await requireCollectionAccess(request)
 	return null
 }
 
 export async function action({ request }: Route.ActionArgs) {
-	const userId = await requireUserId(request)
+	const { ownerId: userId } = await requireCollectionAccess(request)
 	const formData = await request.formData()
 	const deck = formData.get('deck')
 	const input = (typeof deck === 'string' ? deck : '').slice(

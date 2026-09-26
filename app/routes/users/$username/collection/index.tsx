@@ -11,15 +11,20 @@ export const handle: SEOHandle = {
 	getSitemapEntries: () => null,
 }
 
-export async function loader({ request }: Route.LoaderArgs) {
-	return loadCardsPage(request, await requireCollectionView(request))
+export async function loader({ request, params }: Route.LoaderArgs) {
+	const view = await requireCollectionView(request, params.username)
+	return loadCardsPage(request, view)
 }
 
-export const meta: Route.MetaFunction = () => [
-	{ title: 'My Collection | Netrunner Collection' },
+export const meta: Route.MetaFunction = ({ loaderData }) => [
+	{
+		title: `${loaderData ? `${loaderData.access.ownerName}’s collection` : 'Collection'} | Netrunner Collection`,
+	},
 ]
 
-export default function CollectionRoute({ loaderData }: Route.ComponentProps) {
+export default function SharedCollectionRoute({
+	loaderData,
+}: Route.ComponentProps) {
 	return <CardsPage loaderData={loaderData} />
 }
 

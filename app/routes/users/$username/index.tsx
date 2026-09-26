@@ -13,6 +13,7 @@ import { Button, buttonVariants } from '#app/components/ui/button.tsx'
 import { Icon } from '#app/components/ui/icon.tsx'
 import { UserIcon } from '#app/components/user-icon.tsx'
 import { requireUserId } from '#app/utils/auth.server.ts'
+import { getCollectionAccess } from '#app/utils/collection-access.server.ts'
 import { getCollectionTotals } from '#app/utils/collection.server.ts'
 import { formatDate } from '#app/utils/dates.ts'
 import { prisma } from '#app/utils/db.server.ts'
@@ -40,9 +41,19 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
 	invariantResponse(user, 'User not found', { status: 404 })
 
-	const totals = await getCollectionTotals(user.id)
+	const [totals, access] = await Promise.all([
+		getCollectionTotals(user.id),
+		getCollectionAccess(request, user.username),
+	])
+	// only someone else's collection that's been shared with you
+	const canViewCollection = access !== null && !access.canEdit
 
-	return { user, userJoinedDisplay: formatDate(user.createdAt), totals }
+	return {
+		user,
+		userJoinedDisplay: formatDate(user.createdAt),
+		totals,
+		canViewCollection,
+	}
 }
 
 export default function ProfileRoute() {
@@ -87,6 +98,17 @@ export default function ProfileRoute() {
 								</Icon>
 							</Button>
 						</Form>
+					) : null}
+					{data.canViewCollection ? (
+						<div className="mt-10 flex gap-4">
+							<Link
+								to={`/users/${user.username}/collection`}
+								prefetch="intent"
+								className={buttonVariants()}
+							>
+								View collection
+							</Link>
+						</div>
 					) : null}
 					{isLoggedInUser ? (
 						<div className="mt-10 flex gap-4">

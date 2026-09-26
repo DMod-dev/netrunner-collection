@@ -5,10 +5,13 @@ import {
 	QuantityStepper,
 } from '#app/routes/resources/collection.tsx'
 import { type PrintingWithCounts } from '#app/utils/collection.server.ts'
+import { cn } from '#app/utils/misc.tsx'
+import { useCollectionAccess } from './collection-access-context.tsx'
 
 /**
  * One NRDB printing with its image, the user's plain-copy counter and any
- * custom versions (alt arts, promos...) they've added.
+ * custom versions (alt arts, promos...) they've added. In a collection shared
+ * with you, the counts are plain numbers.
  */
 export function PrintingTile({
 	printing,
@@ -22,6 +25,7 @@ export function PrintingTile({
 	heading: React.ReactNode
 	badge?: React.ReactNode
 }) {
+	const { canEdit } = useCollectionAccess()
 	const [addingVariant, setAddingVariant] = useState(false)
 	const quantity = printing.collectionEntries[0]?.quantity ?? 0
 
@@ -54,11 +58,15 @@ export function PrintingTile({
 					{badge}
 				</div>
 			</div>
-			<QuantityStepper
-				target={{ printingId: printing.id }}
-				quantity={quantity}
-				label={label}
-			/>
+			{canEdit ? (
+				<QuantityStepper
+					target={{ printingId: printing.id }}
+					quantity={quantity}
+					label={label}
+				/>
+			) : (
+				<StaticQuantity quantity={quantity} label={label} />
+			)}
 			{printing.variants.length ? (
 				<ul className="border-border flex flex-col gap-1 border-t pt-2">
 					{printing.variants.map((variant) => (
@@ -70,22 +78,32 @@ export function PrintingTile({
 								>
 									{variant.label}
 								</span>
-								<DeleteVariantButton
-									variantId={variant.id}
-									label={variant.label}
-								/>
+								{canEdit ? (
+									<DeleteVariantButton
+										variantId={variant.id}
+										label={variant.label}
+									/>
+								) : null}
 							</div>
-							<QuantityStepper
-								target={{ variantId: variant.id }}
-								quantity={variant.quantity}
-								label={`${label} – ${variant.label}`}
-								size="sm"
-							/>
+							{canEdit ? (
+								<QuantityStepper
+									target={{ variantId: variant.id }}
+									quantity={variant.quantity}
+									label={`${label} – ${variant.label}`}
+									size="sm"
+								/>
+							) : (
+								<StaticQuantity
+									quantity={variant.quantity}
+									label={`${label} – ${variant.label}`}
+									size="sm"
+								/>
+							)}
 						</li>
 					))}
 				</ul>
 			) : null}
-			{addingVariant ? (
+			{!canEdit ? null : addingVariant ? (
 				<AddVariantForm
 					printingId={printing.id}
 					onDone={() => setAddingVariant(false)}
@@ -100,6 +118,35 @@ export function PrintingTile({
 				</button>
 			)}
 		</div>
+	)
+}
+
+/**
+ * How many copies someone else owns, where your own collection has a
+ * `QuantityStepper`.
+ */
+export function StaticQuantity({
+	quantity,
+	label,
+	size = 'default',
+}: {
+	quantity: number
+	/** Describes what's being counted, for screen readers. */
+	label: string
+	size?: 'default' | 'sm'
+}) {
+	return (
+		<p
+			className={cn(
+				'tabular-nums',
+				size === 'sm' ? 'text-xs' : 'text-sm',
+				quantity > 0 ? 'text-foreground' : 'text-muted-foreground',
+			)}
+		>
+			<span className="sr-only">{label}: </span>
+			<span className={cn(quantity > 0 && 'font-bold')}>{quantity}</span>{' '}
+			{quantity === 1 ? 'copy' : 'copies'}
+		</p>
 	)
 }
 

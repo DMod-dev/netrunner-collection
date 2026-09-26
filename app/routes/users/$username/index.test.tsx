@@ -60,6 +60,50 @@ test('The user profile when signed in as someone else', async () => {
 		data: createUser(),
 	})
 	const { cookieHeader } = await createSignedInUser()
+	renderProfile(user.username, cookieHeader)
+
+	await screen.findByRole('heading', { level: 1, name: user.name! })
+	expect(screen.queryByRole('link', { name: /edit profile/i })).toBeNull()
+	// their collection stats show, but don't link to your own collection
+	expect(screen.getByText('0 cards · 0 copies')).toBeInTheDocument()
+	expect(screen.queryByRole('link', { name: /0 cards/i })).toBeNull()
+	// they haven't shared it with you
+	expect(screen.queryByRole('link', { name: /view collection/i })).toBeNull()
+})
+
+test('The user profile links to a collection they shared with you', async () => {
+	const owner = await prisma.user.create({
+		select: { id: true, username: true, name: true },
+		data: createUser(),
+	})
+	const { user: viewer, cookieHeader } = await createSignedInUser()
+	await prisma.collectionShare.create({
+		data: { ownerId: owner.id, viewerId: viewer.id },
+	})
+	renderProfile(owner.username, cookieHeader)
+
+	await screen.findByRole('heading', { level: 1, name: owner.name! })
+	expect(
+		screen.getByRole('link', { name: /view collection/i }),
+	).toHaveAttribute('href', `/users/${owner.username}/collection`)
+})
+
+test('A share you gave doesn’t link you to their collection', async () => {
+	const other = await prisma.user.create({
+		select: { id: true, username: true, name: true },
+		data: createUser(),
+	})
+	const { user: me, cookieHeader } = await createSignedInUser()
+	await prisma.collectionShare.create({
+		data: { ownerId: me.id, viewerId: other.id },
+	})
+	renderProfile(other.username, cookieHeader)
+
+	await screen.findByRole('heading', { level: 1, name: other.name! })
+	expect(screen.queryByRole('link', { name: /view collection/i })).toBeNull()
+})
+
+function renderProfile(username: string, cookieHeader: string) {
 	const App = createRoutesStub([
 		{
 			path: '/users/:username',
@@ -71,16 +115,8 @@ test('The user profile when signed in as someone else', async () => {
 			HydrateFallback: () => <div>Loading...</div>,
 		},
 	])
-
-	const routeUrl = `/users/${user.username}`
-	render(<App initialEntries={[routeUrl]} />)
-
-	await screen.findByRole('heading', { level: 1, name: user.name! })
-	expect(screen.queryByRole('link', { name: /edit profile/i })).toBeNull()
-	// their collection stats show, but don't link to your own collection
-	expect(screen.getByText('0 cards · 0 copies')).toBeInTheDocument()
-	expect(screen.queryByRole('link', { name: /0 cards/i })).toBeNull()
-})
+	render(<App initialEntries={[`/users/${username}`]} />)
+}
 
 test('The user profile when logged in as self', async () => {
 	const user = await prisma.user.create({
@@ -133,6 +169,8 @@ test('The user profile when logged in as self', async () => {
 	await screen.findByRole('heading', { level: 1, name: user.name! })
 	await screen.findByRole('button', { name: /logout/i })
 	await screen.findByRole('link', { name: /my collection/i })
+	// your own collection is "My collection", not a shared one
+	expect(screen.queryByRole('link', { name: /view collection/i })).toBeNull()
 	expect(
 		screen.getByRole('link', { name: '0 cards · 0 copies' }),
 	).toHaveAttribute('href', '/collection')

@@ -70,9 +70,11 @@ whenever you want fresh card data locally.
 app/
   routes/          file-based routes (react-router-auto-routes)
     collection/    collection, sets, deck check, import/export
+    users/         profiles, and read-only views of collections shared with you
     admin/         card data sync and cache admin
     settings/      profile, password, passkeys, 2FA, connections
   components/      shared UI; components/ui holds the shadcn primitives
+    collection-pages/  the Cards and Sets pages, used by both route trees
   utils/           server and client helpers (*.server.ts stays on the server)
 prisma/            schema, migrations and seed
 other/             Dockerfile, LiteFS config and the sync-nrdb script

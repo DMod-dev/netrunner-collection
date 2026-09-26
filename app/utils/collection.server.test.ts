@@ -7,6 +7,7 @@ import {
 	deleteVariant,
 	getSetCompletion,
 	getSetsProgress,
+	printingSelect,
 	searchCards,
 	setPreferredPrinting,
 	setPrintingQuantity,
@@ -279,4 +280,37 @@ test('setPreferredPrinting saves one art per card, and clearPreferredPrinting fo
 
 	await clearPreferredPrinting(user.id, 'corroder')
 	expect(await preferred()).toEqual([])
+})
+
+test('printingSelect leaves out version notes when asked', async () => {
+	const printing = await insertPrinting()
+	const user = await insertUser()
+	await createVariant(user.id, {
+		printingId: printing.id,
+		label: 'Worlds promo',
+		notes: 'signed by the artist',
+	})
+	const variantsWith = async (select: ReturnType<typeof printingSelect>) =>
+		(
+			await prisma.printing.findUniqueOrThrow({
+				where: { id: printing.id },
+				select,
+			})
+		).variants
+
+	expect(await variantsWith(printingSelect(user.id))).toEqual([
+		{
+			id: expect.any(String),
+			label: 'Worlds promo',
+			notes: 'signed by the artist',
+			quantity: 1,
+		},
+	])
+	const withoutNotes = await variantsWith(
+		printingSelect(user.id, { includeNotes: false }),
+	)
+	expect(withoutNotes).toEqual([
+		{ id: expect.any(String), label: 'Worlds promo', quantity: 1 },
+	])
+	expect(withoutNotes[0]).not.toHaveProperty('notes')
 })

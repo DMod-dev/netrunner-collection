@@ -11,7 +11,7 @@ import { Input } from '#app/components/ui/input.tsx'
 import { Label } from '#app/components/ui/label.tsx'
 import { StatusButton } from '#app/components/ui/status-button.tsx'
 import { Textarea } from '#app/components/ui/textarea.tsx'
-import { requireUserId } from '#app/utils/auth.server.ts'
+import { requireCollectionAccess } from '#app/utils/collection-access.server.ts'
 import {
 	applyImport,
 	type ImportMode,
@@ -48,13 +48,14 @@ async function getTotals(userId: string) {
 	}
 }
 
+// Owner-only: import/export isn't mounted under /users/:username/collection.
 export async function loader({ request }: Route.LoaderArgs) {
-	const userId = await requireUserId(request)
+	const { ownerId: userId } = await requireCollectionAccess(request)
 	return { totals: await getTotals(userId) }
 }
 
 export async function action({ request }: Route.ActionArgs) {
-	const userId = await requireUserId(request)
+	const { ownerId: userId } = await requireCollectionAccess(request)
 	const formData = await request.formData()
 	const intent = formData.get('intent')
 	const rawContent = formData.get('content')
