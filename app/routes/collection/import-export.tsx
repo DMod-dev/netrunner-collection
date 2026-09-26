@@ -1,10 +1,11 @@
+import { Download01 } from '@untitledui/icons'
 import { type SEOHandle } from '@nasa-gcn/remix-seo'
 import { useEffect, useId, useState } from 'react'
 import { data, Link, useFetcher } from 'react-router'
 import { toast } from 'sonner'
 import { CollectionNav } from '#app/components/collection-ui.tsx'
 import { GeneralErrorBoundary } from '#app/components/error-boundary.tsx'
-import { Button } from '#app/components/ui/button.tsx'
+import { buttonVariants } from '#app/components/ui/button.tsx'
 import { Icon } from '#app/components/ui/icon.tsx'
 import { Label } from '#app/components/ui/label.tsx'
 import { StatusButton } from '#app/components/ui/status-button.tsx'
@@ -119,16 +120,20 @@ export default function ImportExportRoute({
 					a backup, or to edit in a spreadsheet and import again.
 				</p>
 				<div className="flex flex-wrap gap-2">
-					<Button asChild>
-						<a href="/resources/collection-export?format=csv" download>
-							<Icon name="download">Download CSV</Icon>
-						</a>
-					</Button>
-					<Button asChild variant="outline">
-						<a href="/resources/collection-export?format=json" download>
-							<Icon name="download">Download JSON</Icon>
-						</a>
-					</Button>
+					<a
+						href="/resources/collection-export?format=csv"
+						download
+						className={buttonVariants()}
+					>
+						<Icon icon={Download01}>Download CSV</Icon>
+					</a>
+					<a
+						href="/resources/collection-export?format=json"
+						download
+						className={buttonVariants({ variant: 'outline' })}
+					>
+						<Icon icon={Download01}>Download JSON</Icon>
+					</a>
 				</div>
 			</section>
 
@@ -206,7 +211,7 @@ Sure Gamble,,3,`}
 					id={`${id}-file`}
 					type="file"
 					accept=".csv,.json,text/csv,application/json"
-					className="file:bg-secondary text-sm file:mr-3 file:rounded-md file:border-0 file:px-3 file:py-1.5 file:text-sm file:font-medium"
+					className="file:bg-secondary file:text-secondary-foreground text-sm file:mr-3 file:h-7 file:rounded-md file:border-0 file:px-2.5 file:text-sm file:font-medium"
 					onChange={async (e) => {
 						const file = e.currentTarget.files?.[0]
 						e.currentTarget.value = ''
@@ -260,7 +265,7 @@ Sure Gamble,,3,`}
 			</div>
 
 			{result && !result.ok ? (
-				<p className="text-foreground-destructive text-sm" role="alert">
+				<p className="text-destructive text-sm" role="alert">
 					{result.error}
 				</p>
 			) : null}

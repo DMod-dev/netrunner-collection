@@ -1,3 +1,4 @@
+import { ArrowLeft, ArrowRight, SearchMd } from '@untitledui/icons'
 import { type SEOHandle } from '@nasa-gcn/remix-seo'
 import { useEffect, useId, useRef } from 'react'
 import { Form, Link, useSearchParams, useSubmit } from 'react-router'
@@ -10,7 +11,7 @@ import {
 import { CollectionNav, ShortcutHint } from '#app/components/collection-ui.tsx'
 import { GeneralErrorBoundary } from '#app/components/error-boundary.tsx'
 import { FactionDot } from '#app/components/printing-tile.tsx'
-import { Button } from '#app/components/ui/button.tsx'
+import { Button, buttonVariants } from '#app/components/ui/button.tsx'
 import { Icon } from '#app/components/ui/icon.tsx'
 import { Input } from '#app/components/ui/input.tsx'
 import { Label } from '#app/components/ui/label.tsx'
@@ -213,8 +214,8 @@ function Filters({
 					}}
 					autoComplete="off"
 				/>
-				<Button type="submit" aria-label="Search">
-					<Icon name="magnifying-glass" size="md" />
+				<Button type="submit" size="icon" aria-label="Search">
+					<Icon icon={SearchMd} size="sm" />
 				</Button>
 			</div>
 			<div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-6">
@@ -319,7 +320,7 @@ function FilterSelect({
 				id={id}
 				name={name}
 				defaultValue={searchParams.get(name) ?? ''}
-				className="border-input bg-background h-9 rounded-md border px-2 text-sm"
+				className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 h-8 rounded-lg border px-2 text-sm outline-none focus-visible:ring-3"
 			>
 				<option value="">{allLabel}</option>
 				{children}
@@ -415,21 +416,23 @@ function Pagination({ page, pageCount }: { page: number; pageCount: number }) {
 	return (
 		<nav className="flex items-center justify-center gap-4" aria-label="Pages">
 			{page > 1 ? (
-				<Button asChild variant="outline">
-					<Link to={pageLink(page - 1)}>
-						<Icon name="arrow-left">Previous</Icon>
-					</Link>
-				</Button>
+				<Link
+					to={pageLink(page - 1)}
+					className={buttonVariants({ variant: 'outline' })}
+				>
+					<Icon icon={ArrowLeft}>Previous</Icon>
+				</Link>
 			) : null}
 			<span className="text-muted-foreground text-sm">
 				Page {page} of {pageCount}
 			</span>
 			{page < pageCount ? (
-				<Button asChild variant="outline">
-					<Link to={pageLink(page + 1)}>
-						Next <Icon name="arrow-right" />
-					</Link>
-				</Button>
+				<Link
+					to={pageLink(page + 1)}
+					className={buttonVariants({ variant: 'outline' })}
+				>
+					Next <Icon icon={ArrowRight} />
+				</Link>
 			) : null}
 		</nav>
 	)

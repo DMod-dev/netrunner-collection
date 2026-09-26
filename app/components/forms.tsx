@@ -26,7 +26,7 @@ export function ErrorList({
 	return (
 		<ul id={id} className="flex flex-col gap-1">
 			{errorsToRender.map((e) => (
-				<li key={e} className="text-foreground-destructive text-[10px]">
+				<li key={e} className="text-destructive text-[10px]">
 					{e}
 				</li>
 			))}
@@ -169,14 +169,18 @@ export function CheckboxField({
 		<div className={className}>
 			<div className="flex gap-2">
 				<Checkbox
+					// With a native button Base UI puts `id` on the button rather than
+					// its hidden input, so the label targets a single element.
+					nativeButton
+					render={<button type="button" />}
 					{...checkboxProps}
 					id={id}
 					aria-invalid={errorId ? true : undefined}
 					aria-describedby={errorId}
 					checked={input.value === checkedValue}
-					onCheckedChange={(state) => {
-						input.change(state.valueOf() ? checkedValue : '')
-						buttonProps.onCheckedChange?.(state)
+					onCheckedChange={(checked, eventDetails) => {
+						input.change(checked ? checkedValue : '')
+						buttonProps.onCheckedChange?.(checked, eventDetails)
 					}}
 					onFocus={(event) => {
 						input.focus()
@@ -186,7 +190,6 @@ export function CheckboxField({
 						input.blur()
 						buttonProps.onBlur?.(event)
 					}}
-					type="button"
 				/>
 				<label
 					htmlFor={id}

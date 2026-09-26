@@ -8,7 +8,6 @@ import tailwindcss from '@tailwindcss/vite'
 import { reactRouterDevTools } from 'react-router-devtools'
 import { defineConfig } from 'vite'
 import { envOnlyMacros } from 'vite-env-only'
-import { iconsSpritesheet } from 'vite-plugin-icons-spritesheet'
 
 export default defineConfig((config) => {
 	const mode = config.mode ?? process.env.NODE_ENV
@@ -66,14 +65,6 @@ export default defineConfig((config) => {
 			envOnlyMacros(),
 			tailwindcss(),
 			reactRouterDevTools(),
-
-			iconsSpritesheet({
-				inputDir: './other/svg-icons',
-				outputDir: './app/components/ui/icons',
-				fileName: 'sprite.svg',
-				withTypes: true,
-				iconNameTransformer: (name) => name,
-			}),
 			// it would be really nice to have this enabled in tests, but we'll have to
 			// wait until https://github.com/remix-run/remix/issues/9871 is fixed
 			isTest ? null : reactRouter(),

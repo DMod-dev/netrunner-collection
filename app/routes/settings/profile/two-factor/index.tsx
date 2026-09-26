@@ -1,3 +1,4 @@
+import { Check, LockUnlocked01 } from '@untitledui/icons'
 import { type SEOHandle } from '@nasa-gcn/remix-seo'
 import { redirect, Link, useFetcher } from 'react-router'
 import { Icon } from '#app/components/ui/icon.tsx'
@@ -48,18 +49,18 @@ export default function TwoFactorRoute({ loaderData }: Route.ComponentProps) {
 			{loaderData.is2FAEnabled ? (
 				<>
 					<p className="text-lg">
-						<Icon name="check">
+						<Icon icon={Check}>
 							You have enabled two-factor authentication.
 						</Icon>
 					</p>
 					<Link to="disable">
-						<Icon name="lock-open-1">Disable 2FA</Icon>
+						<Icon icon={LockUnlocked01}>Disable 2FA</Icon>
 					</Link>
 				</>
 			) : (
 				<>
 					<p>
-						<Icon name="lock-open-1">
+						<Icon icon={LockUnlocked01}>
 							You have not enabled two-factor authentication yet.
 						</Icon>
 					</p>

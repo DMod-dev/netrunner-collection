@@ -1,3 +1,4 @@
+import { Mail01 } from '@untitledui/icons'
 import { getFormProps, getInputProps, useForm } from '@conform-to/react'
 import { getZodConstraint, parseWithZod } from '@conform-to/zod/v4'
 import { type SEOHandle } from '@nasa-gcn/remix-seo'
@@ -21,7 +22,7 @@ import { type BreadcrumbHandle } from './_layout.tsx'
 import { EmailChangeEmail } from './change-email.server.tsx'
 
 export const handle: BreadcrumbHandle & SEOHandle = {
-	breadcrumb: <Icon name="envelope-closed">Change Email</Icon>,
+	breadcrumb: <Icon icon={Mail01}>Change Email</Icon>,
 	getSitemapEntries: () => null,
 }
 
@@ -134,6 +135,7 @@ export default function ChangeEmailIndex({
 					<ErrorList id={form.errorId} errors={form.errors} />
 					<div>
 						<StatusButton
+							type="submit"
 							status={isPending ? 'pending' : (form.status ?? 'idle')}
 						>
 							Send Confirmation

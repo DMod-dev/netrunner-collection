@@ -1,3 +1,4 @@
+import { XClose } from '@untitledui/icons'
 import { useEffect, useRef, useState } from 'react'
 import {
 	QuantityStepper,
@@ -269,7 +270,7 @@ export function VersionsButton({
 							aria-label="Close"
 							onClick={() => dialogRef.current?.close()}
 						>
-							<Icon name="cross-1" />
+							<Icon icon={XClose} />
 						</Button>
 					</header>
 					<p className="text-muted-foreground text-sm">

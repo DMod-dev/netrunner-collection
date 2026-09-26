@@ -1,3 +1,4 @@
+import { Laptop01, Moon01, Sun } from '@untitledui/icons'
 import { useForm, getFormProps } from '@conform-to/react'
 import { parseWithZod } from '@conform-to/zod/v4'
 import { invariantResponse } from '@epic-web/invariant'
@@ -58,17 +59,17 @@ export function ThemeSwitch({
 		mode === 'system' ? 'light' : mode === 'light' ? 'dark' : 'system'
 	const modeLabel = {
 		light: (
-			<Icon name="sun">
+			<Icon icon={Sun}>
 				<span className="sr-only">Light</span>
 			</Icon>
 		),
 		dark: (
-			<Icon name="moon">
+			<Icon icon={Moon01}>
 				<span className="sr-only">Dark</span>
 			</Icon>
 		),
 		system: (
-			<Icon name="laptop">
+			<Icon icon={Laptop01}>
 				<span className="sr-only">System</span>
 			</Icon>
 		),

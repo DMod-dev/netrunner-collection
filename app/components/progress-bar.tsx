@@ -1,3 +1,4 @@
+import { RefreshCw01 } from '@untitledui/icons'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigation } from 'react-router'
 import { useSpinDelay } from 'spin-delay'
@@ -51,7 +52,7 @@ function EpicProgress() {
 			{delayedPending && (
 				<div className="absolute flex items-center justify-center">
 					<Icon
-						name="update"
+						icon={RefreshCw01}
 						size="md"
 						className="text-foreground m-1 animate-spin"
 						aria-hidden

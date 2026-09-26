@@ -1,3 +1,4 @@
+import { GitHubLogo } from '#app/components/ui/brand-icons.tsx'
 import { Form } from 'react-router'
 import { z } from 'zod'
 import { Icon } from '#app/components/ui/icon.tsx'
@@ -16,7 +17,7 @@ export const providerLabels: Record<ProviderName, string> = {
 } as const
 
 export const providerIcons: Record<ProviderName, React.ReactNode> = {
-	[GITHUB_PROVIDER_NAME]: <Icon name="github-logo" />,
+	[GITHUB_PROVIDER_NAME]: <Icon icon={GitHubLogo} />,
 } as const
 
 export function ProviderConnectionForm({

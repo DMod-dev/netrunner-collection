@@ -1,3 +1,5 @@
+import { Lock01, Plus, Trash01 } from '@untitledui/icons'
+import { Passkey } from '#app/components/ui/brand-icons.tsx'
 import { type SEOHandle } from '@nasa-gcn/remix-seo'
 import { startRegistration } from '@simplewebauthn/browser'
 import { formatDistanceToNow } from 'date-fns'
@@ -12,7 +14,7 @@ import { type Route } from './+types/passkeys.ts'
 import { type BreadcrumbHandle } from './_layout.tsx'
 
 export const handle: BreadcrumbHandle & SEOHandle = {
-	breadcrumb: <Icon name="passkey">Passkeys</Icon>,
+	breadcrumb: <Icon icon={Passkey}>Passkeys</Icon>,
 	getSitemapEntries: () => null,
 }
 
@@ -136,7 +138,7 @@ export default function Passkeys({ loaderData }: Route.ComponentProps) {
 						variant="secondary"
 						className="flex items-center gap-2"
 					>
-						<Icon name="plus">Register new passkey</Icon>
+						<Icon icon={Plus}>Register new passkey</Icon>
 					</Button>
 				</form>
 			</div>
@@ -156,7 +158,7 @@ export default function Passkeys({ loaderData }: Route.ComponentProps) {
 						>
 							<div className="flex flex-col gap-2">
 								<div className="flex items-center gap-2">
-									<Icon name="lock-closed" />
+									<Icon icon={Lock01} />
 									<span className="font-semibold">
 										{passkey.deviceType === 'platform'
 											? 'Device'
@@ -178,7 +180,7 @@ export default function Passkeys({ loaderData }: Route.ComponentProps) {
 									size="sm"
 									className="flex items-center gap-2"
 								>
-									<Icon name="trash">Delete</Icon>
+									<Icon icon={Trash01}>Delete</Icon>
 								</Button>
 							</Form>
 						</li>

@@ -163,7 +163,7 @@ export default function NrdbSyncRoute({ loaderData }: Route.ComponentProps) {
 													sync.status === 'success' &&
 														'bg-green-600/15 text-green-800 dark:text-green-300',
 													sync.status === 'error' &&
-														'bg-destructive/15 text-foreground-destructive',
+														'bg-destructive/15 text-destructive',
 													sync.status === 'running' &&
 														'bg-secondary text-secondary-foreground',
 												)}

@@ -1,3 +1,4 @@
+import { ArrowRight, File06 } from '@untitledui/icons'
 import { invariantResponse } from '@epic-web/invariant'
 import { type SEOHandle } from '@nasa-gcn/remix-seo'
 import { Link, Outlet, useMatches } from 'react-router'
@@ -14,7 +15,7 @@ export const BreadcrumbHandle = z.object({ breadcrumb: z.any() })
 export type BreadcrumbHandle = z.infer<typeof BreadcrumbHandle>
 
 export const handle: BreadcrumbHandle & SEOHandle = {
-	breadcrumb: <Icon name="file-text">Edit Profile</Icon>,
+	breadcrumb: <Icon icon={File06}>Edit Profile</Icon>,
 	getSitemapEntries: () => null,
 }
 
@@ -66,7 +67,7 @@ export default function EditUserProfile() {
 								'text-muted-foreground': i < arr.length - 1,
 							})}
 						>
-							<Icon name="arrow-right" size="sm">
+							<Icon icon={ArrowRight} size="sm">
 								{breadcrumb}
 							</Icon>
 						</li>

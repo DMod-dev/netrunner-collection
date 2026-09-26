@@ -5,6 +5,7 @@
 // ensure the user gets the right status code and we can display a nicer error
 // message for them than the Remix and/or browser default.
 
+import { ArrowLeft } from '@untitledui/icons'
 import { type SEOHandle } from '@nasa-gcn/remix-seo'
 import { Link, useLocation } from 'react-router'
 import { GeneralErrorBoundary } from '#app/components/error-boundary.tsx'
@@ -42,7 +43,7 @@ export function ErrorBoundary() {
 							</pre>
 						</div>
 						<Link to="/" className="text-body-md underline">
-							<Icon name="arrow-left">Back to home</Icon>
+							<Icon icon={ArrowLeft}>Back to home</Icon>
 						</Link>
 					</div>
 				),

@@ -1,3 +1,4 @@
+import { Passkey } from '#app/components/ui/brand-icons.tsx'
 import { getFormProps, getInputProps, useForm } from '@conform-to/react'
 import { getZodConstraint, parseWithZod } from '@conform-to/zod/v4'
 import { type SEOHandle } from '@nasa-gcn/remix-seo'
@@ -288,7 +289,7 @@ function PasskeyLogin({
 				disabled={isPending}
 			>
 				<span className="inline-flex items-center gap-1.5">
-					<Icon name="passkey" />
+					<Icon icon={Passkey} />
 					<span>{passkeyMessage}</span>
 				</span>
 			</StatusButton>

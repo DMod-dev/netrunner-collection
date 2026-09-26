@@ -1,3 +1,4 @@
+import { HelpCircle, Link01, XClose } from '@untitledui/icons'
 import { invariantResponse } from '@epic-web/invariant'
 import { type SEOHandle } from '@nasa-gcn/remix-seo'
 import { useState } from 'react'
@@ -7,7 +8,6 @@ import { StatusButton } from '#app/components/ui/status-button.tsx'
 import {
 	Tooltip,
 	TooltipContent,
-	TooltipProvider,
 	TooltipTrigger,
 } from '#app/components/ui/tooltip.tsx'
 import { requireUserId } from '#app/utils/auth.server.ts'
@@ -29,7 +29,7 @@ import { type Route } from './+types/connections.ts'
 import { type BreadcrumbHandle } from './_layout.tsx'
 
 export const handle: BreadcrumbHandle & SEOHandle = {
-	breadcrumb: <Icon name="link-2">Connections</Icon>,
+	breadcrumb: <Icon icon={Link01}>Connections</Icon>,
 	getSitemapEntries: () => null,
 }
 
@@ -177,10 +177,11 @@ function Connection({
 			{canDelete ? (
 				<deleteFetcher.Form method="POST">
 					<input name="connectionId" value={connection.id} type="hidden" />
-					<TooltipProvider>
-						<Tooltip>
-							<TooltipTrigger asChild>
+					<Tooltip>
+						<TooltipTrigger
+							render={
 								<StatusButton
+									type="submit"
 									name="intent"
 									value="delete-connection"
 									variant="destructive"
@@ -190,25 +191,26 @@ function Connection({
 											? 'pending'
 											: (deleteFetcher.data?.status ?? 'idle')
 									}
-								>
-									<Icon name="cross-1" />
-								</StatusButton>
-							</TooltipTrigger>
-							<TooltipContent>Disconnect this account</TooltipContent>
-						</Tooltip>
-					</TooltipProvider>
+								/>
+							}
+						>
+							<Icon icon={XClose} title="Disconnect" />
+						</TooltipTrigger>
+						<TooltipContent>Disconnect this account</TooltipContent>
+					</Tooltip>
 				</deleteFetcher.Form>
 			) : (
-				<TooltipProvider>
-					<Tooltip open={infoOpen} onOpenChange={setInfoOpen}>
-						<TooltipTrigger onClick={() => setInfoOpen(true)}>
-							<Icon name="question-mark-circled"></Icon>
-						</TooltipTrigger>
-						<TooltipContent>
-							You cannot delete your last connection unless you have a password.
-						</TooltipContent>
-					</Tooltip>
-				</TooltipProvider>
+				<Tooltip open={infoOpen} onOpenChange={setInfoOpen}>
+					<TooltipTrigger
+						onClick={() => setInfoOpen(true)}
+						aria-label="Why can't I disconnect this account?"
+					>
+						<Icon icon={HelpCircle} />
+					</TooltipTrigger>
+					<TooltipContent>
+						You cannot delete your last connection unless you have a password.
+					</TooltipContent>
+				</Tooltip>
 			)}
 		</div>
 	)

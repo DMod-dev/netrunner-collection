@@ -1,54 +1,61 @@
-import { OTPInput, OTPInputContext } from 'input-otp'
 import * as React from 'react'
-
 import { cn } from '#app/utils/misc.tsx'
+import { OTPInput, OTPInputContext } from 'input-otp'
 
-const InputOTP = ({
+import { Minus } from '@untitledui/icons'
+
+function InputOTP({
 	className,
 	containerClassName,
 	...props
-}: React.ComponentProps<typeof OTPInput>) => (
-	<OTPInput
-		inputMode="text"
-		data-slot="input-otp"
-		containerClassName={cn(
-			'flex items-center gap-2 has-disabled:opacity-50',
-			containerClassName,
-		)}
-		className={cn('disabled:cursor-not-allowed', className)}
-		{...props}
-	/>
-)
+}: React.ComponentProps<typeof OTPInput> & {
+	containerClassName?: string
+}) {
+	return (
+		<OTPInput
+			// Our codes allow letters as well as digits (see OTPField in forms.tsx)
+			inputMode="text"
+			data-slot="input-otp"
+			containerClassName={cn(
+				'flex items-center gap-2 has-disabled:opacity-50',
+				containerClassName,
+			)}
+			spellCheck={false}
+			className={cn('disabled:cursor-not-allowed', className)}
+			{...props}
+		/>
+	)
+}
 
-const InputOTPGroup = ({
-	className,
-	...props
-}: React.ComponentProps<'div'>) => (
-	<div
-		data-slot="input-otp-group"
-		className={cn('flex items-center', className)}
-		{...props}
-	/>
-)
+function InputOTPGroup({ className, ...props }: React.ComponentProps<'div'>) {
+	return (
+		<div
+			data-slot="input-otp-group"
+			className={cn(
+				'has-aria-invalid:ring-destructive/20 dark:has-aria-invalid:ring-destructive/40 has-aria-invalid:border-destructive flex items-center rounded-lg has-aria-invalid:ring-3',
+				className,
+			)}
+			{...props}
+		/>
+	)
+}
 
-const InputOTPSlot = ({
+function InputOTPSlot({
 	index,
 	className,
 	...props
 }: React.ComponentProps<'div'> & {
 	index: number
-}) => {
+}) {
 	const inputOTPContext = React.useContext(OTPInputContext)
-	const slot = inputOTPContext.slots[index]
-	if (!slot) throw new Error('Invalid slot index')
-	const { char, hasFakeCaret, isActive } = slot
+	const { char, hasFakeCaret, isActive } = inputOTPContext?.slots[index] ?? {}
 
 	return (
 		<div
 			data-slot="input-otp-slot"
+			data-active={isActive}
 			className={cn(
-				'border-input relative flex size-10 items-center justify-center border-y border-r text-base transition-all first:rounded-l-md first:border-l last:rounded-r-md md:text-sm',
-				isActive && 'ring-ring ring-offset-background z-10 ring-2',
+				'dark:bg-input/30 border-input data-[active=true]:border-ring data-[active=true]:ring-ring/50 data-[active=true]:aria-invalid:ring-destructive/20 dark:data-[active=true]:aria-invalid:ring-destructive/40 aria-invalid:border-destructive data-[active=true]:aria-invalid:border-destructive relative flex size-8 items-center justify-center border-y border-r text-sm transition-all outline-none first:rounded-l-lg first:border-l last:rounded-r-lg data-[active=true]:z-10 data-[active=true]:ring-3',
 				className,
 			)}
 			{...props}
@@ -63,8 +70,17 @@ const InputOTPSlot = ({
 	)
 }
 
-const InputOTPSeparator = (props: React.ComponentProps<'div'>) => (
-	<div data-slot="input-otp-separator" className="flex-1" {...props}></div>
-)
+function InputOTPSeparator({ ...props }: React.ComponentProps<'div'>) {
+	return (
+		<div
+			data-slot="input-otp-separator"
+			className="flex items-center [&_svg:not([class*='size-'])]:size-4"
+			role="separator"
+			{...props}
+		>
+			<Minus />
+		</div>
+	)
+}
 
 export { InputOTP, InputOTPGroup, InputOTPSlot, InputOTPSeparator }

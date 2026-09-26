@@ -1,3 +1,4 @@
+import { LogOut01 } from '@untitledui/icons'
 import { invariantResponse } from '@epic-web/invariant'
 import { type SEOHandle } from '@nasa-gcn/remix-seo'
 import { Img } from 'openimg/react'
@@ -9,7 +10,7 @@ import {
 } from 'react-router'
 import { GeneralErrorBoundary } from '#app/components/error-boundary.tsx'
 import { Spacer } from '#app/components/spacer.tsx'
-import { Button } from '#app/components/ui/button.tsx'
+import { Button, buttonVariants } from '#app/components/ui/button.tsx'
 import { Icon } from '#app/components/ui/icon.tsx'
 import { requireUserId } from '#app/utils/auth.server.ts'
 import { prisma } from '#app/utils/db.server.ts'
@@ -78,8 +79,8 @@ export default function ProfileRoute() {
 					</p>
 					{isLoggedInUser ? (
 						<Form action="/logout" method="POST" className="mt-3">
-							<Button type="submit" variant="link" size="pill">
-								<Icon name="exit" className="scale-125 max-md:scale-150">
+							<Button type="submit" variant="link" className="px-12">
+								<Icon icon={LogOut01} className="scale-125 max-md:scale-150">
 									Logout
 								</Icon>
 							</Button>
@@ -87,16 +88,20 @@ export default function ProfileRoute() {
 					) : null}
 					{isLoggedInUser ? (
 						<div className="mt-10 flex gap-4">
-							<Button asChild>
-								<Link to="/collection" prefetch="intent">
-									My collection
-								</Link>
-							</Button>
-							<Button asChild>
-								<Link to="/settings/profile" prefetch="intent">
-									Edit profile
-								</Link>
-							</Button>
+							<Link
+								to="/collection"
+								prefetch="intent"
+								className={buttonVariants()}
+							>
+								My collection
+							</Link>
+							<Link
+								to="/settings/profile"
+								prefetch="intent"
+								className={buttonVariants()}
+							>
+								Edit profile
+							</Link>
 						</div>
 					) : null}
 				</div>

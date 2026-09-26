@@ -1,39 +1,49 @@
 # Icons
 
-The Epic Stack uses SVG sprites for
-[optimal icon performance](https://benadam.me/thoughts/react-svg-sprites/).
-You'll find raw SVGs in the `./other/svg-icons` directory. These are then
-compiled into a sprite using the
-[`vite-plugin-icons-spritesheet`](https://github.com/jacobparis-insiders/vite-plugin-icons-spritesheet)
-plugin which generates the `app/components/ui/icons/sprite.svg` file and the
-accompanying `types.ts` file that allows Typescript to pick up the names of the
-icons.
+Icons come from [Untitled UI Icons](https://www.untitledui.com/icons)
+(`@untitledui/icons`, MIT): 1,100+ line icons shipped as individual React
+components. Browse them at https://www.untitledui.com/resources/icons and import
+the ones you need by their PascalCase name:
 
-You can use [Sly](https://github.com/jacobparis-insiders/sly/tree/main/cli) to
-add new icons from the command line.
+```tsx
+import { Trash01 } from '@untitledui/icons'
+import { Icon } from '#app/components/ui/icon.tsx'
 
-To add the `trash`, `pencil-1`, and `avatar` icons, run:
-
-```sh
-npx sly add @radix-ui/icons trash pencil-1 avatar
+function DeleteLabel() {
+	return <Icon icon={Trash01}>Delete</Icon>
+}
 ```
 
-If you don't specify the icons, Sly will show an interactive list of all the
-icons available in the `@radix-ui/icons` collection and let you select the ones
-you want to add.
+Each icon is its own module (the package is marked side-effect free), so only
+the icons you import end up in the bundle.
 
-Sly has been configured in the Epic Stack to automatically add the icons to the
-`./other/svg-icons` directory, so there are no extra steps to take. You can see
-the configuration in the `./other/sly/sly.json` file.
+## The `Icon` component
 
-The SVGs used by default in the Epic Stack come from
-[icons.radix-ui.com](https://icons.radix-ui.com/). You can download additional
-SVG icons from there, or provide your own. Once you've added new files in the
-directory, run `npm run build` and you can then use the `Icon` component to
-render it. The `icon` prop is the name of the file without the `.svg` extension.
-We recommend using `kebab-case` filenames rather than `PascalCase` to avoid
-casing issues with different operating systems.
+`app/components/ui/icon.tsx` wraps an icon component so it matches the text
+around it:
 
-By default, all the icons will have a height and width of `1em` so they should
-match the font-size of the text they're next to. You can also customize the size
-using the `size` prop.
+- By default the icon is `1em` square, so it follows the font size. Use the
+  `size` prop (`xs`–`xl`) or a `size-*` class to change it.
+- Pass the label as `children` and the icon and text are aligned with a gap:
+  `<Icon icon={ArrowLeft}>Back</Icon>`.
+- Icons are decorative (`aria-hidden`). Pass `title` to add visually hidden text
+  that describes the icon to assistive technology.
+
+You can also render an Untitled UI icon directly. Inside the shadcn components
+(`Button`, `DropdownMenuItem`, ...) a bare `<Trash01 />` is sized to `size-4`
+automatically unless you give it a `size-*` class.
+
+## Logos and other marks
+
+Untitled UI's free set has no brand logos. `app/components/ui/brand-icons.tsx`
+holds the few we need (the GitHub logo and the FIDO passkey mark) as components
+with the same props, so they work with `Icon` too. Add new ones there.
+
+## shadcn components
+
+The shadcn CLI can't generate components for Untitled UI (`iconLibrary` in
+`components.json` only supports lucide, tabler, hugeicons, phosphor and
+remixicon), so it's left on `lucide`. When you add or regenerate a component,
+swap its `lucide-react` imports for the Untitled UI equivalents (for example
+`CheckIcon` → `Check`, `ChevronRightIcon` → `ChevronRight`) and don't install
+`lucide-react`. See `app/components/ui/README.md`.

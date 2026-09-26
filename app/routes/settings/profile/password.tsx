@@ -1,10 +1,11 @@
+import { Passcode } from '@untitledui/icons'
 import { getFormProps, getInputProps, useForm } from '@conform-to/react'
 import { getZodConstraint, parseWithZod } from '@conform-to/zod/v4'
 import { type SEOHandle } from '@nasa-gcn/remix-seo'
 import { data, redirect, Form, Link } from 'react-router'
 import { z } from 'zod'
 import { ErrorList, Field } from '#app/components/forms.tsx'
-import { Button } from '#app/components/ui/button.tsx'
+import { buttonVariants } from '#app/components/ui/button.tsx'
 import { Icon } from '#app/components/ui/icon.tsx'
 import { StatusButton } from '#app/components/ui/status-button.tsx'
 import {
@@ -21,7 +22,7 @@ import { type Route } from './+types/password.ts'
 import { type BreadcrumbHandle } from './_layout.tsx'
 
 export const handle: BreadcrumbHandle & SEOHandle = {
-	breadcrumb: <Icon name="dots-horizontal">Password</Icon>,
+	breadcrumb: <Icon icon={Passcode}>Password</Icon>,
 	getSitemapEntries: () => null,
 }
 
@@ -167,9 +168,9 @@ export default function ChangePasswordRoute({
 			/>
 			<ErrorList id={form.errorId} errors={form.errors} />
 			<div className="grid w-full grid-cols-2 gap-6">
-				<Button variant="secondary" asChild>
-					<Link to="..">Cancel</Link>
-				</Button>
+				<Link to=".." className={buttonVariants({ variant: 'secondary' })}>
+					Cancel
+				</Link>
 				<StatusButton
 					type="submit"
 					status={isPending ? 'pending' : (form.status ?? 'idle')}

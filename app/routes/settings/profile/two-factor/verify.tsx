@@ -1,3 +1,4 @@
+import { Check } from '@untitledui/icons'
 import { getFormProps, getInputProps, useForm } from '@conform-to/react'
 import { getZodConstraint, parseWithZod } from '@conform-to/zod/v4'
 import { type SEOHandle } from '@nasa-gcn/remix-seo'
@@ -18,7 +19,7 @@ import { type Route } from './+types/verify.ts'
 import { twoFAVerificationType } from './_layout.tsx'
 
 export const handle: BreadcrumbHandle & SEOHandle = {
-	breadcrumb: <Icon name="check">Verify</Icon>,
+	breadcrumb: <Icon icon={Check}>Verify</Icon>,
 	getSitemapEntries: () => null,
 }
 

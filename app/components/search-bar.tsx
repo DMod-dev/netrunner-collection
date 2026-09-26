@@ -1,3 +1,4 @@
+import { SearchMd } from '@untitledui/icons'
 import { useId } from 'react'
 import { Form, useSearchParams, useSubmit } from 'react-router'
 import { useDebounce, useIsPending } from '#app/utils/misc.tsx'
@@ -54,7 +55,7 @@ export function SearchBar({
 					status={isSubmitting ? 'pending' : status}
 					className="flex w-full items-center justify-center"
 				>
-					<Icon name="magnifying-glass" size="md" />
+					<Icon icon={SearchMd} size="sm" />
 					<span className="sr-only">Search</span>
 				</StatusButton>
 			</div>

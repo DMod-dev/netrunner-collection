@@ -1,3 +1,4 @@
+import { Edit01, Trash01, User01 } from '@untitledui/icons'
 import { getFormProps, getInputProps, useForm } from '@conform-to/react'
 import { getZodConstraint, parseWithZod } from '@conform-to/zod/v4'
 import { invariantResponse } from '@epic-web/invariant'
@@ -7,7 +8,7 @@ import { useState } from 'react'
 import { data, redirect, Form, useNavigation } from 'react-router'
 import { z } from 'zod'
 import { ErrorList } from '#app/components/forms.tsx'
-import { Button } from '#app/components/ui/button.tsx'
+import { Button, buttonVariants } from '#app/components/ui/button.tsx'
 import { Icon } from '#app/components/ui/icon.tsx'
 import { StatusButton } from '#app/components/ui/status-button.tsx'
 import { requireUserId } from '#app/utils/auth.server.ts'
@@ -20,6 +21,7 @@ import {
 	getUserImgSrc,
 	useDoubleCheck,
 	useIsPending,
+	cn,
 } from '#app/utils/misc.tsx'
 import {
 	deleteProfileImage,
@@ -29,7 +31,7 @@ import { type Route } from './+types/photo.ts'
 import { type BreadcrumbHandle } from './_layout.tsx'
 
 export const handle: BreadcrumbHandle & SEOHandle = {
-	breadcrumb: <Icon name="avatar">Photo</Icon>,
+	breadcrumb: <Icon icon={User01}>Photo</Icon>,
 	getSitemapEntries: () => null,
 }
 
@@ -216,14 +218,15 @@ export default function PhotoRoute({
 							}
 						}}
 					/>
-					<Button
-						asChild
-						className="cursor-pointer peer-valid:hidden peer-focus-within:ring-2 peer-focus-visible:ring-2"
+					<label
+						htmlFor={fields.photoFile.id}
+						className={cn(
+							buttonVariants(),
+							'peer-focus-visible:ring-ring/50 cursor-pointer peer-valid:hidden peer-focus-visible:ring-3',
+						)}
 					>
-						<label htmlFor={fields.photoFile.id}>
-							<Icon name="pencil-1">Change</Icon>
-						</label>
-					</Button>
+						<Icon icon={Edit01}>Change</Icon>
+					</label>
 					<StatusButton
 						name="intent"
 						value="submit"
@@ -244,7 +247,7 @@ export default function PhotoRoute({
 						className="peer-invalid:hidden"
 						{...form.reset.getButtonProps()}
 					>
-						<Icon name="trash">Reset</Icon>
+						<Icon icon={Trash01}>Reset</Icon>
 					</Button>
 					{loaderData.user.image ? (
 						<StatusButton
@@ -263,7 +266,7 @@ export default function PhotoRoute({
 										: 'idle'
 							}
 						>
-							<Icon name="trash">
+							<Icon icon={Trash01}>
 								{doubleCheckDeleteImage.doubleCheck
 									? 'Are you sure?'
 									: 'Delete'}
