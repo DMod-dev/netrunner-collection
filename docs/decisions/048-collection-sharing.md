@@ -39,6 +39,14 @@ The collection write action (`app/routes/resources/collection.tsx`) only ever
 writes the caller's own rows, so a read-only view can't change someone else's
 collection even if a form or fetcher fires by mistake.
 
+A shared collection is shown at `/users/:username/collection` (Cards, Sets and
+each set), using the same page components as `/collection`
+(`app/components/collection-pages/`). The pages read `useCollectionAccess()` and
+show plain counts instead of steppers, and no product, version or default-art
+controls. Notes on custom versions are left out of the loader data for viewers.
+Deck check and import/export stay owner-only, and the owner visiting their own
+shared URL is redirected to `/collection`.
+
 ## Consequences
 
 - Owners choose exactly who sees their collection, and deleting either user

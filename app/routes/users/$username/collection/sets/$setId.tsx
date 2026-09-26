@@ -16,7 +16,7 @@ export const handle: SEOHandle = {
 }
 
 export async function loader({ request, params }: Route.LoaderArgs) {
-	const view = await requireCollectionView(request)
+	const view = await requireCollectionView(request, params.username)
 	return loadSetPage(request, view, params.setId)
 }
 
@@ -26,20 +26,16 @@ export function shouldRevalidate(args: ShouldRevalidateFunctionArgs) {
 
 export const meta: Route.MetaFunction = ({ loaderData }) => [
 	{
-		title: `${loaderData?.set.name ?? 'Set'} | Netrunner Collection`,
+		title: `${loaderData ? `${loaderData.set.name} · ${loaderData.access.ownerName}’s collection` : 'Set'} | Netrunner Collection`,
 	},
 ]
 
-export default function SetRoute({ loaderData }: Route.ComponentProps) {
+export default function SharedSetRoute({ loaderData }: Route.ComponentProps) {
 	return <SetPage loaderData={loaderData} />
 }
 
 export function ErrorBoundary() {
-	return (
-		<GeneralErrorBoundary
-			statusHandlers={{
-				404: () => <p>That set doesn't exist.</p>,
-			}}
-		/>
-	)
+	// a missing set and a collection that isn't shared are both 404s; the
+	// message says which
+	return <GeneralErrorBoundary />
 }

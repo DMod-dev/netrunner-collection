@@ -52,7 +52,14 @@ function ownedPrintingWhere(userId: string): Prisma.PrintingWhereInput {
 	}
 }
 
-export async function searchCards(userId: string, params: CardSearchParams) {
+/** Options for reading a collection that may not be the viewer's own. */
+type ReadOptions = { includeNotes?: boolean }
+
+export async function searchCards(
+	userId: string,
+	params: CardSearchParams,
+	options: ReadOptions = {},
+) {
 	const q = params.q?.trim()
 	const where: Prisma.CardWhereInput = {
 		AND: [
@@ -99,7 +106,7 @@ export async function searchCards(userId: string, params: CardSearchParams) {
 				type: { select: { id: true, name: true } },
 				printings: {
 					orderBy: { dateRelease: 'desc' },
-					select: printingSelect(userId),
+					select: printingSelect(userId, options),
 				},
 				preferredArt: { where: { userId }, select: { printingId: true } },
 			},
@@ -114,8 +121,15 @@ export async function searchCards(userId: string, params: CardSearchParams) {
 	}
 }
 
-/** The fields every printing tile needs, including this user's counts. */
-export function printingSelect(userId: string) {
+/**
+ * The fields every printing tile needs, including this user's counts. Pass
+ * `includeNotes: false` when showing someone else's collection, so their
+ * private notes on custom versions never leave the server.
+ */
+export function printingSelect(
+	userId: string,
+	{ includeNotes = true }: { includeNotes?: boolean } = {},
+) {
 	return {
 		id: true,
 		position: true,
@@ -131,7 +145,7 @@ export function printingSelect(userId: string) {
 		variants: {
 			where: { userId },
 			orderBy: { createdAt: 'asc' },
-			select: { id: true, label: true, notes: true, quantity: true },
+			select: { id: true, label: true, quantity: true, notes: includeNotes },
 		},
 	} satisfies Prisma.PrintingSelect
 }
@@ -425,6 +439,7 @@ export async function getSetCompletion(
 	userId: string,
 	setId: string,
 	target: CompletionTarget,
+	options: ReadOptions = {},
 ) {
 	const [set, owned] = await Promise.all([
 		prisma.cardSet.findUnique({
@@ -438,7 +453,7 @@ export async function getSetCompletion(
 				printings: {
 					orderBy: { position: 'asc' },
 					select: {
-						...printingSelect(userId),
+						...printingSelect(userId, options),
 						card: {
 							select: {
 								id: true,

@@ -8,7 +8,8 @@ import {
 } from '#app/routes/resources/collection.tsx'
 import { type PrintingWithCounts } from '#app/utils/collection.server.ts'
 import { cn } from '#app/utils/misc.tsx'
-import { PrintingTile } from './printing-tile.tsx'
+import { useCollectionAccess } from './collection-access-context.tsx'
+import { PrintingTile, StaticQuantity } from './printing-tile.tsx'
 import { Button } from './ui/button.tsx'
 import { Icon } from './ui/icon.tsx'
 
@@ -197,12 +198,17 @@ export const washedOut = 'opacity-45 saturate-75'
 export function CountBadge({
 	owned,
 	target,
-	title = target === undefined ? `You own ${owned}` : undefined,
+	title,
 }: {
 	owned: number
 	target?: number
 	title?: string
 }) {
+	const { canEdit, ownerName } = useCollectionAccess()
+	const defaultTitle =
+		target === undefined
+			? `${canEdit ? 'You own' : `${ownerName} owns`} ${owned}`
+			: undefined
 	return (
 		<span
 			className={cn(
@@ -213,14 +219,17 @@ export function CountBadge({
 						? 'bg-secondary text-secondary-foreground'
 						: 'bg-muted text-muted-foreground',
 			)}
-			title={title}
+			title={title ?? defaultTitle}
 		>
 			{target === undefined ? owned : `${owned} / ${target}`}
 		</span>
 	)
 }
 
-/** Compact counters for a printing and its custom versions, for overlays. */
+/**
+ * Compact counters for a printing and its custom versions, for overlays. In a
+ * collection shared with you they're plain numbers.
+ */
 export function OverlayCounters({
 	printing,
 	label,
@@ -233,17 +242,23 @@ export function OverlayCounters({
 	/** Whether keyboard shortcuts on the tile change this printing. */
 	primary?: boolean
 }) {
+	const { canEdit } = useCollectionAccess()
+	const quantity = printing.collectionEntries[0]?.quantity ?? 0
 	return (
 		<div className="flex flex-col gap-1" data-primary={primary || undefined}>
 			{heading ? (
 				<span className="truncate text-xs font-medium">{heading}</span>
 			) : null}
-			<QuantityStepper
-				target={{ printingId: printing.id }}
-				quantity={printing.collectionEntries[0]?.quantity ?? 0}
-				label={label}
-				size="sm"
-			/>
+			{canEdit ? (
+				<QuantityStepper
+					target={{ printingId: printing.id }}
+					quantity={quantity}
+					label={label}
+					size="sm"
+				/>
+			) : (
+				<StaticQuantity quantity={quantity} label={label} size="sm" />
+			)}
 			{printing.variants.map((variant) => (
 				<div key={variant.id} className="flex flex-col gap-0.5 pl-2">
 					<span
@@ -252,12 +267,20 @@ export function OverlayCounters({
 					>
 						↳ {variant.label}
 					</span>
-					<QuantityStepper
-						target={{ variantId: variant.id }}
-						quantity={variant.quantity}
-						label={`${label} – ${variant.label}`}
-						size="sm"
-					/>
+					{canEdit ? (
+						<QuantityStepper
+							target={{ variantId: variant.id }}
+							quantity={variant.quantity}
+							label={`${label} – ${variant.label}`}
+							size="sm"
+						/>
+					) : (
+						<StaticQuantity
+							quantity={variant.quantity}
+							label={`${label} – ${variant.label}`}
+							size="sm"
+						/>
+					)}
 				</div>
 			))}
 		</div>
@@ -266,7 +289,8 @@ export function OverlayCounters({
 
 /**
  * A button that opens a modal with the full printing tiles, where alt arts
- * and other versions can be added, renamed and removed.
+ * and other versions can be added, renamed and removed (or, in a collection
+ * shared with you, just seen).
  */
 export function VersionsButton({
 	title,
@@ -282,6 +306,7 @@ export function VersionsButton({
 	/** Lets each printing be picked as the card's art, if it has several. */
 	defaultArt?: { cardId: string; printingId: string | null }
 }) {
+	const { canEdit } = useCollectionAccess()
 	const dialogRef = useRef<HTMLDialogElement>(null)
 	return (
 		<>
@@ -319,8 +344,9 @@ export function VersionsButton({
 						</Button>
 					</header>
 					<p className="text-muted-foreground text-sm">
-						Track alt arts, promos, foils or other languages as their own
-						versions of a printing, each with its own count.
+						{canEdit
+							? 'Track alt arts, promos, foils or other languages as their own versions of a printing, each with its own count.'
+							: 'Versions of this printing.'}
 					</p>
 					<ul className="grid grid-cols-[repeat(auto-fill,minmax(12rem,1fr))] gap-3">
 						{printings.map(({ printing, label, heading }) => (
@@ -330,7 +356,7 @@ export function VersionsButton({
 									label={label}
 									heading={heading}
 									badge={
-										defaultArt && printings.length > 1 ? (
+										canEdit && defaultArt && printings.length > 1 ? (
 											<DefaultArtButton
 												cardId={defaultArt.cardId}
 												printingId={printing.id}

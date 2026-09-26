@@ -1,7 +1,13 @@
 import { Link, NavLink, useSearchParams } from 'react-router'
 import { cn } from '#app/utils/misc.tsx'
+import { useCollectionAccess } from './collection-access-context.tsx'
 
+/**
+ * Tabs between the collection pages. A collection shared with you only has
+ * Cards and Sets, and says whose it is.
+ */
 export function CollectionNav() {
+	const { canEdit, basePath, ownerName } = useCollectionAccess()
 	const tabClass = ({ isActive }: { isActive: boolean }) =>
 		cn(
 			'rounded-md px-2.5 py-1.5 text-sm font-semibold transition-colors sm:px-4',
@@ -10,24 +16,35 @@ export function CollectionNav() {
 				: 'text-muted-foreground hover:text-foreground',
 		)
 	return (
-		// wraps rather than scrolls on narrow screens, so every tab stays in view
-		<nav
-			aria-label="Collection views"
-			className="bg-muted inline-flex max-w-full flex-wrap gap-1 self-start rounded-lg p-1 whitespace-nowrap"
-		>
-			<NavLink to="/collection" end className={tabClass}>
-				Cards
-			</NavLink>
-			<NavLink to="/collection/sets" className={tabClass}>
-				Sets
-			</NavLink>
-			<NavLink to="/collection/deck-check" className={tabClass}>
-				Deck check
-			</NavLink>
-			<NavLink to="/collection/import-export" className={tabClass}>
-				Import/Export
-			</NavLink>
-		</nav>
+		<div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+			{/* wraps rather than scrolls on narrow screens, so every tab stays in view */}
+			<nav
+				aria-label="Collection views"
+				className="bg-muted inline-flex max-w-full flex-wrap gap-1 self-start rounded-lg p-1 whitespace-nowrap"
+			>
+				<NavLink to={basePath} end className={tabClass}>
+					Cards
+				</NavLink>
+				<NavLink to={`${basePath}/sets`} className={tabClass}>
+					Sets
+				</NavLink>
+				{canEdit ? (
+					<>
+						<NavLink to="/collection/deck-check" className={tabClass}>
+							Deck check
+						</NavLink>
+						<NavLink to="/collection/import-export" className={tabClass}>
+							Import/Export
+						</NavLink>
+					</>
+				) : null}
+			</nav>
+			{canEdit ? null : (
+				<p className="text-muted-foreground text-sm">
+					Viewing {ownerName}’s collection · read-only
+				</p>
+			)}
+		</div>
 	)
 }
 
@@ -148,6 +165,8 @@ export function formatSetType(setTypeId: string) {
 
 /** Explains the card tile keyboard shortcuts; hidden on touch-only devices. */
 export function ShortcutHint() {
+	const { canEdit } = useCollectionAccess()
+	if (!canEdit) return null
 	const key = 'bg-muted rounded border px-1 font-mono text-[0.7rem]'
 	return (
 		<p className="text-muted-foreground hidden text-xs pointer-fine:block">
