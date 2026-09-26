@@ -63,8 +63,17 @@ function isFromFilters(location: Location) {
 
 /** The Cards page, for your own collection or one shared with you. */
 export function CardsPage({ loaderData }: { loaderData: CardsPageData }) {
-	const { cards, total, page, pageCount, filters, totals, cardCount, access } =
-		loaderData
+	const {
+		cards,
+		inUse,
+		total,
+		page,
+		pageCount,
+		filters,
+		totals,
+		cardCount,
+		access,
+	} = loaderData
 	const [searchParams] = useSearchParams()
 	const location = useLocation()
 	const navigation = useNavigation()
@@ -142,7 +151,11 @@ export function CardsPage({ loaderData }: { loaderData: CardsPageData }) {
 						>
 							{cards.map((card) => (
 								<li key={card.id}>
-									<CardTile card={card} featuredSetId={featuredSetId} />
+									<CardTile
+										card={card}
+										featuredSetId={featuredSetId}
+										inUse={inUse[card.id] ?? 0}
+									/>
 								</li>
 							))}
 						</ul>
@@ -545,10 +558,13 @@ export function FilterSelect({
 function CardTile({
 	card,
 	featuredSetId,
+	inUse,
 }: {
 	card: LoaderCard
 	/** When filtering by set, show that set's art rather than the newest. */
 	featuredSetId: string | null
+	/** copies your filled decks hold */
+	inUse: number
 }) {
 	const owned = card.printings.reduce(
 		(sum, p) =>
@@ -563,13 +579,15 @@ function CardTile({
 		pickArtPrinting(card.printings, preferredId)
 	const labelFor = (p: LoaderCard['printings'][number]) =>
 		`${card.title} (${p.set.name})`
+	const countTitle =
+		inUse > 0 ? `You own ${owned}; ${inUse} in use by your decks` : undefined
 
 	return (
 		<CardArtTile
 			imageUrl={featured?.imageLarge ?? featured?.imageSmall ?? null}
 			alt={card.title}
 			dimmed={owned === 0}
-			badge={<CountBadge owned={owned} />}
+			badge={<CountBadge owned={owned} title={countTitle} />}
 			overlay={
 				<>
 					<header className="flex flex-col gap-1">
@@ -584,7 +602,7 @@ function CardTile({
 									{card.title}
 								</a>
 							</h2>
-							<CountBadge owned={owned} />
+							<CountBadge owned={owned} title={countTitle} />
 						</div>
 						<p className="text-muted-foreground text-xs">
 							<FactionDot factionId={card.faction.id} /> {card.faction.name} ·{' '}
@@ -594,6 +612,7 @@ function CardTile({
 						{/* a deck building limit, not a collection target */}
 						<p className="text-muted-foreground text-xs">
 							Deck limit {card.deckLimit}
+							{inUse > 0 ? ` · ${inUse} in use by your decks` : ''}
 						</p>
 					</header>
 					<ul className="flex flex-col gap-2">

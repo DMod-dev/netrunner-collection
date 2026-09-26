@@ -3,7 +3,12 @@ import { type Page } from '@playwright/test'
 import { prisma } from '#app/utils/db.server.ts'
 import { expect, test as base } from '#tests/playwright-utils.ts'
 
-type SeededDeckCards = { identityTitle: string; cardTitle: string }
+type SeededDeckCards = {
+	identityTitle: string
+	cardTitle: string
+	/** the operation's id, which its only printing shares */
+	cardId: string
+}
 
 /**
  * Inserts a Corp identity and one operation with a unique prefix, so
@@ -82,7 +87,7 @@ const test = base.extend<{ seedDeckCards(): Promise<SeededDeckCards> }>({
 					},
 				})
 			}
-			return { identityTitle, cardTitle }
+			return { identityTitle, cardTitle, cardId: cardIds[1]! }
 		})
 		// a failed test can leave its deck behind
 		await prisma.deckCard.deleteMany({ where: { cardId: { in: cardIds } } })
@@ -220,4 +225,77 @@ test('the builder fits a phone screen, with the deck in a bottom sheet', async (
 		() => document.documentElement.scrollWidth - window.innerWidth,
 	)
 	expect(overflow).toBeLessThanOrEqual(0)
+})
+
+test('fill a deck from the collection, then unfill it', async ({
+	page,
+	login,
+	seedDeckCards,
+}) => {
+	const { identityTitle, cardTitle, cardId } = await seedDeckCards()
+	const user = await login()
+	const identity = await prisma.card.findFirstOrThrow({
+		where: { title: identityTitle },
+		select: { id: true },
+	})
+	// 3 in the deck, 2 in the collection, and no copy of the identity
+	const deck = await prisma.deck.create({
+		data: {
+			userId: user.id,
+			name: 'Filled deck',
+			sideId: 'corp',
+			identityCardId: identity.id,
+			cards: { create: { cardId, quantity: 3 } },
+		},
+	})
+	await prisma.collectionEntry.create({
+		data: { userId: user.id, printingId: cardId, quantity: 2 },
+	})
+	await goto(page, `/decks/${deck.id}`)
+
+	await page.getByRole('button', { name: 'Fill with collection' }).click()
+	await expect(
+		page.getByText('Took 2 of 4 cards from your collection'),
+	).toBeVisible()
+	const panel = page.getByRole('complementary', { name: 'Deck' })
+	const row = panel.locator(`[data-deck-card="${cardId}"]`)
+	await expect(row.getByText('2/3')).toBeVisible()
+	await expect(row.getByText('need 1')).toBeVisible()
+	await expect(
+		panel.getByRole('region', { name: 'Identity' }).getByText('need 1'),
+	).toBeVisible()
+	await expect
+		.poll(() =>
+			prisma.deckCard.findFirst({
+				where: { deckId: deck.id },
+				select: { fromCollection: true },
+			}),
+		)
+		.toEqual({ fromCollection: 2 })
+
+	// the deck list says so too
+	await goto(page, '/decks')
+	await expect(
+		page
+			.getByRole('link', { name: /Filled deck/ })
+			.getByText('2 cards from collection'),
+	).toBeVisible()
+
+	await goto(page, `/decks/${deck.id}`)
+	await page.getByRole('button', { name: 'From collection 2/4' }).click()
+	await page
+		.getByRole('menuitem', { name: 'Unfill (give the cards back)' })
+		.click()
+	await expect(
+		page.getByRole('button', { name: 'Fill with collection' }),
+	).toBeVisible()
+	await expect(row.getByText('need 1')).toBeHidden()
+	expect(
+		await prisma.deckCard.findFirst({
+			where: { deckId: deck.id },
+			select: { fromCollection: true },
+		}),
+	).toEqual({ fromCollection: 0 })
+	// the card stays in the deck
+	await expect(row).toContainText(cardTitle)
 })

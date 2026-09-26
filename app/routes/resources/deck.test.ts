@@ -5,7 +5,8 @@ import { createDeck } from '#app/utils/deck.server.ts'
 import { createUser } from '#tests/db-utils.ts'
 import { insertCards } from '#tests/deck-db.ts'
 import { getSessionCookieHeader } from '#tests/utils.ts'
-import { action } from './deck.tsx'
+import { getToast } from '#app/utils/toast.server.ts'
+import { action, fillMessage } from './deck.tsx'
 
 async function insertUser() {
 	const user = await prisma.user.create({
@@ -99,6 +100,8 @@ test('every intent 404s on someone else’s deck', async () => {
 		{ intent: 'set-notes', notes: 'mine now' },
 		{ intent: 'set-format', formatId: 'eternal' },
 		{ intent: 'set-require-legality', requireLegality: 'false' },
+		{ intent: 'fill' },
+		{ intent: 'unfill' },
 		{ intent: 'delete' },
 	]
 	for (const fields of attempts) {
@@ -172,6 +175,82 @@ test('set-identity reports why it refused', async () => {
 			}),
 		),
 	).toMatchObject({ status: 400, error: expect.stringContaining('empty') })
+})
+
+/** The toast an action's response sets, as the next page load reads it. */
+async function toastOf(result: Awaited<ReturnType<typeof post>>) {
+	const headers =
+		result && !(result instanceof Response) && 'init' in result
+			? new Headers(result.init?.headers)
+			: null
+	const cookie = headers?.get('set-cookie')?.split(';')[0]
+	if (!cookie) return null
+	const { toast } = await getToast(
+		new Request('http://localhost/', { headers: { cookie } }),
+	)
+	return toast && { type: toast.type, description: toast.description }
+}
+
+test('fill and unfill reserve copies and say how it went', async () => {
+	await insertCards()
+	const user = await insertUser()
+	const deck = await insertDeck(user.id)
+	await prisma.deckCard.create({
+		data: { deckId: deck.id, cardId: 'hedge_fund', quantity: 3 },
+	})
+	// 2 Hedge Funds (printing 30001), and the identity (30000)
+	await prisma.collectionEntry.createMany({
+		data: [
+			{ userId: user.id, printingId: '30001', quantity: 2 },
+			{ userId: user.id, printingId: '30000', quantity: 1 },
+		],
+	})
+	const send = (intent: string) =>
+		post(user.cookie, { intent, deckId: deck.id })
+
+	const filled = await send('fill')
+	expect(outcome(filled)).toEqual({ status: 200, ok: true })
+	expect(await toastOf(filled)).toEqual({
+		type: 'message',
+		description: 'Took 3 of 4 cards from your collection',
+	})
+	expect(
+		await prisma.deck.findUniqueOrThrow({
+			where: { id: deck.id },
+			select: {
+				identityFromCollection: true,
+				cards: { select: { fromCollection: true } },
+			},
+		}),
+	).toEqual({ identityFromCollection: 1, cards: [{ fromCollection: 2 }] })
+
+	const unfilled = await send('unfill')
+	expect(outcome(unfilled)).toEqual({ status: 200, ok: true })
+	expect(await toastOf(unfilled)).toMatchObject({ type: 'success' })
+	expect(
+		await prisma.deck.findUniqueOrThrow({
+			where: { id: deck.id },
+			select: {
+				identityFromCollection: true,
+				cards: { select: { fromCollection: true } },
+			},
+		}),
+	).toEqual({ identityFromCollection: 0, cards: [{ fromCollection: 0 }] })
+})
+
+test('fillMessage', () => {
+	expect(fillMessage({ taken: 45, total: 45 })).toBe(
+		'Took all 45 cards from your collection',
+	)
+	expect(fillMessage({ taken: 41, total: 45 })).toBe(
+		'Took 41 of 45 cards from your collection',
+	)
+	expect(fillMessage({ taken: 0, total: 45 })).toBe(
+		'None of this deck’s cards are free in your collection',
+	)
+	expect(fillMessage({ taken: 1, total: 1 })).toBe(
+		'Took the card from your collection',
+	)
 })
 
 test('delete redirects to the deck list', async () => {

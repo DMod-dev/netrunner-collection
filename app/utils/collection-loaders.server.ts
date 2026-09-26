@@ -12,6 +12,7 @@ import {
 	parseCompletionTarget,
 	searchCards,
 } from './collection.server.ts'
+import { getCopiesInUse } from './deck-fill.server.ts'
 
 /**
  * The loaders behind the Cards, Sets and Set pages. Each page is mounted
@@ -76,7 +77,21 @@ export async function loadCardsPage(request: Request, view: CollectionView) {
 		getCollectionTotals(view.ownerId),
 		getCardCount(),
 	])
-	return { ...results, filters, totals, cardCount, access: accessInfo(view) }
+	// decks are private, so only your own collection shows what they hold
+	const inUse = view.canEdit
+		? await getCopiesInUse(
+				view.ownerId,
+				results.cards.map((c) => c.id),
+			)
+		: new Map<string, number>()
+	return {
+		...results,
+		inUse: Object.fromEntries(inUse),
+		filters,
+		totals,
+		cardCount,
+		access: accessInfo(view),
+	}
 }
 
 export type CardsPageData = Awaited<ReturnType<typeof loadCardsPage>>

@@ -48,6 +48,7 @@ function findOwnDeck(userId: string, deckId: string) {
 		select: {
 			id: true,
 			sideId: true,
+			identityCardId: true,
 			_count: { select: { cards: true } },
 		},
 	})
@@ -126,6 +127,7 @@ export async function listDecks(userId: string) {
 				formatId: true,
 				requireLegality: true,
 				updatedAt: true,
+				identityFromCollection: true,
 				identity: {
 					select: {
 						...CARD_LITE_SELECT,
@@ -177,12 +179,35 @@ export async function listDecks(userId: string) {
 			isLegal,
 			errorCount: problems.filter((p) => p.severity === 'error').length,
 			warningCount: problems.filter((p) => p.severity === 'warning').length,
-			filledFromCollection: deck.cards.some((c) => c.fromCollection > 0),
+			...collectionSummary(deck),
 		}
 	})
 }
 
 export type DeckSummary = Awaited<ReturnType<typeof listDecks>>[number]
+
+/**
+ * How much of a deck comes from the collection: whether it's filled at all,
+ * how many copies, and whether any card (or the identity) is short.
+ */
+function collectionSummary(deck: {
+	identity: unknown
+	identityFromCollection: number
+	cards: Array<{ quantity: number; fromCollection: number }>
+}) {
+	const copiesFromCollection =
+		deck.identityFromCollection +
+		deck.cards.reduce((sum, c) => sum + c.fromCollection, 0)
+	const filledFromCollection = copiesFromCollection > 0
+	return {
+		filledFromCollection,
+		copiesFromCollection,
+		shortFromCollection:
+			filledFromCollection &&
+			(deck.cards.some((c) => c.fromCollection < c.quantity) ||
+				(deck.identity !== null && deck.identityFromCollection < 1)),
+	}
+}
 
 /** Everything the builder shows about a deck (not the card browser). */
 export async function getDeckForBuilder(userId: string, deckId: string) {
@@ -196,6 +221,7 @@ export async function getDeckForBuilder(userId: string, deckId: string) {
 			notes: true,
 			nrdbUrl: true,
 			updatedAt: true,
+			identityFromCollection: true,
 			identity: {
 				select: {
 					...CARD_LITE_SELECT,
@@ -230,6 +256,7 @@ export async function getDeckForBuilder(userId: string, deckId: string) {
 		notes: deck.notes,
 		nrdbUrl: deck.nrdbUrl,
 		updatedAt: deck.updatedAt,
+		identityFromCollection: deck.identityFromCollection,
 		identity: identity
 			? {
 					...toCardLite(identity),
@@ -342,7 +369,8 @@ export async function setDeckCardQuantity(
 
 /**
  * Change the deck's identity. Switching sides would strand every card, so
- * it's only allowed while the deck is empty.
+ * it's only allowed while the deck is empty. A new identity isn't reserved
+ * from the collection until the deck is filled again.
  */
 export async function setDeckIdentity(
 	userId: string,
@@ -366,7 +394,14 @@ export async function setDeckIdentity(
 	}
 	await prisma.deck.update({
 		where: { id: deckId },
-		data: { identityCardId, sideId: identity.sideId },
+		data: {
+			identityCardId,
+			sideId: identity.sideId,
+			// the old identity's copy goes back to the collection
+			...(identityCardId === deck.identityCardId
+				? {}
+				: { identityFromCollection: 0 }),
+		},
 	})
 	return { ok: true }
 }

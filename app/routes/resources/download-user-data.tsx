@@ -58,6 +58,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 					notes: true,
 					nrdbUrl: true,
 					identityCardId: true,
+					identityFromCollection: true,
 					createdAt: true,
 					updatedAt: true,
 					cards: {
