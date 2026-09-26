@@ -64,7 +64,10 @@ export type DeckInput = {
 	identity: CardLite | null
 	cards: DeckEntry[]
 	formatId: DeckFormat
-	/** Off: format problems are warnings (still shown), not errors. */
+	/**
+	 * On: the format's card pool, bans, restrictions and points are checked,
+	 * as warnings. Off: they aren't checked at all.
+	 */
 	requireLegality: boolean
 	rules: FormatRules | null
 }
@@ -74,7 +77,6 @@ export type ProblemCode =
 	| 'identity_in_deck'
 	| 'wrong_side'
 	| 'deck_size'
-	| 'directives'
 	| 'deck_limit'
 	| 'no_influence_cost'
 	| 'influence_limit'
@@ -132,7 +134,10 @@ export type DeckContext = {
 	 * Adam's directives ("not considered part of your deck").
 	 */
 	deck: DeckEntry[]
-	/** Adam's directives, set aside from `deck`. */
+	/**
+	 * Adam's directives, set aside from `deck`. Which 3 he starts with is
+	 * decided at game time, so they aren't checked.
+	 */
 	directives: DeckEntry[]
 	cardCount: number
 	formatId: DeckFormat
@@ -353,34 +358,6 @@ export function checkDeckSize(ctx: DeckContext): Problem[] {
 	]
 }
 
-/**
- * Adam: "You start the game with 3 different directive cards installed
- * (these cards are not considered part of your deck)." So the list holds 3
- * different directives, one copy each, outside the deck size. (NRDB's
- * validator counts them in the deck size; the card says otherwise.)
- */
-export function checkDirectives(ctx: DeckContext): Problem[] {
-	if (ctx.identity?.id !== ADAM) return []
-	const problems: Problem[] = []
-	if (ctx.directives.length !== 3) {
-		problems.push({
-			code: 'directives',
-			severity: 'error',
-			message: `Adam starts with 3 different directives; the deck has ${ctx.directives.length}`,
-		})
-	}
-	for (const { card, quantity } of ctx.directives) {
-		if (quantity === 1) continue
-		problems.push({
-			code: 'directives',
-			severity: 'error',
-			cardId: card.id,
-			message: `${quantity} copies of ${card.title}; Adam starts with 1 of each directive`,
-		})
-	}
-	return problems
-}
-
 /** No more copies than a card's deck limit (1 of anything for singleton identities). */
 export function checkDeckLimits(ctx: DeckContext): Problem[] {
 	const singleton = SINGLETON_IDENTITIES.has(ctx.identity?.id ?? '')
@@ -579,42 +556,69 @@ function withIdentity(ctx: DeckContext) {
 	return ctx.identity ? [ctx.identity, ...cards] : cards
 }
 
+/** The ban list `formatIssue` needs, as sets. */
+export type BanList = {
+	banned: ReadonlySet<string>
+	bannedSubtypes: ReadonlySet<string>
+}
+
+export function toBanList(
+	rules: Pick<FormatRules, 'banned' | 'bannedSubtypes'> | null,
+): BanList | null {
+	return (
+		rules && {
+			banned: new Set(rules.banned),
+			bannedSubtypes: new Set(rules.bannedSubtypes),
+		}
+	)
+}
+
 /**
- * The format's card pool and ban/restricted/points list. Errors when the
- * deck must be legal, else warnings.
+ * Why a card can't be played in the format, if it can't: it's outside the
+ * card pool, banned, or of a banned subtype. "Remove cards not legal" takes
+ * out exactly these.
+ */
+export function formatIssue(
+	card: Pick<CardLite, 'id' | 'legalFormats' | 'subtypes'>,
+	formatId: DeckFormat,
+	banList: BanList | null,
+):
+	| { code: 'not_in_format' }
+	| { code: 'banned' }
+	| { code: 'banned_subtype'; subtype: string }
+	| null {
+	if (!card.legalFormats.includes(formatId)) return { code: 'not_in_format' }
+	if (banList?.banned.has(card.id)) return { code: 'banned' }
+	const subtype = card.subtypes.find((s) => banList?.bannedSubtypes.has(s))
+	return subtype ? { code: 'banned_subtype', subtype } : null
+}
+
+/**
+ * The format's card pool and ban/restricted/points list, only when the deck
+ * is to be kept legal, and then only as warnings: a deck can still be saved
+ * and played casually.
  */
 export function checkFormat(ctx: DeckContext): Problem[] {
-	const severity = ctx.requireLegality ? 'error' : 'warning'
+	if (!ctx.requireLegality) return []
+	const severity = 'warning'
 	const format = DECK_FORMAT_NAMES[ctx.formatId]
 	const problems: Problem[] = []
 	const cards = withIdentity(ctx)
 	const rules = ctx.rules
 	for (const card of cards) {
-		if (!card.legalFormats.includes(ctx.formatId)) {
-			problems.push({
-				code: 'not_in_format',
-				severity,
-				cardId: card.id,
-				message: `${card.title} isn’t legal in ${format}`,
-			})
-		} else if (rules?.banned.has(card.id)) {
-			problems.push({
-				code: 'banned',
-				severity,
-				cardId: card.id,
-				message: `${card.title} is banned in ${format}`,
-			})
-		} else {
-			const subtype = card.subtypes.find((s) => rules?.bannedSubtypes.has(s))
-			if (subtype) {
-				problems.push({
-					code: 'banned_subtype',
-					severity,
-					cardId: card.id,
-					message: `${card.title} is banned in ${format} (all ${subtype.replaceAll('_', ' ')} cards are)`,
-				})
-			}
-		}
+		const issue = formatIssue(card, ctx.formatId, rules)
+		if (!issue) continue
+		problems.push({
+			code: issue.code,
+			severity,
+			cardId: card.id,
+			message:
+				issue.code === 'not_in_format'
+					? `${card.title} isn’t legal in ${format}`
+					: issue.code === 'banned'
+						? `${card.title} is banned in ${format}`
+						: `${card.title} is banned in ${format} (all ${issue.subtype.replaceAll('_', ' ')} cards are)`,
+		})
 	}
 	if (!rules) return problems
 
@@ -665,7 +669,6 @@ export const DECK_RULES: Array<(ctx: DeckContext) => Problem[]> = [
 	checkIdentity,
 	checkSides,
 	checkDeckSize,
-	checkDirectives,
 	checkDeckLimits,
 	checkInfluence,
 	checkAgendas,

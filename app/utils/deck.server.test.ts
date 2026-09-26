@@ -8,6 +8,7 @@ import {
 	getDeckForBuilder,
 	getIdentities,
 	listDecks,
+	removeIllegalCards,
 	requireDeck,
 	setDeckCardQuantity,
 	setDeckIdentity,
@@ -42,7 +43,8 @@ test('createDeck takes its side and name from the identity', async () => {
 		name: 'Catalyst aggro',
 		sideId: 'runner',
 		formatId: 'startup',
-		requireLegality: true,
+		// not checked until the user asks
+		requireLegality: false,
 		identityCardId: 'the_catalyst',
 	})
 
@@ -298,7 +300,7 @@ test('getDeckForBuilder returns the rules-ready deck', async () => {
 		id: deck.id,
 		sideId: 'corp',
 		formatId: 'standard',
-		requireLegality: true,
+		requireLegality: false,
 		identity: {
 			id: 'precision_design',
 			minimumDeckSize: 45,
@@ -332,4 +334,35 @@ test('getIdentities lists one side’s identities', async () => {
 			legalFormats: ['standard'],
 		}),
 	])
+})
+
+test('removeIllegalCards takes out what the format doesn’t allow', async () => {
+	await insertCards()
+	const user = await insertUser()
+	const deck = await insertDeck(user.id)
+	await setDeckCardQuantity(user.id, deck.id, 'hedge_fund', 3)
+	await prisma.deckCard.updateMany({ data: { fromCollection: 2 } })
+
+	// every card here is Standard-legal
+	expect(await removeIllegalCards(user.id, deck.id)).toEqual({
+		removed: 0,
+		formatId: 'standard',
+	})
+	expect(await prisma.deckCard.count()).toBe(1)
+
+	// none of them are in Startup's pool; the identity stays
+	await updateDeck(user.id, deck.id, { formatId: 'startup' })
+	const other = await insertUser()
+	expect(await removeIllegalCards(other.id, deck.id)).toBeNull()
+	expect(await removeIllegalCards(user.id, deck.id)).toEqual({
+		removed: 3,
+		formatId: 'startup',
+	})
+	expect(await prisma.deckCard.count()).toBe(0)
+	expect(
+		await prisma.deck.findUniqueOrThrow({
+			where: { id: deck.id },
+			select: { identityCardId: true },
+		}),
+	).toEqual({ identityCardId: 'precision_design' })
 })

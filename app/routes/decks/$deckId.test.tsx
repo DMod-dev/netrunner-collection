@@ -93,7 +93,7 @@ test('adding cards from the browser updates the decklist and stats', async () =>
 		.toEqual({ cardId: 'hedge_fund', quantity: 3 })
 })
 
-test('turning off "Require deck legality" makes format problems warnings', async () => {
+test('format problems show, as warnings, only with "Require deck legality" on', async () => {
 	const user = userEvent.setup()
 	await insertCards()
 	const owner = await insertUser()
@@ -107,25 +107,24 @@ test('turning off "Require deck legality" makes format problems warnings', async
 	})
 	renderBuilder(owner.cookie, `/decks/${deck!.id}`)
 
-	const problems = await screen.findByRole('region', { name: 'Problems' })
-	const notInFormat = /^(Error|Warning):Hedge Fund isn’t legal in Startup$/
-	expect(within(problems).getAllByRole('listitem')).toContainEqual(
-		expect.objectContaining({
-			textContent: 'Error:Hedge Fund isn’t legal in Startup',
-		}),
-	)
+	const notInFormat = /^(Error|Warning):.+ isn’t legal in Startup$/
+	const formatProblems = () =>
+		within(screen.getByRole('region', { name: 'Problems' }))
+			.getAllByRole('listitem')
+			.map((li) => li.textContent)
+			.filter((text) => notInFormat.test(text ?? ''))
+	await screen.findByRole('region', { name: 'Problems' })
+	expect(formatProblems()).toEqual([])
 
 	await user.click(
 		screen.getByRole('switch', { name: 'Require deck legality' }),
 	)
 	await expect
-		.poll(() =>
-			within(screen.getByRole('region', { name: 'Problems' }))
-				.getAllByRole('listitem')
-				.map((li) => li.textContent)
-				.filter((text) => notInFormat.test(text ?? '')),
-		)
-		.toEqual(['Warning:Hedge Fund isn’t legal in Startup'])
+		.poll(formatProblems)
+		.toEqual([
+			'Warning:Haas-Bioroid: Precision Design isn’t legal in Startup',
+			'Warning:Hedge Fund isn’t legal in Startup',
+		])
 	await expect
 		.poll(() =>
 			prisma.deck.findUnique({
@@ -133,7 +132,36 @@ test('turning off "Require deck legality" makes format problems warnings', async
 				select: { requireLegality: true },
 			}),
 		)
-		.toEqual({ requireLegality: false })
+		.toEqual({ requireLegality: true })
+})
+
+test('"Remove cards not legal" takes them out after a second click', async () => {
+	const user = userEvent.setup()
+	await insertCards()
+	const owner = await insertUser()
+	const deck = await createDeck(owner.id, {
+		identityCardId: 'precision_design',
+		formatId: 'startup',
+	})
+	await prisma.deckCard.create({
+		data: { deckId: deck!.id, cardId: 'hedge_fund', quantity: 3 },
+	})
+	renderBuilder(owner.cookie, `/decks/${deck!.id}`)
+
+	await user.click(
+		await screen.findByRole('button', {
+			name: 'Remove 3 cards not legal in Startup',
+		}),
+	)
+	expect(await prisma.deckCard.count()).toBe(1)
+	await user.click(screen.getByRole('button', { name: 'Remove 3 cards?' }))
+	await expect.poll(() => prisma.deckCard.count()).toBe(0)
+	await expect(
+		screen.findByText('No cards yet. Add some from the card browser.'),
+	).resolves.toBeInTheDocument()
+	expect(
+		screen.queryByRole('button', { name: /not legal in Startup/ }),
+	).not.toBeInTheDocument()
 })
 
 test('filling from the collection shows what’s missing and what’s in use', async () => {

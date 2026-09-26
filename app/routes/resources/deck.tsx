@@ -25,7 +25,7 @@ import {
 	type FillReport,
 	unfillDeck,
 } from '#app/utils/deck-fill.server.ts'
-import { DECK_FORMATS } from '#app/utils/deck-formats.ts'
+import { DECK_FORMAT_NAMES, DECK_FORMATS } from '#app/utils/deck-formats.ts'
 import {
 	readDeckInput,
 	replaceDeckCards,
@@ -34,6 +34,7 @@ import { MAX_UNRECOGNIZED_SHOWN } from '#app/utils/deck-import.ts'
 import {
 	deleteDeck,
 	type DeckWriteError,
+	removeIllegalCards,
 	setDeckCardQuantity,
 	setDeckIdentity,
 	updateDeck,
@@ -107,6 +108,8 @@ const DeckActionSchema = z.discriminatedUnion('intent', [
 		deckId,
 		deck: z.string().default(''),
 	}),
+	// take out every card the deck's format doesn't allow
+	z.object({ intent: z.literal('remove-illegal'), deckId }),
 	z.object({ intent: z.literal('delete'), deckId }),
 ])
 
@@ -277,6 +280,19 @@ export async function action({ request }: Route.ActionArgs) {
 				throw error
 			}
 		}
+		case 'remove-illegal': {
+			const result = await removeIllegalCards(userId, submission.deckId)
+			if (!result) return notFound()
+			const format = DECK_FORMAT_NAMES[result.formatId]
+			return data({ ok: true } as const, {
+				headers: await createToastHeaders({
+					type: 'success',
+					description: result.removed
+						? `Removed ${result.removed} ${result.removed === 1 ? 'card' : 'cards'} not legal in ${format}`
+						: `Every card is legal in ${format}`,
+				}),
+			})
+		}
 		case 'delete': {
 			if (!(await deleteDeck(userId, submission.deckId))) return notFound()
 			throw await redirectWithToast('/decks', {
@@ -439,8 +455,9 @@ export function DeckQuantityStepper({
 }
 
 /**
- * "Require deck legality". Off, a deck's format problems (bans, rotation,
- * points) are warnings instead of errors. Optimistic via `pendingLegality`.
+ * "Require deck legality". On, a deck's format problems (bans, rotation,
+ * points) show as warnings; off, they aren't checked. Optimistic via
+ * `pendingLegality`.
  */
 export function RequireLegalitySwitch({
 	deckId,
@@ -505,6 +522,46 @@ export function DeleteDeckButton({
 				<Icon icon={Trash01}>{dc.doubleCheck ? 'Delete?' : 'Delete'}</Icon>
 			</Button>
 		</Form>
+	)
+}
+
+/**
+ * Take the cards the format doesn't allow out of the deck, after a second
+ * click to confirm. Shown whether or not legality is required.
+ */
+export function RemoveIllegalCardsButton({
+	deckId,
+	count,
+	formatName,
+}: {
+	deckId: string
+	/** copies the format doesn't allow */
+	count: number
+	formatName: string
+}) {
+	const fetcher = useFetcher<typeof clientAction>({
+		key: deckSettingsFetcherKey(deckId, 'remove-illegal'),
+	})
+	useErrorToast(fetcher, 'Remove cards', `remove-illegal-${deckId}`)
+	const dc = useDoubleCheck()
+	const busy = fetcher.state !== 'idle'
+	const cards = `${count} ${count === 1 ? 'card' : 'cards'}`
+	return (
+		<fetcher.Form method="POST" action={DECK_ACTION_PATH}>
+			<input type="hidden" name="intent" value="remove-illegal" />
+			<input type="hidden" name="deckId" value={deckId} />
+			<StatusButton
+				size="sm"
+				variant={dc.doubleCheck ? 'destructive' : 'outline'}
+				status={busy ? 'pending' : 'idle'}
+				disabled={busy}
+				{...dc.getButtonProps({ type: 'submit' })}
+			>
+				{dc.doubleCheck
+					? `Remove ${cards}?`
+					: `Remove ${cards} not legal in ${formatName}`}
+			</StatusButton>
+		</fetcher.Form>
 	)
 }
 

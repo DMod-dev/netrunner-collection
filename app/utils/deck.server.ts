@@ -8,7 +8,12 @@ import {
 	getFormatRules,
 	toCardLite,
 } from './deck-rules.server.ts'
-import { evaluateDeck, isIdentity } from './deck-rules.ts'
+import {
+	evaluateDeck,
+	formatIssue,
+	isIdentity,
+	toBanList,
+} from './deck-rules.ts'
 import {
 	IDENTITY_TYPES,
 	MAX_DECK_QUANTITY,
@@ -164,6 +169,7 @@ export async function listDecks(userId: string) {
 			name: deck.name,
 			sideId: deck.sideId,
 			formatId,
+			requireLegality: deck.requireLegality,
 			updatedAt: deck.updatedAt,
 			identity: deck.identity
 				? {
@@ -285,7 +291,8 @@ export type BuilderDeck = Awaited<ReturnType<typeof getDeckForBuilder>>
 
 /**
  * A new, empty deck for an identity. Returns null if the identity isn't one.
- * With no name it's named after the identity.
+ * With no name it's named after the identity. Its format isn't checked until
+ * the user turns on "Require deck legality".
  */
 export async function createDeck(
 	userId: string,
@@ -306,6 +313,7 @@ export async function createDeck(
 			name: name?.trim() || identity.title,
 			sideId: identity.sideId,
 			formatId,
+			requireLegality: false,
 			identityCardId,
 		},
 		select: { id: true },
@@ -427,6 +435,44 @@ export async function updateDeck(
 		data,
 	})
 	return count > 0
+}
+
+/**
+ * Take every card the deck's format doesn't allow (outside its card pool,
+ * banned, or of a banned subtype) out of the deck; their reserved copies go
+ * back to the collection. The identity stays. Returns how many copies went,
+ * or null if the user doesn't own the deck.
+ */
+export async function removeIllegalCards(userId: string, deckId: string) {
+	const deck = await prisma.deck.findFirst({
+		where: { id: deckId, userId },
+		select: {
+			formatId: true,
+			cards: {
+				select: {
+					quantity: true,
+					card: { select: CARD_LITE_SELECT },
+				},
+			},
+		},
+	})
+	if (!deck) return null
+	const formatId = parseDeckFormat(deck.formatId)
+	const banList = toBanList(await getFormatRules(formatId))
+	const illegal = deck.cards.filter(({ card }) =>
+		formatIssue(toCardLite(card), formatId, banList),
+	)
+	if (illegal.length === 0) return { removed: 0, formatId }
+	await prisma.$transaction(async (tx) => {
+		await tx.deckCard.deleteMany({
+			where: { deckId, cardId: { in: illegal.map(({ card }) => card.id) } },
+		})
+		await touchDeck(tx, deckId)
+	})
+	return {
+		removed: illegal.reduce((n, { quantity }) => n + quantity, 0),
+		formatId,
+	}
 }
 
 export async function deleteDeck(userId: string, deckId: string) {

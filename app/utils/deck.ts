@@ -52,7 +52,8 @@ export function deckSettingsFetcherKey(
 		| 'name'
 		| 'notes'
 		| 'fill'
-		| 'import',
+		| 'import'
+		| 'remove-illegal',
 ) {
 	return `deck-settings-${deckId}-${setting}`
 }

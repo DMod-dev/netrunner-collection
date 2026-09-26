@@ -15,9 +15,10 @@ you've completed and which cards you still need for a deck. Card data comes from
 - **Set completion:** progress for every set, down to which cards are missing.
 - **Decks:** build private decks for Standard, Startup or Eternal. Pick an
   identity, add cards from a browser that searches like the collection, and see
-  the card count, influence, agenda points and any problems (bans, rotation,
-  deck limits) update as you go. Decks with problems still save; turn off
-  **Require deck legality** to see format problems as warnings.
+  the card count, influence, agenda points and any problems (deck size,
+  influence, deck limits) update as you go. Decks with problems still save. Turn
+  on **Require deck legality** to see the format's bans, rotation and points as
+  warnings. One button takes out every card the format doesn't allow.
 - **Fill with collection:** reserve a deck's cards from your collection. Each
   card shows how many copies are yours, how many you still need, and which of
   your other decks hold the rest. The first deck filled keeps the copies; unfill

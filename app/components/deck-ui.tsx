@@ -169,8 +169,17 @@ export function InfluencePips({
 	)
 }
 
-/** Cards, influence, agenda points and format points, each against its limit. */
-export function DeckStats({ stats }: { stats: DeckStatsData }) {
+/**
+ * Cards, influence, agenda points and format points, each against its limit.
+ * Going over the points limit only shows when the format is `checkFormat`ed.
+ */
+export function DeckStats({
+	stats,
+	checkFormat,
+}: {
+	stats: DeckStatsData
+	checkFormat: boolean
+}) {
 	const {
 		cardCount,
 		minDeckSize,
@@ -206,7 +215,7 @@ export function DeckStats({ stats }: { stats: DeckStatsData }) {
 				<Stat
 					label="Points"
 					value={`${points} / ${pointLimit}`}
-					bad={points > pointLimit}
+					bad={checkFormat && points > pointLimit}
 				/>
 			) : null}
 		</dl>

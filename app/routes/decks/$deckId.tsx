@@ -61,6 +61,7 @@ import {
 	pendingLegality,
 	pendingQuantity,
 	RefillButton,
+	RemoveIllegalCardsButton,
 	RequireLegalitySwitch,
 	useErrorToast,
 } from '#app/routes/resources/deck.tsx'
@@ -79,7 +80,9 @@ import { toCardLite } from '#app/utils/deck-rules.server.ts'
 import {
 	type CardLite,
 	evaluateDeck,
+	formatIssue,
 	type FormatRules,
+	toBanList,
 } from '#app/utils/deck-rules.ts'
 import { getDeckForBuilder } from '#app/utils/deck.server.ts'
 import {
@@ -249,6 +252,13 @@ export default function DeckBuilderRoute({ loaderData }: Route.ComponentProps) {
 	const { stats, problems } = evaluation
 	const errors = problems.filter((p) => p.severity === 'error').length
 	const text = toNrdbText({ ...deck, cards: entries }, evaluation)
+	const banList = toBanList(deck.rules)
+	// copies "Remove cards not legal" would take out
+	const illegalCopies = entries.reduce(
+		(n, e) =>
+			formatIssue(e.card, deck.formatId, banList) ? n + e.quantity : n,
+		0,
+	)
 
 	return (
 		<main className="container mb-24 flex flex-col gap-4 lg:mb-8">
@@ -305,8 +315,15 @@ export default function DeckBuilderRoute({ loaderData }: Route.ComponentProps) {
 					)}
 				>
 					<IdentityHeader deck={deck} collection={collection} />
-					<DeckStats stats={stats} />
+					<DeckStats stats={stats} checkFormat={requireLegality} />
 					<ProblemList problems={problems} />
+					{illegalCopies > 0 ? (
+						<RemoveIllegalCardsButton
+							deckId={deck.id}
+							count={illegalCopies}
+							formatName={DECK_FORMAT_NAMES[deck.formatId]}
+						/>
+					) : null}
 					<DecklistPanel
 						deckId={deck.id}
 						side={deck.sideId}

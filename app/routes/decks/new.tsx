@@ -65,7 +65,7 @@ const NewDeckSchema = z.discriminatedUnion('intent', [
 		formatId: z.enum(DECK_FORMATS).catch('standard'),
 		requireLegality: z
 			.enum(['true', 'false'])
-			.default('true')
+			.default('false')
 			.transform((v) => v === 'true'),
 		name: z.string().trim().max(MAX_DECK_NAME_LENGTH).optional(),
 	}),
@@ -402,7 +402,6 @@ function ImportDeckForm({
 						name="requireLegality"
 						value="true"
 						uncheckedValue="false"
-						defaultChecked
 					/>
 					<Label htmlFor={`${id}-legal`} className="text-sm font-normal">
 						Require deck legality

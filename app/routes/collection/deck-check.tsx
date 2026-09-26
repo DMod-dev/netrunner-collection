@@ -243,7 +243,6 @@ function SaveAsDeckForm({ input }: { input: string }) {
 		>
 			<input type="hidden" name="intent" value="import" />
 			<input type="hidden" name="deck" value={input} />
-			<input type="hidden" name="requireLegality" value="true" />
 			<div className="flex flex-col gap-1">
 				<Label
 					htmlFor={`${id}-format`}

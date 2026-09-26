@@ -103,6 +103,7 @@ test('every intent 404s on someone else’s deck', async () => {
 		{ intent: 'fill' },
 		{ intent: 'unfill' },
 		{ intent: 'import', deck: '1x Hedge Fund' },
+		{ intent: 'remove-illegal' },
 		{ intent: 'delete' },
 	]
 	for (const fields of attempts) {
