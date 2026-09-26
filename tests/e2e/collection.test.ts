@@ -5,6 +5,7 @@ import { expect, test as base } from '#tests/playwright-utils.ts'
 
 type SeededCards = {
 	prefix: string
+	setId: string
 	setName: string
 	titles: string[]
 	printingIds: string[]
@@ -61,7 +62,7 @@ const test = base.extend<{ seedCards(count: number): Promise<SeededCards> }>({
 				})
 			}
 			const printingIds = titles.map((_, i) => `${id}-${i}`)
-			return { prefix, setName, titles, printingIds }
+			return { prefix, setId: id, setName, titles, printingIds }
 		})
 		for (const id of ids) {
 			const printing = { setId: id }
@@ -340,4 +341,117 @@ test('a failed quantity change is reported and undone', async ({
 	await expect(
 		page.getByRole('heading', { level: 1, name: 'My collection' }),
 	).toBeVisible()
+})
+
+test('set rows show keyboard focus', async ({ page, login, seedCards }) => {
+	const { setId, setName } = await seedCards(1)
+	await login()
+	await page.goto('/collection/sets')
+	const row = page.getByRole('link', { name: new RegExp(`^${setName}`) })
+	await expect(row).toHaveAttribute('href', `/collection/sets/${setId}`)
+
+	// land on the row from the keyboard, as a Tab would
+	await row.focus()
+	await page.keyboard.press('Shift+Tab')
+	await page.keyboard.press('Tab')
+	await expect(row).toBeFocused()
+	expect(await row.evaluate((el) => el.matches(':focus-visible'))).toBe(true)
+	expect(await row.evaluate((el) => getComputedStyle(el).boxShadow)).not.toBe(
+		'none',
+	)
+})
+
+test('a set page filters to missing cards and adds whole products', async ({
+	page,
+	login,
+	seedCards,
+}) => {
+	const { setId, titles, printingIds } = await seedCards(3)
+	const user = await login()
+	await prisma.collectionEntry.create({
+		data: { userId: user.id, printingId: printingIds[0]!, quantity: 1 },
+	})
+	await page.goto(`/collection/sets/${setId}`)
+	await page.locator('html[data-hydrated]').waitFor({ state: 'attached' })
+	const tiles = page.getByRole('main').getByRole('listitem')
+	await expect(tiles).toHaveCount(3)
+
+	// the switch works from the keyboard and keeps its state in the URL
+	const missingOnly = page.getByRole('switch', {
+		name: 'Only show missing cards',
+	})
+	await missingOnly.focus()
+	await page.keyboard.press('Space')
+	await expect(page).toHaveURL(`/collection/sets/${setId}?show=missing`)
+	await expect(missingOnly).toBeChecked()
+	await expect(tiles).toHaveCount(2)
+	await expect(page.getByText(titles[0]!)).toHaveCount(0)
+	await page.keyboard.press('Enter')
+	await expect(page).toHaveURL(`/collection/sets/${setId}`)
+	await expect(tiles).toHaveCount(3)
+
+	// 2 products of 3 single-copy cards, after a confirm
+	const products = page.getByRole('spinbutton', { name: 'Number of products' })
+	await products.fill('2')
+	await page.getByRole('button', { name: 'Add', exact: true }).click()
+	await page.getByRole('button', { name: 'Add 6 cards?' }).click()
+	await expect(page.getByText('Added 6 cards')).toBeVisible()
+	// and the form is back to its defaults
+	await expect(products).toHaveValue('1')
+	await expect(
+		page.getByRole('combobox', { name: 'Add or remove' }),
+	).toHaveValue('add')
+	await expect(
+		page.getByRole('button', { name: 'Add', exact: true }),
+	).toBeVisible()
+	await expect
+		.poll(() =>
+			prisma.collectionEntry.aggregate({
+				where: { userId: user.id, printingId: { in: printingIds } },
+				_sum: { quantity: true },
+			}),
+		)
+		.toMatchObject({ _sum: { quantity: 7 } })
+})
+
+test('import errors show under the data, and "Done!" clears on edit', async ({
+	page,
+	login,
+	seedCards,
+}) => {
+	const { printingIds } = await seedCards(1)
+	const user = await login()
+	await page.goto('/collection/import-export')
+	await page.locator('html[data-hydrated]').waitFor({ state: 'attached' })
+	const data = page.getByRole('textbox', { name: /paste CSV/ })
+
+	await page.getByRole('button', { name: 'Preview import' }).click()
+	const error = page.getByRole('alert').filter({ hasText: 'Choose a file' })
+	await expect(error).toBeVisible()
+	// straight after the textarea, before the import options
+	expect(
+		await data.evaluate((el) => el.nextElementSibling?.textContent),
+	).toContain('Choose a file')
+	await expect(data).toHaveAttribute('aria-invalid', 'true')
+
+	await data.fill(`printing_id,quantity\n${printingIds[0]},2`)
+	await expect(error).toHaveCount(0)
+	await page.getByRole('button', { name: 'Preview import' }).click()
+	await page
+		.getByRole('button', { name: 'Add 2 copies to my collection' })
+		.click()
+	await expect(page.getByText('Imported 2 copies')).toBeVisible()
+	await expect
+		.poll(() =>
+			prisma.collectionEntry.findFirst({
+				where: { userId: user.id, printingId: printingIds[0] },
+				select: { quantity: true },
+			}),
+		)
+		.toEqual({ quantity: 2 })
+
+	const done = page.getByRole('link', { name: 'View your collection' })
+	await expect(done).toBeVisible()
+	await data.fill('card,quantity')
+	await expect(done).toHaveCount(0)
 })

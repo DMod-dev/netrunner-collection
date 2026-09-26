@@ -1,6 +1,7 @@
 import { type SEOHandle } from '@nasa-gcn/remix-seo'
 import { useState } from 'react'
 import { data, Form } from 'react-router'
+import { toast } from 'sonner'
 import { CountBadge } from '#app/components/card-art.tsx'
 import { CollectionNav } from '#app/components/collection-ui.tsx'
 import { GeneralErrorBoundary } from '#app/components/error-boundary.tsx'
@@ -247,7 +248,12 @@ function CopyMissingButton({ rows }: { rows: Result['rows'] }) {
 			variant="outline"
 			size="sm"
 			onClick={async () => {
-				await navigator.clipboard.writeText(text)
+				try {
+					await navigator.clipboard.writeText(text)
+				} catch {
+					toast.error("Couldn't copy to the clipboard")
+					return
+				}
 				setCopied(true)
 				setTimeout(() => setCopied(false), 2000)
 			}}

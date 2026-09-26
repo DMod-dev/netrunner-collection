@@ -7,6 +7,7 @@ import { CollectionNav } from '#app/components/collection-ui.tsx'
 import { GeneralErrorBoundary } from '#app/components/error-boundary.tsx'
 import { buttonVariants } from '#app/components/ui/button.tsx'
 import { Icon } from '#app/components/ui/icon.tsx'
+import { Input } from '#app/components/ui/input.tsx'
 import { Label } from '#app/components/ui/label.tsx'
 import { StatusButton } from '#app/components/ui/status-button.tsx'
 import { Textarea } from '#app/components/ui/textarea.tsx'
@@ -147,6 +148,13 @@ function ImportSection({ currentCopies }: { currentCopies: number }) {
 	const fetcher = useFetcher<typeof action>()
 	const [content, setContent] = useState('')
 	const [mode, setMode] = useState<ImportMode>('add')
+	// what the file picker is doing, shown under it
+	const [fileStatus, setFileStatus] = useState<{
+		reading: boolean
+		message: string
+	} | null>(null)
+	// the "Done!" link, until the next edit
+	const [showDone, setShowDone] = useState(false)
 	// the content + mode the current preview describes; editing either
 	// invalidates it so we never apply something the user hasn't previewed
 	const [previewed, setPreviewed] = useState<string | null>(null)
@@ -157,6 +165,9 @@ function ImportSection({ currentCopies }: { currentCopies: number }) {
 		result?.ok && !result.applied && previewed === previewKey
 			? result.summary
 			: null
+	// an error is about what was submitted, so editing clears it
+	const error =
+		result && !result.ok && previewed === previewKey ? result.error : null
 
 	const applied =
 		fetcher.state === 'idle' && result?.ok && result.applied ? result : null
@@ -167,6 +178,8 @@ function ImportSection({ currentCopies }: { currentCopies: number }) {
 		if (applied) {
 			setContent('')
 			setPreviewed(null)
+			setFileStatus(null)
+			setShowDone(true)
 		}
 	}
 	useEffect(() => {
@@ -181,6 +194,11 @@ function ImportSection({ currentCopies }: { currentCopies: number }) {
 	function submit(intent: 'preview' | 'apply') {
 		if (intent === 'preview') setPreviewed(previewKey)
 		void fetcher.submit({ intent, content, mode }, { method: 'POST' })
+	}
+
+	function changeContent(value: string) {
+		setContent(value)
+		setShowDone(false)
 	}
 
 	return (
@@ -207,22 +225,42 @@ Sure Gamble,,3,`}
 
 			<div className="flex flex-col gap-2">
 				<Label htmlFor={`${id}-file`}>File</Label>
-				<input
+				<Input
 					id={`${id}-file`}
 					type="file"
 					accept=".csv,.json,text/csv,application/json"
-					className="file:bg-secondary file:text-secondary-foreground text-sm file:mr-3 file:h-7 file:rounded-md file:border-0 file:px-2.5 file:text-sm file:font-medium"
+					aria-describedby={`${id}-file-status`}
+					disabled={fileStatus?.reading}
+					className="max-w-sm"
 					onChange={async (e) => {
 						const file = e.currentTarget.files?.[0]
 						e.currentTarget.value = ''
 						if (!file) return
 						if (file.size > MAX_IMPORT_BYTES) {
+							setFileStatus(null)
 							toast.error('That file is too large (2 MB max).')
 							return
 						}
-						setContent(await file.text())
+						setFileStatus({ reading: true, message: `Reading ${file.name}…` })
+						try {
+							changeContent(await file.text())
+							setFileStatus({
+								reading: false,
+								message: `Loaded ${file.name} (${formatSize(file.size)}). Check it below, then preview.`,
+							})
+						} catch {
+							setFileStatus(null)
+							toast.error(`Couldn't read ${file.name}`)
+						}
 					}}
 				/>
+				<p
+					id={`${id}-file-status`}
+					role="status"
+					className="text-muted-foreground text-sm empty:hidden"
+				>
+					{fileStatus?.message}
+				</p>
 				<Label htmlFor={`${id}-content`} className="mt-2">
 					…or paste CSV / JSON
 				</Label>
@@ -230,10 +268,25 @@ Sure Gamble,,3,`}
 					id={`${id}-content`}
 					rows={6}
 					value={content}
-					onChange={(e) => setContent(e.currentTarget.value)}
+					onChange={(e) => {
+						changeContent(e.currentTarget.value)
+						setFileStatus(null)
+					}}
+					disabled={fileStatus?.reading}
+					aria-invalid={error ? true : undefined}
+					aria-describedby={error ? `${id}-error` : undefined}
 					className="font-mono text-xs"
 					spellCheck={false}
 				/>
+				{error ? (
+					<p
+						id={`${id}-error`}
+						className="text-destructive text-sm"
+						role="alert"
+					>
+						{error}
+					</p>
+				) : null}
 			</div>
 
 			<fieldset className="flex flex-col gap-2">
@@ -257,18 +310,12 @@ Sure Gamble,,3,`}
 					type="button"
 					variant={preview ? 'outline' : 'default'}
 					status={isPending && !preview ? 'pending' : 'idle'}
-					disabled={!content.trim() || isPending}
+					disabled={isPending || fileStatus?.reading}
 					onClick={() => submit('preview')}
 				>
 					Preview import
 				</StatusButton>
 			</div>
-
-			{result && !result.ok ? (
-				<p className="text-destructive text-sm" role="alert">
-					{result.error}
-				</p>
-			) : null}
 
 			{preview ? (
 				<div
@@ -318,7 +365,7 @@ Sure Gamble,,3,`}
 				</div>
 			) : null}
 
-			{result?.ok && result.applied ? (
+			{showDone ? (
 				<p className="text-sm">
 					Done!{' '}
 					<Link to="/collection" className="underline">
@@ -328,6 +375,12 @@ Sure Gamble,,3,`}
 			) : null}
 		</section>
 	)
+}
+
+function formatSize(bytes: number) {
+	return bytes < 1000
+		? `${bytes} bytes`
+		: `${Math.round(bytes / 1000).toLocaleString('en-US')} KB`
 }
 
 function ModeOption({

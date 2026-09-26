@@ -13,6 +13,7 @@ import { Button, buttonVariants } from '#app/components/ui/button.tsx'
 import { Icon } from '#app/components/ui/icon.tsx'
 import { UserIcon } from '#app/components/user-icon.tsx'
 import { requireUserId } from '#app/utils/auth.server.ts'
+import { formatDate } from '#app/utils/dates.ts'
 import { prisma } from '#app/utils/db.server.ts'
 import { useOptionalUser } from '#app/utils/user.ts'
 import { type Route } from './+types/index.ts'
@@ -37,7 +38,7 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
 	invariantResponse(user, 'User not found', { status: 404 })
 
-	return { user, userJoinedDisplay: user.createdAt.toLocaleDateString() }
+	return { user, userJoinedDisplay: formatDate(user.createdAt) }
 }
 
 export default function ProfileRoute() {
