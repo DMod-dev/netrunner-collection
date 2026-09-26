@@ -84,6 +84,10 @@ async function gotoCollection(page: Page, search = '') {
 
 const scrollY = (page: Page) => page.evaluate(() => window.scrollY)
 
+function sideToggle(page: Page, name: 'Corp' | 'Runner') {
+	return page.getByRole('group', { name: 'Side' }).getByRole('button', { name })
+}
+
 /** The result count under the filters, which screen readers announce. */
 function resultCount(page: Page) {
 	return page.getByRole('main').locator('[aria-live]')
@@ -197,8 +201,8 @@ test('with no results, "Clear filters" resets the search', async ({
 	await login()
 	await gotoCollection(page)
 
-	const side = page.getByRole('combobox', { name: 'Side' })
-	await side.selectOption('corp')
+	const corp = sideToggle(page, 'Corp')
+	await corp.click()
 	const search = page.getByRole('searchbox', { name: 'Card name' })
 	await search.fill(`no card is called ${randomUUID()}`)
 	await search.press('Enter')
@@ -214,11 +218,11 @@ test('with no results, "Clear filters" resets the search', async ({
 
 	await expect(page).toHaveURL('/collection')
 	await expect(search).toHaveValue('')
-	await expect(side).toHaveValue('')
+	await expect(corp).toHaveAttribute('aria-pressed', 'false')
 	await expect(empty).toBeHidden()
 })
 
-test('picking another side drops a faction from the old one', async ({
+test('picking a side turns off the other side’s factions', async ({
 	page,
 	login,
 	seedCards,
@@ -227,13 +231,23 @@ test('picking another side drops a faction from the old one', async ({
 	await login()
 	await gotoCollection(page, '?side=runner')
 
-	const faction = page.getByRole('combobox', { name: 'Faction' })
-	await faction.selectOption({ label: 'Test Faction' })
+	const faction = page
+		.getByRole('group', { name: 'Faction' })
+		.getByRole('button', { name: 'Test Faction' })
+	await faction.click()
+	await expect(faction).toHaveAttribute('aria-pressed', 'true')
 	await expect(page).toHaveURL(/faction=/)
 
-	await page.getByRole('combobox', { name: 'Side' }).selectOption('corp')
+	const corp = sideToggle(page, 'Corp')
+	await corp.click()
 	await expect(page).toHaveURL('/collection?side=corp')
-	await expect(faction).toHaveValue('')
+	await expect(faction).toHaveAttribute('aria-pressed', 'false')
+	await expect(faction).toBeDisabled()
+
+	// no side: every faction can be picked again
+	await corp.click()
+	await expect(page).toHaveURL('/collection')
+	await expect(faction).toBeEnabled()
 })
 
 test('tiles show the owned count and change it', async ({

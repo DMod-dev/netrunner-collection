@@ -26,7 +26,7 @@ import {
 } from '#app/components/card-art.tsx'
 import { CollectionNav, ShortcutHint } from '#app/components/collection-ui.tsx'
 import { GeneralErrorBoundary } from '#app/components/error-boundary.tsx'
-import { FactionDot } from '#app/components/printing-tile.tsx'
+import { FactionDot, factionColor } from '#app/components/printing-tile.tsx'
 import { Button, buttonVariants } from '#app/components/ui/button.tsx'
 import { Icon } from '#app/components/ui/icon.tsx'
 import { Input } from '#app/components/ui/input.tsx'
@@ -36,6 +36,10 @@ import {
 	NativeSelectOptGroup,
 	NativeSelectOption,
 } from '#app/components/ui/native-select.tsx'
+import {
+	ToggleGroup,
+	ToggleGroupItem,
+} from '#app/components/ui/toggle-group.tsx'
 import { requireUserId } from '#app/utils/auth.server.ts'
 import {
 	type CardSearchParams,
@@ -44,7 +48,7 @@ import {
 	searchCards,
 } from '#app/utils/collection.server.ts'
 import { prisma } from '#app/utils/db.server.ts'
-import { useDebounce } from '#app/utils/misc.tsx'
+import { cn, useDebounce } from '#app/utils/misc.tsx'
 import { type Route } from './+types/index.ts'
 
 export const handle: SEOHandle = {
@@ -65,7 +69,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 	const params: CardSearchParams = {
 		q: get('q'),
 		side: get('side'),
-		faction: get('faction'),
+		factions: url.searchParams.getAll('faction').filter(Boolean),
 		type: get('type'),
 		set: get('set'),
 		format: get('format'),
@@ -279,10 +283,13 @@ function Filters({
 	const submit = useSubmit()
 	const id = useId()
 	const searchRef = useRef<HTMLInputElement>(null)
-	// Factions are listed for the side picked in the form, not the one in the
-	// URL, so changing sides drops a faction from the other side before the
-	// search runs (a <select> whose option is removed falls back to "Any").
+	const formRef = useRef<HTMLFormElement>(null)
+	// Toggles aren't form controls, so they're mirrored into hidden inputs and
+	// submit the form themselves.
 	const [side, setSide] = useState(searchParams.get('side') ?? '')
+	const [factions, setFactions] = useState(() =>
+		searchParams.getAll('faction').filter(Boolean),
+	)
 
 	// "/" jumps to the search box. It isn't autofocused, so that card
 	// shortcuts work as soon as the page loads.
@@ -301,7 +308,7 @@ function Filters({
 	function submitFilters(form: HTMLFormElement) {
 		const params = new URLSearchParams()
 		for (const [key, value] of new FormData(form)) {
-			if (typeof value === 'string' && value !== '') params.set(key, value)
+			if (typeof value === 'string' && value !== '') params.append(key, value)
 		}
 		// already showing these results (e.g. Enter after the debounced search)
 		if (params.toString() === searchParams.toString()) return
@@ -318,6 +325,7 @@ function Filters({
 
 	return (
 		<Form
+			ref={formRef}
 			method="GET"
 			action="/collection"
 			className="bg-muted flex flex-col gap-3 rounded-lg p-4"
@@ -348,29 +356,82 @@ function Filters({
 					<Icon icon={SearchMd} size="sm" />
 				</Button>
 			</div>
-			<div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-6">
-				<FilterSelect
-					name="side"
-					label="Side"
-					searchParams={searchParams}
-					onChange={(e) => setSide(e.currentTarget.value)}
-				>
-					<NativeSelectOption value="corp">Corp</NativeSelectOption>
-					<NativeSelectOption value="runner">Runner</NativeSelectOption>
-				</FilterSelect>
-				<FilterSelect
-					name="faction"
-					label="Faction"
-					searchParams={searchParams}
-				>
-					{filters.factions
-						.filter((f) => !side || f.sideId === side)
-						.map((f) => (
-							<NativeSelectOption key={f.id} value={f.id}>
+			<div className="flex flex-wrap gap-x-6 gap-y-3">
+				<ToggleFilter label="Side">
+					<ToggleGroup
+						aria-label="Side"
+						variant="outline"
+						spacing={0}
+						value={side ? [side] : []}
+						onValueChange={(value: string[]) => {
+							const next = value[0] ?? ''
+							setSide(next)
+							// a side drops the other side's factions
+							if (next) {
+								setFactions((current) =>
+									current.filter((id) =>
+										filters.factions.some(
+											(f) => f.id === id && f.sideId === next,
+										),
+									),
+								)
+							}
+							if (formRef.current) autoSubmit(formRef.current)
+						}}
+					>
+						<ToggleGroupItem value="corp" className={toggleClassName}>
+							Corp
+						</ToggleGroupItem>
+						<ToggleGroupItem value="runner" className={toggleClassName}>
+							Runner
+						</ToggleGroupItem>
+					</ToggleGroup>
+				</ToggleFilter>
+				<ToggleFilter label="Faction">
+					<ToggleGroup
+						aria-label="Faction"
+						variant="outline"
+						multiple
+						className="flex-wrap"
+						value={factions}
+						onValueChange={(value: string[]) => {
+							setFactions(value)
+							if (formRef.current) autoSubmit(formRef.current)
+						}}
+					>
+						{filters.factions.map((f) => (
+							<ToggleGroupItem
+								key={f.id}
+								value={f.id}
+								disabled={Boolean(side) && f.sideId !== side}
+								// both sides have a "Neutral"
+								aria-label={
+									filters.factions.some(
+										(o) => o.id !== f.id && o.name === f.name,
+									)
+										? `${f.name} (${f.sideId === 'corp' ? 'Corp' : 'Runner'})`
+										: undefined
+								}
+								style={
+									{ '--faction': factionColor(f.id) } as React.CSSProperties
+								}
+								className={cn(toggleClassName, factionToggleClassName)}
+							>
+								<span
+									aria-hidden
+									className="size-2.5 shrink-0 rounded-full bg-(--faction) transition-colors group-disabled/toggle:bg-current"
+								/>
 								{f.name}
-							</NativeSelectOption>
+							</ToggleGroupItem>
 						))}
-				</FilterSelect>
+					</ToggleGroup>
+				</ToggleFilter>
+				{side ? <input type="hidden" name="side" value={side} /> : null}
+				{factions.map((id) => (
+					<input key={id} type="hidden" name="faction" value={id} />
+				))}
+			</div>
+			<div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
 				<FilterSelect name="type" label="Type" searchParams={searchParams}>
 					{filters.types.map((t) => (
 						<NativeSelectOption key={t.id} value={t.id}>
@@ -426,19 +487,42 @@ function Filters({
 	)
 }
 
+// On the muted filter panel, toggles sit on the page background like the
+// selects, and a pressed one fills in.
+const toggleClassName =
+	'bg-background hover:bg-background dark:bg-input/30 dark:hover:bg-input/50 aria-pressed:border-primary aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:hover:bg-primary/80 aria-pressed:hover:text-primary-foreground'
+// Faction toggles take their faction's color (`--faction`) instead.
+const factionToggleClassName =
+	'hover:border-(--faction) aria-pressed:border-(--faction) aria-pressed:bg-(--faction)/15 aria-pressed:text-foreground aria-pressed:hover:bg-(--faction)/25 aria-pressed:hover:text-foreground dark:aria-pressed:bg-(--faction)/25'
+
+function ToggleFilter({
+	label,
+	children,
+}: {
+	label: string
+	children: React.ReactNode
+}) {
+	return (
+		<div className="flex flex-col gap-1">
+			<span aria-hidden className="text-muted-foreground text-xs">
+				{label}
+			</span>
+			{children}
+		</div>
+	)
+}
+
 function FilterSelect({
 	name,
 	label,
 	allLabel = `Any ${label.toLowerCase()}`,
 	searchParams,
-	onChange,
 	children,
 }: {
 	name: string
 	label: string
 	allLabel?: string
 	searchParams: URLSearchParams
-	onChange?: React.ChangeEventHandler<HTMLSelectElement>
 	children: React.ReactNode
 }) {
 	const id = useId()
@@ -451,7 +535,6 @@ function FilterSelect({
 				id={id}
 				name={name}
 				defaultValue={searchParams.get(name) ?? ''}
-				onChange={onChange}
 				className="w-full"
 			>
 				<NativeSelectOption value="">{allLabel}</NativeSelectOption>
