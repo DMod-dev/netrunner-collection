@@ -1,21 +1,37 @@
-import { Toaster as Sonner } from 'sonner'
+import {
+	AlertTriangle,
+	CheckCircle,
+	InfoCircle,
+	Loading02,
+	XCircle,
+} from '@untitledui/icons'
+import { Toaster as Sonner, type ToasterProps } from 'sonner'
 
-type ToasterProps = React.ComponentProps<typeof Sonner>
-
+// `theme` comes from our cookie-driven ThemeSwitch (see root.tsx) rather than
+// next-themes.
 const EpicToaster = ({ theme, ...props }: ToasterProps) => {
 	return (
 		<Sonner
 			theme={theme}
 			className="toaster group"
+			icons={{
+				success: <CheckCircle className="size-4" />,
+				info: <InfoCircle className="size-4" />,
+				warning: <AlertTriangle className="size-4" />,
+				error: <XCircle className="size-4" />,
+				loading: <Loading02 className="size-4 animate-spin" />,
+			}}
+			style={
+				{
+					'--normal-bg': 'var(--popover)',
+					'--normal-text': 'var(--popover-foreground)',
+					'--normal-border': 'var(--border)',
+					'--border-radius': 'var(--radius)',
+				} as React.CSSProperties
+			}
 			toastOptions={{
 				classNames: {
-					toast:
-						'group toast group-[.toaster]:bg-background group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg',
-					description: 'group-[.toast]:text-muted-foreground',
-					actionButton:
-						'group-[.toast]:bg-primary group-[.toast]:text-primary-foreground',
-					cancelButton:
-						'group-[.toast]:bg-muted group-[.toast]:text-muted-foreground',
+					toast: 'rounded-2xl',
 				},
 			}}
 			{...props}

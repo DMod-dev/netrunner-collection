@@ -376,10 +376,11 @@ function SubmitButton() {
 **✅ Good - Decorative icons:**
 
 ```typescript
+import { Check, Trash01 } from '@untitledui/icons'
 import { Icon } from '#app/components/ui/icon.tsx'
 
 <button aria-label="Delete note">
-	<Icon name="trash" />
+	<Icon icon={Trash01} />
 	<span className="sr-only">Delete note</span>
 </button>
 ```
@@ -388,9 +389,15 @@ import { Icon } from '#app/components/ui/icon.tsx'
 
 ```typescript
 <button>
-	<Icon name="check" aria-hidden="true" />
+	<Icon icon={Check} />
 	Save
 </button>
+
+// Icons are aria-hidden by default; pass `title` when the icon is the only
+// thing conveying meaning
+<span role="status">
+	<Icon icon={Check} title="success" />
+</span>
 ```
 
 ### Skip Links

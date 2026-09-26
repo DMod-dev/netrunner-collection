@@ -1,14 +1,15 @@
 {
 	"$schema": "https://ui.shadcn.com/schema.json",
-	"style": "default",
+	"style": "base-nova",
 	"rsc": false,
 	"tsx": true,
 	"tailwind": {
 		"config": "",
 		"css": "app/styles/tailwind.css",
-		"baseColor": "slate",
+		"baseColor": "zinc",
 		"cssVariables": true
 	},
+	"iconLibrary": "lucide",
 	"aliases": {
 		"components": "#app/components",
 		"utils": "#app/utils/misc",

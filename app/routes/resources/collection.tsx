@@ -1,3 +1,4 @@
+import { Trash01, XClose } from '@untitledui/icons'
 import { useEffect, useRef, useState } from 'react'
 import { data, useFetcher } from 'react-router'
 import { toast } from 'sonner'
@@ -204,7 +205,8 @@ export function QuantityStepper({
 		)
 	}
 
-	const buttonClass = size === 'sm' ? 'size-7 text-base' : 'size-8 text-lg'
+	const buttonSize = size === 'sm' ? 'icon-sm' : 'icon'
+	const buttonClass = size === 'sm' ? 'text-base' : 'text-lg'
 	return (
 		<div
 			ref={rootRef}
@@ -214,7 +216,8 @@ export function QuantityStepper({
 			<Button
 				type="button"
 				variant="outline"
-				className={cn('p-0', buttonClass)}
+				size={buttonSize}
+				className={buttonClass}
 				disabled={displayed <= 0}
 				onClick={() => step(-1)}
 				aria-label={`Remove one ${label}`}
@@ -225,12 +228,13 @@ export function QuantityStepper({
 				value={displayed}
 				onCommit={submit}
 				label={label}
-				className={size === 'sm' ? 'h-7 w-10' : 'h-8 w-11'}
+				className={size === 'sm' ? 'h-7 w-10' : 'w-11'}
 			/>
 			<Button
 				type="button"
 				variant="outline"
-				className={cn('p-0', buttonClass)}
+				size={buttonSize}
+				className={buttonClass}
 				disabled={displayed >= MAX_QUANTITY}
 				onClick={() => step(1)}
 				aria-label={`Add one ${label}`}
@@ -325,7 +329,7 @@ export function AddVariantForm({
 					name="label"
 					placeholder="e.g. Worlds 2024 alt art"
 					aria-label="Version name"
-					className="h-8 text-sm"
+					className="text-sm"
 					autoFocus
 					required
 					maxLength={80}
@@ -333,23 +337,20 @@ export function AddVariantForm({
 						if (e.key === 'Escape') onDone()
 					}}
 				/>
-				<Button type="submit" size="sm" className="h-8" disabled={isPending}>
+				<Button type="submit" disabled={isPending}>
 					Add
 				</Button>
 				<Button
 					type="button"
-					size="sm"
+					size="icon"
 					variant="ghost"
-					className="h-8 px-2"
 					onClick={onDone}
 					aria-label="Cancel"
 				>
-					<Icon name="cross-1" />
+					<Icon icon={XClose} />
 				</Button>
 			</div>
-			{error ? (
-				<p className="text-foreground-destructive text-xs">{error}</p>
-			) : null}
+			{error ? <p className="text-destructive text-xs">{error}</p> : null}
 		</fetcher.Form>
 	)
 }
@@ -370,13 +371,13 @@ export function DeleteVariantButton({
 			<Button
 				variant={dc.doubleCheck ? 'destructive' : 'ghost'}
 				size="sm"
-				className="h-7 px-2 text-xs"
+				className="px-2 text-xs"
 				{...dc.getButtonProps({ type: 'submit' })}
 				aria-label={
 					dc.doubleCheck ? `Confirm delete ${label}` : `Delete ${label}`
 				}
 			>
-				{dc.doubleCheck ? 'Delete?' : <Icon name="trash" />}
+				{dc.doubleCheck ? 'Delete?' : <Icon icon={Trash01} />}
 			</Button>
 		</fetcher.Form>
 	)
@@ -437,7 +438,7 @@ export function AddProductForm({
 			<input type="hidden" name="copies" value={signedCopies} />
 			<select
 				aria-label="Add or remove"
-				className="border-input bg-background h-8 rounded-md border px-2"
+				className="border-input bg-background focus-visible:border-ring focus-visible:ring-ring/50 h-8 rounded-lg border px-2 text-sm outline-none focus-visible:ring-3"
 				value={mode}
 				onChange={(e) => {
 					setMode(e.currentTarget.value === 'remove' ? 'remove' : 'add')
@@ -460,7 +461,7 @@ export function AddProductForm({
 					)
 					setConfirming(false)
 				}}
-				className="h-8 w-16 text-center"
+				className="w-16 text-center"
 			/>
 			<span>
 				× {setName}{' '}
@@ -473,8 +474,6 @@ export function AddProductForm({
 					<Button
 						type="button"
 						variant="ghost"
-						size="sm"
-						className="h-8"
 						onClick={() => setConfirming(false)}
 					>
 						Cancel
@@ -482,8 +481,6 @@ export function AddProductForm({
 				) : null}
 				<Button
 					type="submit"
-					size="sm"
-					className="h-8"
 					variant={confirming && mode === 'remove' ? 'destructive' : 'default'}
 					disabled={isPending}
 				>

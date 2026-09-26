@@ -1,3 +1,4 @@
+import { ArrowLeft } from '@untitledui/icons'
 import { invariantResponse } from '@epic-web/invariant'
 import { type SEOHandle } from '@nasa-gcn/remix-seo'
 import { Link, useSearchParams } from 'react-router'
@@ -72,7 +73,7 @@ export default function SetRoute({ loaderData }: Route.ComponentProps) {
 					relative="path"
 					className="text-muted-foreground hover:text-foreground self-start text-sm"
 				>
-					<Icon name="arrow-left">All sets</Icon>
+					<Icon icon={ArrowLeft}>All sets</Icon>
 				</Link>
 				<header className="flex flex-wrap items-end justify-between gap-4">
 					<div>

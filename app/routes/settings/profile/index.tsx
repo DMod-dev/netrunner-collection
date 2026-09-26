@@ -1,3 +1,15 @@
+import {
+	Camera01,
+	Download01,
+	Link01,
+	Lock01,
+	LockUnlocked01,
+	Mail01,
+	Passcode,
+	Trash01,
+	User01,
+} from '@untitledui/icons'
+import { Passkey } from '#app/components/ui/brand-icons.tsx'
 import { getFormProps, getInputProps, useForm } from '@conform-to/react'
 import { getZodConstraint, parseWithZod } from '@conform-to/zod/v4'
 import { invariantResponse } from '@epic-web/invariant'
@@ -6,13 +18,13 @@ import { Img } from 'openimg/react'
 import { data, Link, useFetcher } from 'react-router'
 import { z } from 'zod'
 import { ErrorList, Field } from '#app/components/forms.tsx'
-import { Button } from '#app/components/ui/button.tsx'
+import { buttonVariants } from '#app/components/ui/button.tsx'
 import { Icon } from '#app/components/ui/icon.tsx'
 import { StatusButton } from '#app/components/ui/status-button.tsx'
 import { requireUserId, sessionKey } from '#app/utils/auth.server.ts'
 import { getEnabledProviderNames } from '#app/utils/connections.server.ts'
 import { prisma } from '#app/utils/db.server.ts'
-import { getUserImgSrc, useDoubleCheck } from '#app/utils/misc.tsx'
+import { getUserImgSrc, useDoubleCheck, cn } from '#app/utils/misc.tsx'
 import { authSessionStorage } from '#app/utils/session.server.ts'
 import { redirectWithToast } from '#app/utils/toast.server.ts'
 import { NameSchema, UsernameSchema } from '#app/utils/user-validation.ts'
@@ -114,20 +126,18 @@ export default function EditUserProfile({ loaderData }: Route.ComponentProps) {
 						height={832}
 						isAboveFold
 					/>
-					<Button
-						asChild
-						variant="outline"
-						className="absolute top-3 -right-3 flex size-10 items-center justify-center rounded-full p-0"
+					<Link
+						preventScrollReset
+						to="photo"
+						title="Change profile photo"
+						aria-label="Change profile photo"
+						className={cn(
+							buttonVariants({ variant: 'outline', size: 'icon-lg' }),
+							'absolute top-3 -right-3 size-10 rounded-full',
+						)}
 					>
-						<Link
-							preventScrollReset
-							to="photo"
-							title="Change profile photo"
-							aria-label="Change profile photo"
-						>
-							<Icon name="camera" className="size-4" />
-						</Link>
-					</Button>
+						<Icon icon={Camera01} className="size-4" />
+					</Link>
 				</div>
 			</div>
 			<UpdateProfile loaderData={loaderData} />
@@ -136,23 +146,21 @@ export default function EditUserProfile({ loaderData }: Route.ComponentProps) {
 			<div className="col-span-full flex flex-col gap-6">
 				<div>
 					<Link to="change-email">
-						<Icon name="envelope-closed">
-							Change email from {loaderData.user.email}
-						</Icon>
+						<Icon icon={Mail01}>Change email from {loaderData.user.email}</Icon>
 					</Link>
 				</div>
 				<div>
 					<Link to="two-factor">
 						{loaderData.isTwoFactorEnabled ? (
-							<Icon name="lock-closed">2FA is enabled</Icon>
+							<Icon icon={Lock01}>2FA is enabled</Icon>
 						) : (
-							<Icon name="lock-open-1">Enable 2FA</Icon>
+							<Icon icon={LockUnlocked01}>Enable 2FA</Icon>
 						)}
 					</Link>
 				</div>
 				<div>
 					<Link to={loaderData.hasPassword ? 'password' : 'password/create'}>
-						<Icon name="dots-horizontal">
+						<Icon icon={Passcode}>
 							{loaderData.hasPassword ? 'Change Password' : 'Create a Password'}
 						</Icon>
 					</Link>
@@ -160,13 +168,13 @@ export default function EditUserProfile({ loaderData }: Route.ComponentProps) {
 				{loaderData.showConnections ? (
 					<div>
 						<Link to="connections">
-							<Icon name="link-2">Manage connections</Icon>
+							<Icon icon={Link01}>Manage connections</Icon>
 						</Link>
 					</div>
 				) : null}
 				<div>
 					<Link to="passkeys">
-						<Icon name="passkey">Manage passkeys</Icon>
+						<Icon icon={Passkey}>Manage passkeys</Icon>
 					</Link>
 				</div>
 				<div>
@@ -175,7 +183,7 @@ export default function EditUserProfile({ loaderData }: Route.ComponentProps) {
 						download="my-netrunner-collection-data.json"
 						to="/resources/download-user-data"
 					>
-						<Icon name="download">Download your data</Icon>
+						<Icon icon={Download01}>Download your data</Icon>
 					</Link>
 				</div>
 				<SignOutOfSessions loaderData={loaderData} />
@@ -270,7 +278,8 @@ function UpdateProfile({
 			<div className="mt-8 flex justify-center">
 				<StatusButton
 					type="submit"
-					size="wide"
+					size="lg"
+					className="px-24"
 					name="intent"
 					value={profileUpdateActionIntent}
 					status={
@@ -328,7 +337,7 @@ function SignOutOfSessions({
 								: (fetcher.data?.status ?? 'idle')
 						}
 					>
-						<Icon name="avatar">
+						<Icon icon={User01}>
 							{dc.doubleCheck
 								? `Are you sure?`
 								: `Sign out of ${otherSessionsCount} other sessions`}
@@ -336,7 +345,7 @@ function SignOutOfSessions({
 					</StatusButton>
 				</fetcher.Form>
 			) : (
-				<Icon name="avatar">This is your only session</Icon>
+				<Icon icon={User01}>This is your only session</Icon>
 			)}
 		</div>
 	)
@@ -367,7 +376,7 @@ function DeleteData() {
 					variant={dc.doubleCheck ? 'destructive' : 'default'}
 					status={fetcher.state !== 'idle' ? 'pending' : 'idle'}
 				>
-					<Icon name="trash">
+					<Icon icon={Trash01}>
 						{dc.doubleCheck ? `Are you sure?` : `Delete all your data`}
 					</Icon>
 				</StatusButton>

@@ -18,9 +18,9 @@ import faviconAssetUrl from './assets/favicons/favicon.svg'
 import { GeneralErrorBoundary } from './components/error-boundary.tsx'
 import { EpicProgress } from './components/progress-bar.tsx'
 import { useToast } from './components/toaster.tsx'
-import { Button } from './components/ui/button.tsx'
-import { href as iconsHref } from './components/ui/icon.tsx'
+import { buttonVariants } from './components/ui/button.tsx'
 import { EpicToaster } from './components/ui/sonner.tsx'
+import { TooltipProvider } from './components/ui/tooltip.tsx'
 import { UserDropdown } from './components/user-dropdown.tsx'
 import {
 	ThemeSwitch,
@@ -43,8 +43,6 @@ import { useOptionalUser } from './utils/user.ts'
 
 export const links: Route.LinksFunction = () => {
 	return [
-		// Preload svg sprite as a resource to avoid render blocking
-		{ rel: 'preload', href: iconsHref, as: 'image' },
 		{
 			rel: 'icon',
 			href: '/favicon.ico',
@@ -200,42 +198,45 @@ function App() {
 			optimizerEndpoint="/resources/images"
 			getSrc={getImgSrc}
 		>
-			<div className="flex min-h-screen flex-col justify-between">
-				<header className="container py-6">
-					<nav className="flex items-center justify-between gap-4 md:gap-8">
-						<Logo />
-						<div className="flex items-center gap-6">
-							{user ? (
-								<>
-									<Link
-										to="/collection"
-										prefetch="intent"
-										className="font-semibold hover:underline"
-									>
-										Collection
+			<TooltipProvider>
+				{/* `isolate` keeps portaled Base UI popups stacking above the app */}
+				<div className="isolate flex min-h-screen flex-col justify-between">
+					<header className="container py-6">
+						<nav className="flex items-center justify-between gap-4 md:gap-8">
+							<Logo />
+							<div className="flex items-center gap-6">
+								{user ? (
+									<>
+										<Link
+											to="/collection"
+											prefetch="intent"
+											className="font-semibold hover:underline"
+										>
+											Collection
+										</Link>
+										<UserDropdown />
+									</>
+								) : (
+									<Link to="/login" className={buttonVariants({ size: 'lg' })}>
+										Log In
 									</Link>
-									<UserDropdown />
-								</>
-							) : (
-								<Button asChild variant="default" size="lg">
-									<Link to="/login">Log In</Link>
-								</Button>
-							)}
-						</div>
-					</nav>
-				</header>
+								)}
+							</div>
+						</nav>
+					</header>
 
-				<div className="flex flex-1 flex-col">
-					<Outlet />
-				</div>
+					<div className="flex flex-1 flex-col">
+						<Outlet />
+					</div>
 
-				<div className="container flex justify-between pb-5">
-					<Logo />
-					<ThemeSwitch userPreference={data.requestInfo.userPrefs.theme} />
+					<div className="container flex justify-between pb-5">
+						<Logo />
+						<ThemeSwitch userPreference={data.requestInfo.userPrefs.theme} />
+					</div>
 				</div>
-			</div>
-			<EpicToaster closeButton position="top-center" theme={theme} />
-			<EpicProgress />
+				<EpicToaster closeButton position="top-center" theme={theme} />
+				<EpicProgress />
+			</TooltipProvider>
 		</OpenImgContextProvider>
 	)
 }

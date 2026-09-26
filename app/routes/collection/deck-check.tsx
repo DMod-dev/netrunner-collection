@@ -115,7 +115,7 @@ export default function DeckCheckRoute({ actionData }: Route.ComponentProps) {
 					aria-describedby={error ? 'deck-error' : undefined}
 				/>
 				{error ? (
-					<p id="deck-error" className="text-foreground-destructive text-sm">
+					<p id="deck-error" className="text-destructive text-sm">
 						{error}
 					</p>
 				) : null}

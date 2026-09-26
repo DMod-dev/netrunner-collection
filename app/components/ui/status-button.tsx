@@ -1,13 +1,9 @@
+import { Check, Loading02, XClose } from '@untitledui/icons'
 import { useSpinDelay } from 'spin-delay'
 import { cn } from '#app/utils/misc.tsx'
-import { Button, type ButtonVariant } from './button.tsx'
+import { Button } from './button.tsx'
 import { Icon } from './icon.tsx'
-import {
-	Tooltip,
-	TooltipContent,
-	TooltipProvider,
-	TooltipTrigger,
-} from './tooltip.tsx'
+import { Tooltip, TooltipContent, TooltipTrigger } from './tooltip.tsx'
 
 export const StatusButton = ({
 	message,
@@ -15,13 +11,13 @@ export const StatusButton = ({
 	className,
 	children,
 	spinDelay,
+	focusableWhenDisabled,
 	...props
-}: React.ComponentProps<'button'> &
-	ButtonVariant & {
-		status: 'pending' | 'success' | 'error' | 'idle'
-		message?: string | null
-		spinDelay?: Parameters<typeof useSpinDelay>[1]
-	}) => {
+}: React.ComponentProps<typeof Button> & {
+	status: 'pending' | 'success' | 'error' | 'idle'
+	message?: string | null
+	spinDelay?: Parameters<typeof useSpinDelay>[1]
+}) => {
 	const delayedPending = useSpinDelay(status === 'pending', {
 		delay: 400,
 		minDuration: 300,
@@ -29,46 +25,45 @@ export const StatusButton = ({
 	})
 	const companion = {
 		pending: delayedPending ? (
-			<div
+			<span
 				role="status"
-				className="inline-flex size-6 items-center justify-center"
+				className="inline-flex size-5 items-center justify-center"
 			>
-				<Icon name="update" className="animate-spin" title="loading" />
-			</div>
+				<Icon icon={Loading02} className="animate-spin" title="loading" />
+			</span>
 		) : null,
 		success: (
-			<div
+			<span
 				role="status"
-				className="inline-flex size-6 items-center justify-center"
+				className="inline-flex size-5 items-center justify-center"
 			>
-				<Icon name="check" title="success" />
-			</div>
+				<Icon icon={Check} title="success" />
+			</span>
 		),
 		error: (
-			<div
+			<span
 				role="status"
-				className="bg-destructive inline-flex size-6 items-center justify-center rounded-full"
+				className="bg-destructive inline-flex size-5 items-center justify-center rounded-full"
 			>
-				<Icon
-					name="cross-1"
-					className="text-destructive-foreground"
-					title="error"
-				/>
-			</div>
+				<Icon icon={XClose} className="text-background" title="error" />
+			</span>
 		),
 		idle: null,
 	}[status]
 
 	return (
-		<Button className={cn('flex justify-center gap-4', className)} {...props}>
-			<div>{children}</div>
+		<Button
+			// Keep focus on the button while it's disabled during submission.
+			focusableWhenDisabled={focusableWhenDisabled ?? status === 'pending'}
+			className={cn('flex justify-center gap-4', className)}
+			{...props}
+		>
+			<span>{children}</span>
 			{message ? (
-				<TooltipProvider>
-					<Tooltip>
-						<TooltipTrigger>{companion}</TooltipTrigger>
-						<TooltipContent>{message}</TooltipContent>
-					</Tooltip>
-				</TooltipProvider>
+				<Tooltip>
+					<TooltipTrigger render={<span />}>{companion}</TooltipTrigger>
+					<TooltipContent>{message}</TooltipContent>
+				</Tooltip>
 			) : (
 				companion
 			)}

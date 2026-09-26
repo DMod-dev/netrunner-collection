@@ -1,3 +1,4 @@
+import { LockUnlocked01 } from '@untitledui/icons'
 import { type SEOHandle } from '@nasa-gcn/remix-seo'
 import { useFetcher } from 'react-router'
 import { Icon } from '#app/components/ui/icon.tsx'
@@ -12,7 +13,7 @@ import { type Route } from './+types/disable.ts'
 import { twoFAVerificationType } from './_layout.tsx'
 
 export const handle: BreadcrumbHandle & SEOHandle = {
-	breadcrumb: <Icon name="lock-open-1">Disable</Icon>,
+	breadcrumb: <Icon icon={LockUnlocked01}>Disable</Icon>,
 	getSitemapEntries: () => null,
 }
 

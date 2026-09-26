@@ -1,5 +1,5 @@
 import { Link, redirect } from 'react-router'
-import { Button } from '#app/components/ui/button.tsx'
+import { buttonVariants } from '#app/components/ui/button.tsx'
 import { getUserId } from '#app/utils/auth.server.ts'
 import { type Route } from './+types/index.ts'
 
@@ -28,12 +28,15 @@ export default function Index() {
 					your alt arts and promos too.
 				</p>
 				<div className="flex gap-4">
-					<Button asChild size="lg">
-						<Link to="/signup">Sign up</Link>
-					</Button>
-					<Button asChild size="lg" variant="outline">
-						<Link to="/login">Log in</Link>
-					</Button>
+					<Link to="/signup" className={buttonVariants({ size: 'lg' })}>
+						Sign up
+					</Link>
+					<Link
+						to="/login"
+						className={buttonVariants({ size: 'lg', variant: 'outline' })}
+					>
+						Log in
+					</Link>
 				</div>
 				<p className="text-muted-foreground text-sm">
 					Card data from{' '}

@@ -1,10 +1,13 @@
-import { type SVGProps } from 'react'
+import { type ComponentType, type SVGProps } from 'react'
 import { cn } from '#app/utils/misc.tsx'
-import href from './icons/sprite.svg'
-import { type IconName } from '@/icon-name'
 
-export { href }
-export { IconName }
+/**
+ * Any icon component from `@untitledui/icons` (or one of ours in
+ * `./brand-icons.tsx`, which follow the same props).
+ */
+export type IconComponent = ComponentType<
+	SVGProps<SVGSVGElement> & { size?: number }
+>
 
 const sizeClassName = {
 	font: 'size-[1em]',
@@ -27,27 +30,29 @@ const childrenSizeClassName = {
 } satisfies Record<Size, string>
 
 /**
- * Renders an SVG icon. The icon defaults to the size of the font. To make it
- * align vertically with neighboring text, you can pass the text as a child of
- * the icon and it will be automatically aligned.
+ * Renders an Untitled UI icon (`import { Trash01 } from '@untitledui/icons'`).
+ * The icon defaults to the size of the font. To make it align vertically with
+ * neighboring text, you can pass the text as a child of the icon and it will be
+ * automatically aligned.
  * Alternatively, if you're not ok with the icon being to the left of the text,
  * you need to wrap the icon and text in a common parent and set the parent to
  * display "flex" (or "inline-flex") with "items-center" and a reasonable gap.
  *
- * Pass `title` prop to the `Icon` component to get `<title>` element rendered
- * in the SVG container, providing this way for accessibility.
+ * Icons are decorative (`aria-hidden`). Pass `title` to add visually hidden
+ * text describing the icon for assistive technology.
  */
 export function Icon({
-	name,
+	icon: IconSvg,
 	size = 'font',
 	className,
 	title,
 	children,
 	...props
-}: SVGProps<SVGSVGElement> & {
-	name: IconName
+}: Omit<SVGProps<SVGSVGElement>, 'children'> & {
+	icon: IconComponent
 	size?: Size
 	title?: string
+	children?: React.ReactNode
 }) {
 	if (children) {
 		return (
@@ -55,7 +60,7 @@ export function Icon({
 				className={`inline-flex items-center ${childrenSizeClassName[size]}`}
 			>
 				<Icon
-					name={name}
+					icon={IconSvg}
 					size={size}
 					className={className}
 					title={title}
@@ -65,13 +70,17 @@ export function Icon({
 			</span>
 		)
 	}
-	return (
-		<svg
+	const svg = (
+		<IconSvg
 			{...props}
 			className={cn(sizeClassName[size], 'inline self-center', className)}
-		>
-			{title ? <title>{title}</title> : null}
-			<use href={`${href}#${name}`} />
-		</svg>
+		/>
+	)
+	if (!title) return svg
+	return (
+		<>
+			{svg}
+			<span className="sr-only">{title}</span>
+		</>
 	)
 }
