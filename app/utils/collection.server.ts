@@ -8,7 +8,8 @@ export const CARDS_PER_PAGE = 30
 export type CardSearchParams = {
 	q?: string
 	side?: string
-	faction?: string
+	/** Cards from any of these factions. */
+	factions?: string[]
 	type?: string
 	set?: string
 	format?: string
@@ -43,7 +44,7 @@ export async function searchCards(userId: string, params: CardSearchParams) {
 					}
 				: {},
 			params.side ? { sideId: params.side } : {},
-			params.faction ? { factionId: params.faction } : {},
+			params.factions?.length ? { factionId: { in: params.factions } } : {},
 			params.type ? { typeId: params.type } : {},
 			params.format ? { legalFormats: { contains: `,${params.format},` } } : {},
 			params.set ? { printings: { some: { setId: params.set } } } : {},

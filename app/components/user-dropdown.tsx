@@ -1,7 +1,6 @@
 import { File06, LogOut01, RefreshCw01, User01 } from '@untitledui/icons'
-import { Img } from 'openimg/react'
 import { Link, Form } from 'react-router'
-import { cn, getUserImgSrc } from '#app/utils/misc.tsx'
+import { cn } from '#app/utils/misc.tsx'
 import { userHasRole, useUser } from '#app/utils/user.ts'
 import { buttonVariants } from './ui/button'
 import {
@@ -11,6 +10,7 @@ import {
 	DropdownMenuItem,
 } from './ui/dropdown-menu'
 import { Icon } from './ui/icon'
+import { UserIcon } from './user-icon'
 
 export function UserDropdown() {
 	const user = useUser()
@@ -34,14 +34,7 @@ export function UserDropdown() {
 					/>
 				}
 			>
-				<Img
-					className="size-8 rounded-full object-cover"
-					alt={user.name ?? user.username}
-					src={getUserImgSrc(user.image?.objectKey)}
-					width={256}
-					height={256}
-					aria-hidden="true"
-				/>
+				<UserIcon />
 				<span className="text-body-sm font-bold">
 					{user.name ?? user.username}
 				</span>

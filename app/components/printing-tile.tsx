@@ -103,6 +103,11 @@ export function PrintingTile({
 	)
 }
 
+/** A faction's color, for dots and faction toggles. */
+export function factionColor(factionId: string) {
+	return FACTION_COLORS[factionId] ?? '#8a8a8a'
+}
+
 const FACTION_COLORS: Record<string, string> = {
 	anarch: '#e46d19',
 	criminal: '#3b6bd8',
@@ -123,7 +128,7 @@ export function FactionDot({ factionId }: { factionId: string }) {
 		<span
 			aria-hidden
 			className="inline-block size-2.5 rounded-full align-middle"
-			style={{ backgroundColor: FACTION_COLORS[factionId] ?? '#8a8a8a' }}
+			style={{ backgroundColor: factionColor(factionId) }}
 		/>
 	)
 }

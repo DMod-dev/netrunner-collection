@@ -1,13 +1,13 @@
 import { type SEOHandle } from '@nasa-gcn/remix-seo'
 import { searchUsers } from '@prisma/client/sql'
-import { Img } from 'openimg/react'
 import { redirect, Link } from 'react-router'
 import { GeneralErrorBoundary } from '#app/components/error-boundary.tsx'
 import { ErrorList } from '#app/components/forms.tsx'
 import { SearchBar } from '#app/components/search-bar.tsx'
+import { UserIcon } from '#app/components/user-icon.tsx'
 import { requireUserId } from '#app/utils/auth.server.ts'
 import { prisma } from '#app/utils/db.server.ts'
-import { cn, getUserImgSrc, useDelayedIsPending } from '#app/utils/misc.tsx'
+import { cn, useDelayedIsPending } from '#app/utils/misc.tsx'
 import { type Route } from './+types/index.ts'
 
 export const handle: SEOHandle = {
@@ -54,13 +54,7 @@ export default function UsersRoute({ loaderData }: Route.ComponentProps) {
 										className="bg-muted flex h-36 w-44 flex-col items-center justify-center rounded-lg px-5 py-3"
 										aria-label={`${user.name || user.username} profile`}
 									>
-										<Img
-											alt={user.name ?? user.username}
-											src={getUserImgSrc(user.imageObjectKey)}
-											className="size-16 rounded-full"
-											width={256}
-											height={256}
-										/>
+										<UserIcon className="size-16" />
 										{user.name ? (
 											<span className="text-body-md w-full overflow-hidden text-center text-ellipsis whitespace-nowrap">
 												{user.name}

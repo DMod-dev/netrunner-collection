@@ -109,6 +109,11 @@ test('searchCards filters by ownership across printings and variants', async () 
 
 	expect((await searchCards(user.id, { format: 'eternal' })).total).toBe(0)
 	expect((await searchCards(user.id, { format: 'startup' })).total).toBe(1)
+
+	const factions = (ids: string[]) =>
+		searchCards(user.id, { factions: ids }).then((r) => r.total)
+	expect(await factions(['criminal'])).toBe(0)
+	expect(await factions(['criminal', 'anarch'])).toBe(1)
 })
 
 test('set completion counts exact printings "as printed" and any printing for playsets', async () => {

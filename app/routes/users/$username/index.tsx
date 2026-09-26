@@ -1,7 +1,6 @@
 import { LogOut01 } from '@untitledui/icons'
 import { invariantResponse } from '@epic-web/invariant'
 import { type SEOHandle } from '@nasa-gcn/remix-seo'
-import { Img } from 'openimg/react'
 import {
 	type LoaderFunctionArgs,
 	Form,
@@ -12,9 +11,9 @@ import { GeneralErrorBoundary } from '#app/components/error-boundary.tsx'
 import { Spacer } from '#app/components/spacer.tsx'
 import { Button, buttonVariants } from '#app/components/ui/button.tsx'
 import { Icon } from '#app/components/ui/icon.tsx'
+import { UserIcon } from '#app/components/user-icon.tsx'
 import { requireUserId } from '#app/utils/auth.server.ts'
 import { prisma } from '#app/utils/db.server.ts'
-import { getUserImgSrc } from '#app/utils/misc.tsx'
 import { useOptionalUser } from '#app/utils/user.ts'
 import { type Route } from './+types/index.ts'
 
@@ -30,7 +29,6 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 			name: true,
 			username: true,
 			createdAt: true,
-			image: { select: { id: true, objectKey: true } },
 		},
 		where: {
 			username: params.username,
@@ -57,13 +55,7 @@ export default function ProfileRoute() {
 				<div className="relative w-52">
 					<div className="absolute -top-40">
 						<div className="relative">
-							<Img
-								src={getUserImgSrc(data.user.image?.objectKey)}
-								alt={userDisplayName}
-								className="size-52 rounded-full object-cover"
-								width={832}
-								height={832}
-							/>
+							<UserIcon className="size-52" />
 						</div>
 					</div>
 				</div>
