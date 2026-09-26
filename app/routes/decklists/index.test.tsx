@@ -109,3 +109,61 @@ test('an author link lists that player’s decks until cleared', async () => {
 	await user.click(screen.getByRole('link', { name: 'Any player' }))
 	await screen.findByText('2 decks')
 })
+
+test('picking a side leaves only its factions, and drops one from the other side', async () => {
+	const user = userEvent.setup()
+	await insertCards()
+	const owner = await prisma.user.create({
+		data: createUser(),
+		select: { id: true },
+	})
+	await createDeck(owner.id, {
+		identityCardId: 'precision_design',
+		formatId: 'standard',
+		name: 'Glacier',
+	})
+	await createDeck(owner.id, {
+		identityCardId: 'the_catalyst',
+		formatId: 'standard',
+		name: 'Breakers',
+	})
+	renderDecklists('/decklists')
+	await screen.findByText('2 decks')
+
+	const faction = screen.getByLabelText('Faction')
+	const options = () =>
+		within(faction)
+			.getAllByRole('option')
+			.map((o) => o.textContent)
+	expect(options()).toEqual(['Any faction', 'Haas-Bioroid', 'Anarch'])
+
+	await user.selectOptions(faction, 'haas_bioroid')
+	await screen.findByText('1 deck')
+	await user.selectOptions(screen.getByLabelText('Side'), 'runner')
+	expect(options()).toEqual(['Any faction', 'Anarch'])
+	expect(faction).toHaveValue('')
+	// the runner deck, not a runner search for an HB identity
+	expect(
+		await screen.findByRole('heading', { name: 'Breakers' }),
+	).toBeInTheDocument()
+	expect(screen.getByText('1 deck')).toBeInTheDocument()
+
+	await user.selectOptions(screen.getByLabelText('Side'), '')
+	expect(options()).toEqual(['Any faction', 'Haas-Bioroid', 'Anarch'])
+})
+
+test('a faction from the other side in the URL is ignored', async () => {
+	await insertCards()
+	const owner = await prisma.user.create({
+		data: createUser(),
+		select: { id: true },
+	})
+	await createDeck(owner.id, {
+		identityCardId: 'the_catalyst',
+		formatId: 'standard',
+		name: 'Breakers',
+	})
+	renderDecklists('/decklists?side=runner&faction=haas_bioroid')
+	await screen.findByText('1 deck')
+	expect(screen.getByLabelText('Faction')).toHaveValue('')
+})
