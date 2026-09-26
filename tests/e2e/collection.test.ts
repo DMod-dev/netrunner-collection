@@ -256,30 +256,21 @@ test('tiles show the owned count and change it', async ({
 		name: `${title} (${setName}) quantity`,
 	})
 
-	// the buttons pause while a change is saving, so a second press in that
-	// time doesn't count
+	// optimistic: presses count right away, even while earlier ones are
+	// still saving
 	let release = () => {}
 	const held = new Promise<void>((resolve) => (release = resolve))
-	await page.route(
-		(url) => url.pathname === '/resources/collection.data',
-		async (route) => {
-			await held
-			await route.continue()
-		},
-	)
+	const saveUrl = (url: URL) => url.pathname === '/resources/collection.data'
+	await page.route(saveUrl, async (route) => {
+		await held
+		// the second press cancels the first request in the browser
+		await route.continue().catch(() => {})
+	})
 	await tile.hover()
 	await add.click()
-	await expect(quantity).toHaveValue('1')
-	await expect(add).toBeDisabled()
-	await page.keyboard.press('+')
-	release()
-	await expect(add).toBeEnabled()
-	await expect(quantity).toHaveValue('1')
-	await page.unroute((url) => url.pathname === '/resources/collection.data')
-
-	// keyboard shortcuts change the hovered tile
-	await page.keyboard.press('+')
+	await add.click()
 	await expect(quantity).toHaveValue('2')
+	release()
 	await expect
 		.poll(() =>
 			prisma.collectionEntry.findFirst({
@@ -288,9 +279,22 @@ test('tiles show the owned count and change it', async ({
 			}),
 		)
 		.toEqual({ quantity: 2 })
+	await page.unroute(saveUrl)
+
+	// keyboard shortcuts change the hovered tile
+	await page.keyboard.press('+')
+	await expect(quantity).toHaveValue('3')
+	await expect
+		.poll(() =>
+			prisma.collectionEntry.findFirst({
+				where: { userId: user.id, printingId: printingIds[0] },
+				select: { quantity: true },
+			}),
+		)
+		.toEqual({ quantity: 3 })
 
 	await page.mouse.move(0, 0)
-	await expect(tile.getByText('2 / 3').first()).toBeVisible()
+	await expect(tile.getByText('3 / 3').first()).toBeVisible()
 })
 
 test('a failed quantity change is reported and undone', async ({
