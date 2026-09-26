@@ -23,3 +23,23 @@ test('groupByType puts a runner deck in event, resource, program, hardware order
 		'Hardware',
 	])
 })
+
+test('groupByType puts a corp deck in agenda, operation, asset, upgrade, ice order', () => {
+	const groups = groupByType(
+		[
+			entry('Ice Wall', 'ice', 'Ice'),
+			entry('Manegarm Skunkworks', 'upgrade', 'Upgrade'),
+			entry('PAD Campaign', 'asset', 'Asset'),
+			entry('Hedge Fund', 'operation', 'Operation'),
+			entry('Hostile Takeover', 'agenda', 'Agenda'),
+		],
+		'corp',
+	)
+	expect(groups.map((g) => g.name)).toEqual([
+		'Agenda',
+		'Operation',
+		'Asset',
+		'Upgrade',
+		'Ice',
+	])
+})

@@ -17,7 +17,7 @@ export const IDENTITY_TYPES: Record<DeckSide, string> = {
 
 /** The card types a deck can hold, in the order the decklist shows them. */
 export const DECK_CARD_TYPES: Record<DeckSide, string[]> = {
-	corp: ['agenda', 'asset', 'upgrade', 'operation', 'ice'],
+	corp: ['agenda', 'operation', 'asset', 'upgrade', 'ice'],
 	runner: ['event', 'resource', 'program', 'hardware'],
 }
 
