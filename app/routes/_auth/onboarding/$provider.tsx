@@ -24,7 +24,7 @@ import {
 } from '#app/utils/auth.server.ts'
 import { ProviderNameSchema } from '#app/utils/connections.tsx'
 import { prisma } from '#app/utils/db.server.ts'
-import { useIsPending } from '#app/utils/misc.tsx'
+import { pageTitle, useIsPending } from '#app/utils/misc.tsx'
 import { authSessionStorage } from '#app/utils/session.server.ts'
 import { redirectWithToast } from '#app/utils/toast.server.ts'
 import { NameSchema, UsernameSchema } from '#app/utils/user-validation.ts'
@@ -160,7 +160,7 @@ export async function action({ request, params }: Route.ActionArgs) {
 }
 
 export const meta: Route.MetaFunction = () => {
-	return [{ title: 'Setup Netrunner Collection Account' }]
+	return [{ title: pageTitle('Set up your account') }]
 }
 
 export default function OnboardingProviderRoute({

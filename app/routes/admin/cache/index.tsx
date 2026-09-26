@@ -1,6 +1,8 @@
 import { invariantResponse } from '@epic-web/invariant'
 import { type SEOHandle } from '@nasa-gcn/remix-seo'
+import { SearchMd } from '@untitledui/icons'
 import {
+	data,
 	redirect,
 	Form,
 	Link,
@@ -12,6 +14,12 @@ import { GeneralErrorBoundary } from '#app/components/error-boundary.tsx'
 import { Field } from '#app/components/forms.tsx'
 import { Spacer } from '#app/components/spacer.tsx'
 import { Button } from '#app/components/ui/button.tsx'
+import { Icon } from '#app/components/ui/icon.tsx'
+import { Label } from '#app/components/ui/label.tsx'
+import {
+	NativeSelect,
+	NativeSelectOption,
+} from '#app/components/ui/native-select.tsx'
 import {
 	cache,
 	getAllCacheKeys,
@@ -23,13 +31,16 @@ import {
 	getAllInstances,
 	getInstanceInfo,
 } from '#app/utils/litefs.server.ts'
-import { useDebounce, useDoubleCheck } from '#app/utils/misc.tsx'
+import { pageTitle, useDebounce, useDoubleCheck } from '#app/utils/misc.tsx'
 import { requireUserWithRole } from '#app/utils/permissions.server.ts'
+import { createToastHeaders } from '#app/utils/toast.server.ts'
 import { type Route } from './+types/index.ts'
 
 export const handle: SEOHandle = {
 	getSitemapEntries: () => null,
 }
+
+export const meta: Route.MetaFunction = () => [{ title: pageTitle('Cache') }]
 
 export async function loader({ request }: Route.LoaderArgs) {
 	await requireUserWithRole(request, 'admin')
@@ -82,7 +93,18 @@ export async function action({ request }: Route.ActionArgs) {
 			throw new Error(`Unknown cache type: ${type}`)
 		}
 	}
-	return { success: true }
+	// the row is gone after revalidation, so the confirmation has to come from
+	// the root toast rather than this fetcher's data
+	return data(
+		{ success: true },
+		{
+			headers: await createToastHeaders({
+				type: 'success',
+				title: 'Cache entry deleted',
+				description: key,
+			}),
+		},
+	)
 }
 
 export default function CacheAdminRoute({ loaderData }: Route.ComponentProps) {
@@ -107,12 +129,15 @@ export default function CacheAdminRoute({ loaderData }: Route.ComponentProps) {
 			>
 				<div className="flex-1">
 					<div className="flex flex-1 gap-4">
-						<button
+						<Button
 							type="submit"
-							className="flex h-16 items-center justify-center"
+							variant="ghost"
+							size="icon"
+							aria-label="Search"
+							className="mt-3.5"
 						>
-							🔎
-						</button>
+							<Icon icon={SearchMd} size="sm" />
+						</Button>
 						<Field
 							className="flex-1"
 							labelProps={{ children: 'Search' }}
@@ -130,7 +155,7 @@ export default function CacheAdminRoute({ loaderData }: Route.ComponentProps) {
 						</div>
 					</div>
 				</div>
-				<div className="flex flex-wrap items-center gap-4">
+				<div className="flex flex-wrap items-start gap-4">
 					<Field
 						labelProps={{
 							children: 'Limit',
@@ -145,51 +170,74 @@ export default function CacheAdminRoute({ loaderData }: Route.ComponentProps) {
 							placeholder: 'results limit',
 						}}
 					/>
-					<select name="instance" defaultValue={instance}>
-						{Object.entries(loaderData.instances).map(([inst, region]) => (
-							<option key={inst} value={inst}>
-								{[
-									inst,
-									`(${region})`,
-									inst === loaderData.currentInstanceInfo.currentInstance
-										? '(current)'
-										: '',
-									inst === loaderData.currentInstanceInfo.primaryInstance
-										? ' (primary)'
-										: '',
-								]
-									.filter(Boolean)
-									.join(' ')}
-							</option>
-						))}
-					</select>
+					<div>
+						<Label htmlFor="cache-instance">Instance</Label>
+						<NativeSelect
+							id="cache-instance"
+							name="instance"
+							defaultValue={instance}
+						>
+							{Object.entries(loaderData.instances).map(([inst, region]) => (
+								<NativeSelectOption key={inst} value={inst}>
+									{[
+										inst,
+										`(${region})`,
+										inst === loaderData.currentInstanceInfo.currentInstance
+											? '(current)'
+											: '',
+										inst === loaderData.currentInstanceInfo.primaryInstance
+											? ' (primary)'
+											: '',
+									]
+										.filter(Boolean)
+										.join(' ')}
+								</NativeSelectOption>
+							))}
+						</NativeSelect>
+					</div>
 				</div>
 			</Form>
 			<Spacer size="2xs" />
 			<div className="flex flex-col gap-4">
 				<h2 className="text-h2">LRU Cache:</h2>
-				{loaderData.cacheKeys.lru.map((key) => (
-					<CacheKeyRow
-						key={key}
-						cacheKey={key}
-						instance={instance}
-						type="lru"
-					/>
-				))}
+				{loaderData.cacheKeys.lru.length ? (
+					loaderData.cacheKeys.lru.map((key) => (
+						<CacheKeyRow
+							key={key}
+							cacheKey={key}
+							instance={instance}
+							type="lru"
+						/>
+					))
+				) : (
+					<EmptyKeys query={query} />
+				)}
 			</div>
 			<Spacer size="3xs" />
 			<div className="flex flex-col gap-4">
 				<h2 className="text-h2">SQLite Cache:</h2>
-				{loaderData.cacheKeys.sqlite.map((key) => (
-					<CacheKeyRow
-						key={key}
-						cacheKey={key}
-						instance={instance}
-						type="sqlite"
-					/>
-				))}
+				{loaderData.cacheKeys.sqlite.length ? (
+					loaderData.cacheKeys.sqlite.map((key) => (
+						<CacheKeyRow
+							key={key}
+							cacheKey={key}
+							instance={instance}
+							type="sqlite"
+						/>
+					))
+				) : (
+					<EmptyKeys query={query} />
+				)}
 			</div>
 		</div>
+	)
+}
+
+function EmptyKeys({ query }: { query: string }) {
+	return (
+		<p className="text-muted-foreground">
+			{query ? `No keys match "${query}".` : 'No keys cached.'}
+		</p>
 	)
 }
 
@@ -207,7 +255,7 @@ function CacheKeyRow({
 	const encodedKey = encodeURIComponent(cacheKey)
 	const valuePage = `/admin/cache/${type}/${encodedKey}?instance=${instance}`
 	return (
-		<div className="flex items-center gap-2 font-mono">
+		<div className="flex items-start gap-2 font-mono">
 			<fetcher.Form method="POST">
 				<input type="hidden" name="cacheKey" value={cacheKey} />
 				<input type="hidden" name="instance" value={instance} />
@@ -224,7 +272,7 @@ function CacheKeyRow({
 						: 'Deleting...'}
 				</Button>
 			</fetcher.Form>
-			<Link reloadDocument to={valuePage}>
+			<Link reloadDocument to={valuePage} className="min-w-0 break-all">
 				{cacheKey}
 			</Link>
 		</div>

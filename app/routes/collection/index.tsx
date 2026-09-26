@@ -45,11 +45,11 @@ import { requireUserId } from '#app/utils/auth.server.ts'
 import {
 	type CardSearchParams,
 	getCardCount,
+	getCollectionTotals,
 	getFilterOptions,
 	searchCards,
 } from '#app/utils/collection.server.ts'
 import { pickArtPrinting } from '#app/utils/collection.ts'
-import { prisma } from '#app/utils/db.server.ts'
 import { cn, useDebounce } from '#app/utils/misc.tsx'
 import { type Route } from './+types/index.ts'
 
@@ -86,35 +86,6 @@ export async function loader({ request }: Route.LoaderArgs) {
 		getCardCount(),
 	])
 	return { ...results, filters, totals, cardCount }
-}
-
-async function getCollectionTotals(userId: string) {
-	const [entries, variants, ownedCards] = await Promise.all([
-		prisma.collectionEntry.aggregate({
-			where: { userId },
-			_sum: { quantity: true },
-		}),
-		prisma.variant.aggregate({
-			where: { userId },
-			_sum: { quantity: true },
-		}),
-		prisma.card.count({
-			where: {
-				printings: {
-					some: {
-						OR: [
-							{ collectionEntries: { some: { userId, quantity: { gt: 0 } } } },
-							{ variants: { some: { userId, quantity: { gt: 0 } } } },
-						],
-					},
-				},
-			},
-		}),
-	])
-	return {
-		copies: (entries._sum.quantity ?? 0) + (variants._sum.quantity ?? 0),
-		ownedCards,
-	}
 }
 
 export const meta: Route.MetaFunction = () => [

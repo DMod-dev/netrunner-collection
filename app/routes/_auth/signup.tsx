@@ -18,7 +18,7 @@ import {
 } from '#app/utils/email-cooldown.server.ts'
 import { sendEmail } from '#app/utils/email.server.ts'
 import { checkHoneypot } from '#app/utils/honeypot.server.ts'
-import { getDomainUrl, useIsPending } from '#app/utils/misc.tsx'
+import { getDomainUrl, pageTitle, useIsPending } from '#app/utils/misc.tsx'
 import { EmailSchema } from '#app/utils/user-validation.ts'
 import { type Route } from './+types/signup.ts'
 import { getRedirectToUrl, prepareVerification } from './verify.server.ts'
@@ -171,7 +171,7 @@ export function SignupEmail({
 }
 
 export const meta: Route.MetaFunction = () => {
-	return [{ title: 'Sign Up | Netrunner Collection' }]
+	return [{ title: pageTitle('Sign up') }]
 }
 
 export default function SignupRoute({
@@ -196,9 +196,10 @@ export default function SignupRoute({
 	return (
 		<div className="container flex flex-col justify-center pt-20 pb-32">
 			<div className="text-center">
-				<h1 className="text-h1">Let's start your journey!</h1>
+				<h1 className="text-h1">Create your account</h1>
 				<p className="text-body-md text-muted-foreground mt-3">
-					Please enter your email.
+					Track which Netrunner cards you own and which you still need. Enter
+					your email to get started.
 				</p>
 			</div>
 			<div className="mx-auto mt-16 max-w-sm min-w-full sm:min-w-[368px]">
@@ -223,23 +224,25 @@ export default function SignupRoute({
 						type="submit"
 						disabled={isPending}
 					>
-						Submit
+						Create account
 					</StatusButton>
 				</Form>
-				<ul className="flex flex-col gap-4 py-4">
-					{loaderData.providerNames.map((providerName) => (
-						<>
-							<hr />
-							<li key={providerName}>
-								<ProviderConnectionForm
-									type="Signup"
-									providerName={providerName}
-									redirectTo={redirectTo}
-								/>
-							</li>
-						</>
-					))}
-				</ul>
+				{loaderData.providerNames.length ? (
+					<>
+						<hr className="my-4" />
+						<ul className="flex flex-col gap-4">
+							{loaderData.providerNames.map((providerName) => (
+								<li key={providerName}>
+									<ProviderConnectionForm
+										type="Signup"
+										providerName={providerName}
+										redirectTo={redirectTo}
+									/>
+								</li>
+							))}
+						</ul>
+					</>
+				) : null}
 			</div>
 		</div>
 	)

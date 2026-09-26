@@ -7,7 +7,7 @@ import { SearchBar } from '#app/components/search-bar.tsx'
 import { UserIcon } from '#app/components/user-icon.tsx'
 import { requireUserId } from '#app/utils/auth.server.ts'
 import { prisma } from '#app/utils/db.server.ts'
-import { cn, useDelayedIsPending } from '#app/utils/misc.tsx'
+import { cn, pageTitle, useDelayedIsPending } from '#app/utils/misc.tsx'
 import { type Route } from './+types/index.ts'
 
 export const handle: SEOHandle = {
@@ -25,6 +25,8 @@ export async function loader({ request }: Route.LoaderArgs) {
 	const users = await prisma.$queryRawTyped(searchUsers(like, like))
 	return { status: 'idle', users } as const
 }
+
+export const meta: Route.MetaFunction = () => [{ title: pageTitle('Users') }]
 
 export default function UsersRoute({ loaderData }: Route.ComponentProps) {
 	const isPending = useDelayedIsPending({

@@ -9,7 +9,7 @@ import { ErrorList, OTPField } from '#app/components/forms.tsx'
 import { Spacer } from '#app/components/spacer.tsx'
 import { StatusButton } from '#app/components/ui/status-button.tsx'
 import { checkHoneypot } from '#app/utils/honeypot.server.ts'
-import { useIsPending } from '#app/utils/misc.tsx'
+import { pageTitle, useIsPending } from '#app/utils/misc.tsx'
 import { type Route } from './+types/verify.ts'
 import { validateRequest } from './verify.server.ts'
 
@@ -36,6 +36,17 @@ export async function action({ request }: Route.ActionArgs) {
 	const formData = await request.formData()
 	await checkHoneypot(formData)
 	return validateRequest(request, formData)
+}
+
+export const meta: Route.MetaFunction = ({ location }) => {
+	const type = new URLSearchParams(location.search).get(typeQueryParam)
+	return [
+		{
+			title: pageTitle(
+				type === '2fa' ? 'Two-factor authentication' : 'Check your email',
+			),
+		},
+	]
 }
 
 export default function VerifyRoute({ actionData }: Route.ComponentProps) {

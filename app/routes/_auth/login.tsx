@@ -16,7 +16,7 @@ import { login, requireAnonymous } from '#app/utils/auth.server.ts'
 import { getEnabledProviderNames } from '#app/utils/connections.server.ts'
 import { ProviderConnectionForm } from '#app/utils/connections.tsx'
 import { checkHoneypot } from '#app/utils/honeypot.server.ts'
-import { getErrorMessage, useIsPending } from '#app/utils/misc.tsx'
+import { getErrorMessage, pageTitle, useIsPending } from '#app/utils/misc.tsx'
 import { PasswordSchema, UsernameSchema } from '#app/utils/user-validation.ts'
 import { type Route } from './+types/login.ts'
 import { handleNewSession } from './login.server.ts'
@@ -104,9 +104,9 @@ export default function LoginPage({
 		<div className="flex min-h-full flex-col justify-center pt-20 pb-32">
 			<div className="mx-auto w-full max-w-md">
 				<div className="flex flex-col gap-3 text-center">
-					<h1 className="text-h1">Welcome back!</h1>
+					<h1 className="text-h1">Log in</h1>
 					<p className="text-body-md text-muted-foreground">
-						Please enter your details.
+						Jack back in to your collection.
 					</p>
 				</div>
 				<Spacer size="xs" />
@@ -230,7 +230,7 @@ function PasskeyLogin({
 	redirectTo: string | null
 	remember: boolean
 }) {
-	const [isPending] = useTransition()
+	const [isPending, startTransition] = useTransition()
 	const [error, setError] = useState<string | null>(null)
 	const [passkeyMessage, setPasskeyMessage] = useOptimistic<string | null>(
 		'Login with a passkey',
@@ -279,7 +279,7 @@ function PasskeyLogin({
 	}
 
 	return (
-		<form action={handlePasskeyLogin}>
+		<form action={() => startTransition(handlePasskeyLogin)}>
 			<StatusButton
 				id="passkey-login-button"
 				aria-describedby="passkey-login-button-error"
@@ -301,7 +301,7 @@ function PasskeyLogin({
 }
 
 export const meta: Route.MetaFunction = () => {
-	return [{ title: 'Login to Netrunner Collection' }]
+	return [{ title: pageTitle('Log in') }]
 }
 
 export function ErrorBoundary() {

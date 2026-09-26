@@ -13,8 +13,10 @@ import { Button, buttonVariants } from '#app/components/ui/button.tsx'
 import { Icon } from '#app/components/ui/icon.tsx'
 import { UserIcon } from '#app/components/user-icon.tsx'
 import { requireUserId } from '#app/utils/auth.server.ts'
+import { getCollectionTotals } from '#app/utils/collection.server.ts'
 import { formatDate } from '#app/utils/dates.ts'
 import { prisma } from '#app/utils/db.server.ts'
+import { pageTitle } from '#app/utils/misc.tsx'
 import { useOptionalUser } from '#app/utils/user.ts'
 import { type Route } from './+types/index.ts'
 
@@ -38,7 +40,9 @@ export async function loader({ request, params }: LoaderFunctionArgs) {
 
 	invariantResponse(user, 'User not found', { status: 404 })
 
-	return { user, userJoinedDisplay: formatDate(user.createdAt) }
+	const totals = await getCollectionTotals(user.id)
+
+	return { user, userJoinedDisplay: formatDate(user.createdAt), totals }
 }
 
 export default function ProfileRoute() {
@@ -70,6 +74,11 @@ export default function ProfileRoute() {
 					<p className="text-muted-foreground mt-2 text-center">
 						Joined {data.userJoinedDisplay}
 					</p>
+					<CollectionStats
+						ownedCards={data.totals.ownedCards}
+						copies={data.totals.copies}
+						linkToCollection={isLoggedInUser}
+					/>
 					{isLoggedInUser ? (
 						<Form action="/logout" method="POST" className="mt-3">
 							<Button type="submit" variant="link" className="px-12">
@@ -103,10 +112,37 @@ export default function ProfileRoute() {
 	)
 }
 
+function CollectionStats({
+	ownedCards,
+	copies,
+	linkToCollection,
+}: {
+	ownedCards: number
+	copies: number
+	linkToCollection: boolean
+}) {
+	const text = `${plural(ownedCards, 'card')} · ${plural(copies, 'copy', 'copies')}`
+	return (
+		<p className="mt-2 text-center tabular-nums">
+			{linkToCollection ? (
+				<Link to="/collection" prefetch="intent" className="underline">
+					{text}
+				</Link>
+			) : (
+				text
+			)}
+		</p>
+	)
+}
+
+function plural(count: number, one: string, many = `${one}s`) {
+	return `${count.toLocaleString('en-US')} ${count === 1 ? one : many}`
+}
+
 export const meta: Route.MetaFunction = ({ loaderData, params }) => {
 	const displayName = loaderData?.user.name ?? params.username
 	return [
-		{ title: `${displayName} | Netrunner Collection` },
+		{ title: pageTitle(displayName) },
 		{
 			name: 'description',
 			content: `Profile of ${displayName} on Netrunner Collection`,

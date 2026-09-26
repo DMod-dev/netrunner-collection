@@ -91,7 +91,7 @@ export default function NrdbSyncRoute({ loaderData }: Route.ComponentProps) {
 	return (
 		<main className="container mb-24 flex flex-col gap-6">
 			<header className="flex flex-col gap-1">
-				<h1 className="text-h2">Card data sync</h1>
+				<h1 className="text-h1">Card data sync</h1>
 				<p className="text-muted-foreground">
 					Cards, printings and sets are copied from NetrunnerDB.{' '}
 					{autoSync
