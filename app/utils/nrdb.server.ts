@@ -31,7 +31,27 @@ type JsonApiPage<Attributes> = {
 
 type NrdbFaction = { name: string; side_id: string; is_mini: boolean }
 type NrdbCardType = { name: string }
-type NrdbFormat = { name: string; active_card_pool_id: string | null }
+type NrdbFormat = {
+	name: string
+	active_card_pool_id: string | null
+	active_snapshot_id: string | null
+	active_restriction_id: string | null
+}
+/**
+ * A ban/restricted/points list. Each verdict lists card ids, or maps card ids
+ * to a number (points, extra influence); either shape is accepted for any
+ * verdict, so a change on NRDB's side can't silently drop a list.
+ */
+type NrdbRestriction = {
+	name: string
+	format_id: string
+	date_start: string | null
+	point_limit: number | null
+	banned_subtypes?: Array<string> | null
+	verdicts?: Partial<
+		Record<RestrictionVerdictType, Array<string> | Record<string, number>>
+	> | null
+}
 type NrdbCycle = {
 	name: string
 	position: number
@@ -61,6 +81,10 @@ type NrdbCard = {
 	cost: string | null
 	influence_cost: number | null
 	card_pool_ids: Array<string>
+	card_subtype_ids?: Array<string> | null
+	minimum_deck_size?: number | null
+	influence_limit?: number | null
+	agenda_points?: number | null
 }
 type NrdbPrinting = {
 	card_id: string
@@ -75,6 +99,15 @@ type NrdbPrinting = {
 		nrdb_classic?: { small?: string; large?: string }
 	}
 }
+
+export const RESTRICTION_VERDICTS = [
+	'banned',
+	'restricted',
+	'points',
+	'global_penalty',
+	'universal_faction_cost',
+] as const
+export type RestrictionVerdictType = (typeof RESTRICTION_VERDICTS)[number]
 
 async function fetchAll<Attributes>(
 	resource: string,
@@ -103,6 +136,46 @@ function toDate(value: string | null | undefined) {
 	return value ? new Date(value) : null
 }
 
+/** ",a,b," for ["a", "b"], "," for none; so `contains: ",a,"` matches exactly. */
+function commaWrap(ids: ReadonlyArray<string> | null | undefined) {
+	return ids?.length ? `,${ids.join(',')},` : ','
+}
+
+/** One row per (card, verdict) in a restriction, without duplicates. */
+function verdictRows(
+	restrictionId: string,
+	verdicts: NrdbRestriction['verdicts'],
+) {
+	const rows = new Map<
+		string,
+		{
+			restrictionId: string
+			cardId: string
+			verdict: string
+			value: number | null
+		}
+	>()
+	for (const verdict of RESTRICTION_VERDICTS) {
+		const entries = verdicts?.[verdict]
+		if (!entries) continue
+		const pairs: Array<[string, number | null]> = Array.isArray(entries)
+			? entries.map((cardId) => [cardId, null])
+			: Object.entries(entries).map(([cardId, value]) => [
+					cardId,
+					typeof value === 'number' ? value : null,
+				])
+		for (const [cardId, value] of pairs) {
+			rows.set(`${cardId}:${verdict}`, {
+				restrictionId,
+				cardId,
+				verdict,
+				value,
+			})
+		}
+	}
+	return [...rows.values()]
+}
+
 async function writeInBatches<T>(
 	items: Array<T>,
 	toQuery: (item: T) => Prisma.PrismaPromise<unknown>,
@@ -119,6 +192,8 @@ export type NrdbSyncSummary = {
 	sets: number
 	cards: number
 	printings: number
+	formats: number
+	restrictions: number
 	durationMs: number
 }
 
@@ -132,16 +207,25 @@ export async function syncFromNrdb({
 	const start = performance.now()
 
 	log('Fetching from NetrunnerDB...')
-	const [factions, cardTypes, formats, cycles, sets, cards, printings] =
-		await Promise.all([
-			fetchAll<NrdbFaction>('factions'),
-			fetchAll<NrdbCardType>('card_types'),
-			fetchAll<NrdbFormat>('formats'),
-			fetchAll<NrdbCycle>('card_cycles'),
-			fetchAll<NrdbSet>('card_sets'),
-			fetchAll<NrdbCard>('cards'),
-			fetchAll<NrdbPrinting>('printings'),
-		])
+	const [
+		factions,
+		cardTypes,
+		formats,
+		restrictions,
+		cycles,
+		sets,
+		cards,
+		printings,
+	] = await Promise.all([
+		fetchAll<NrdbFaction>('factions'),
+		fetchAll<NrdbCardType>('card_types'),
+		fetchAll<NrdbFormat>('formats'),
+		fetchAll<NrdbRestriction>('restrictions'),
+		fetchAll<NrdbCycle>('card_cycles'),
+		fetchAll<NrdbSet>('card_sets'),
+		fetchAll<NrdbCard>('cards'),
+		fetchAll<NrdbPrinting>('printings'),
+	])
 	log(
 		`Fetched ${cards.length} cards and ${printings.length} printings in ${sets.length} sets`,
 	)
@@ -217,6 +301,10 @@ export async function syncFromNrdb({
 			cost: a.cost,
 			influenceCost: a.influence_cost,
 			legalFormats: legalFormatsFor(a),
+			minimumDeckSize: a.minimum_deck_size ?? null,
+			influenceLimit: a.influence_limit ?? null,
+			agendaPoints: a.agenda_points ?? null,
+			subtypes: commaWrap(a.card_subtype_ids),
 		}
 		return prisma.card.upsert({
 			where: { id },
@@ -245,6 +333,57 @@ export async function syncFromNrdb({
 		})
 	})
 
+	log('Writing formats and restrictions...')
+	await writeInBatches(formats, ({ id, attributes: a }) => {
+		const data = {
+			name: a.name,
+			activeCardPoolId: a.active_card_pool_id ?? null,
+			activeSnapshotId: a.active_snapshot_id ?? null,
+			activeRestrictionId: a.active_restriction_id ?? null,
+		}
+		return prisma.format.upsert({
+			where: { id },
+			create: { id, ...data },
+			update: data,
+		})
+	})
+	// a list for a format NRDB doesn't list would fail the foreign key
+	const formatIds = new Set(formats.map((f) => f.id))
+	const knownRestrictions = restrictions.filter((r) =>
+		formatIds.has(r.attributes.format_id),
+	)
+	await writeInBatches(knownRestrictions, ({ id, attributes: a }) => {
+		const data = {
+			name: a.name,
+			formatId: a.format_id,
+			dateStart: toDate(a.date_start),
+			pointLimit: a.point_limit ?? null,
+			bannedSubtypes: commaWrap(a.banned_subtypes),
+		}
+		return prisma.restriction.upsert({
+			where: { id },
+			create: { id, ...data },
+			update: data,
+		})
+	})
+	// Replace each list's verdicts wholesale, so a card that comes off a list
+	// loses its verdict. One transaction per list keeps readers from seeing a
+	// list half-written.
+	for (const { id, attributes: a } of knownRestrictions) {
+		await prisma.$transaction([
+			prisma.restrictionVerdict.deleteMany({ where: { restrictionId: id } }),
+			prisma.restrictionVerdict.createMany({
+				data: verdictRows(id, a.verdicts),
+			}),
+		])
+	}
+	// lists NRDB no longer has (their verdicts cascade)
+	if (knownRestrictions.length) {
+		await prisma.restriction.deleteMany({
+			where: { id: { notIn: knownRestrictions.map((r) => r.id) } },
+		})
+	}
+
 	return {
 		factions: factions.length,
 		cardTypes: cardTypes.length,
@@ -252,6 +391,8 @@ export async function syncFromNrdb({
 		sets: sets.length,
 		cards: cards.length,
 		printings: printings.length,
+		formats: formats.length,
+		restrictions: knownRestrictions.length,
 		durationMs: Math.round(performance.now() - start),
 	}
 }

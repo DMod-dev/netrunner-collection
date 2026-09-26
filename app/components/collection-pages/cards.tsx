@@ -45,13 +45,8 @@ import {
 } from '#app/components/ui/toggle-group.tsx'
 import { type CardsPageData } from '#app/utils/collection-loaders.server.ts'
 import { pickArtPrinting } from '#app/utils/collection.ts'
+import { DECK_FORMAT_NAMES, DECK_FORMATS } from '#app/utils/deck-formats.ts'
 import { cn, useDebounce } from '#app/utils/misc.tsx'
-
-const FORMATS = [
-	{ id: 'standard', name: 'Standard' },
-	{ id: 'startup', name: 'Startup' },
-	{ id: 'eternal', name: 'Eternal' },
-] as const
 
 /** The search params that filter the list, i.e. everything but the page. */
 function filtersOnly(searchParams: URLSearchParams) {
@@ -468,9 +463,9 @@ function Filters({ filters }: { filters: CardsPageData['filters'] }) {
 					)}
 				</FilterSelect>
 				<FilterSelect name="format" label="Format" searchParams={searchParams}>
-					{FORMATS.map((f) => (
-						<NativeSelectOption key={f.id} value={f.id}>
-							{f.name}
+					{DECK_FORMATS.map((id) => (
+						<NativeSelectOption key={id} value={id}>
+							{DECK_FORMAT_NAMES[id]}
 						</NativeSelectOption>
 					))}
 				</FilterSelect>
