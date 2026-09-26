@@ -14,7 +14,7 @@ import {
 import { requireUserId } from '#app/utils/auth.server.ts'
 import { prisma } from '#app/utils/db.server.ts'
 import { sendEmail } from '#app/utils/email.server.ts'
-import { useIsPending } from '#app/utils/misc.tsx'
+import { pageTitle, useIsPending } from '#app/utils/misc.tsx'
 import { EmailSchema } from '#app/utils/user-validation.ts'
 import { verifySessionStorage } from '#app/utils/verification.server.ts'
 import { type Route } from './+types/change-email.ts'
@@ -25,6 +25,10 @@ export const handle: BreadcrumbHandle & SEOHandle = {
 	breadcrumb: <Icon icon={Mail01}>Change Email</Icon>,
 	getSitemapEntries: () => null,
 }
+
+export const meta: Route.MetaFunction = () => [
+	{ title: pageTitle('Change email') },
+]
 
 export const newEmailAddressSessionKey = 'new-email-address'
 

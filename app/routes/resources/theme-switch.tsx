@@ -90,7 +90,7 @@ export function ThemeSwitch({
 			<div className="flex gap-2">
 				<button
 					type="submit"
-					className="flex size-8 cursor-pointer items-center justify-center"
+					className="focus-visible:ring-ring/50 flex size-8 cursor-pointer items-center justify-center rounded-md outline-none focus-visible:ring-3"
 				>
 					{modeLabel[mode]}
 				</button>

@@ -22,7 +22,7 @@ import { UserIcon } from '#app/components/user-icon.tsx'
 import { requireUserId, sessionKey } from '#app/utils/auth.server.ts'
 import { getEnabledProviderNames } from '#app/utils/connections.server.ts'
 import { prisma } from '#app/utils/db.server.ts'
-import { useDoubleCheck } from '#app/utils/misc.tsx'
+import { pageTitle, useDoubleCheck } from '#app/utils/misc.tsx'
 import { authSessionStorage } from '#app/utils/session.server.ts'
 import { redirectWithToast } from '#app/utils/toast.server.ts'
 import { NameSchema, UsernameSchema } from '#app/utils/user-validation.ts'
@@ -32,6 +32,8 @@ import { twoFAVerificationType } from './two-factor/_layout.tsx'
 export const handle: SEOHandle = {
 	getSitemapEntries: () => null,
 }
+
+export const meta: Route.MetaFunction = () => [{ title: pageTitle('Profile') }]
 
 const ProfileFormSchema = z.object({
 	name: NameSchema.nullable().default(null),
@@ -111,13 +113,13 @@ export async function action({ request }: Route.ActionArgs) {
 export default function EditUserProfile({ loaderData }: Route.ComponentProps) {
 	return (
 		<div className="flex flex-col gap-12">
-			<div className="flex justify-center">
+			<div className="flex flex-col items-center gap-6">
 				<UserIcon className="size-52" />
+				<h1 className="text-h1">Settings</h1>
 			</div>
 			<UpdateProfile loaderData={loaderData} />
 
-			<div className="border-foreground col-span-6 my-6 h-1 border-b-[1.5px]" />
-			<div className="col-span-full flex flex-col gap-6">
+			<div className="flex flex-col gap-6">
 				<div>
 					<Link to="change-email">
 						<Icon icon={Mail01}>Change email from {loaderData.user.email}</Icon>
@@ -202,9 +204,11 @@ async function profileUpdateAction({ userId, formData }: ProfileActionArgs) {
 		},
 	})
 
-	return {
-		result: submission.reply(),
-	}
+	return redirectWithToast('/settings/profile', {
+		type: 'success',
+		title: 'Profile updated',
+		description: 'Your changes have been saved.',
+	})
 }
 
 function UpdateProfile({
@@ -314,7 +318,9 @@ function SignOutOfSessions({
 						<Icon icon={User01}>
 							{dc.doubleCheck
 								? `Are you sure?`
-								: `Sign out of ${otherSessionsCount} other sessions`}
+								: `Sign out of ${otherSessionsCount} other ${
+										otherSessionsCount === 1 ? 'session' : 'sessions'
+									}`}
 						</Icon>
 					</StatusButton>
 				</fetcher.Form>

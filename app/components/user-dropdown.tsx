@@ -1,4 +1,11 @@
-import { File06, LogOut01, RefreshCw01, User01 } from '@untitledui/icons'
+import {
+	Database01,
+	LayersThree01,
+	LogOut01,
+	RefreshCw01,
+	Settings01,
+	User01,
+} from '@untitledui/icons'
 import { Link, Form } from 'react-router'
 import { cn } from '#app/utils/misc.tsx'
 import { userHasRole, useUser } from '#app/utils/user.ts'
@@ -25,7 +32,7 @@ export function UserDropdown() {
 						onClick={(e) => e.preventDefault()}
 						className={cn(
 							buttonVariants({ variant: 'secondary' }),
-							'h-10 gap-2 pl-1',
+							'h-10 gap-2 pl-1 max-sm:pr-1',
 						)}
 						aria-label="User menu"
 						// Base UI marks non-button triggers role="button"; this is a real
@@ -35,7 +42,7 @@ export function UserDropdown() {
 				}
 			>
 				<UserIcon />
-				<span className="text-body-sm font-bold">
+				<span className="text-body-sm font-bold max-sm:hidden">
 					{user.name ?? user.username}
 				</span>
 			</DropdownMenuTrigger>
@@ -52,18 +59,34 @@ export function UserDropdown() {
 					</Icon>
 				</DropdownMenuItem>
 				<DropdownMenuItem render={<Link prefetch="intent" to="/collection" />}>
-					<Icon className="text-body-md" icon={File06}>
+					<Icon className="text-body-md" icon={LayersThree01}>
 						Collection
 					</Icon>
 				</DropdownMenuItem>
+				<DropdownMenuItem
+					render={<Link prefetch="intent" to="/settings/profile" />}
+				>
+					<Icon className="text-body-md" icon={Settings01}>
+						Settings
+					</Icon>
+				</DropdownMenuItem>
 				{userHasRole(user, 'admin') ? (
-					<DropdownMenuItem
-						render={<Link prefetch="intent" to="/admin/nrdb-sync" />}
-					>
-						<Icon className="text-body-md" icon={RefreshCw01}>
-							Card data sync
-						</Icon>
-					</DropdownMenuItem>
+					<>
+						<DropdownMenuItem
+							render={<Link prefetch="intent" to="/admin/nrdb-sync" />}
+						>
+							<Icon className="text-body-md" icon={RefreshCw01}>
+								Card data sync
+							</Icon>
+						</DropdownMenuItem>
+						<DropdownMenuItem
+							render={<Link prefetch="intent" to="/admin/cache" />}
+						>
+							<Icon className="text-body-md" icon={Database01}>
+								Cache
+							</Icon>
+						</DropdownMenuItem>
+					</>
 				) : null}
 				<Form action="/logout" method="POST">
 					<DropdownMenuItem

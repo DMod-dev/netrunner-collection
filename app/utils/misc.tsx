@@ -39,6 +39,13 @@ export function getImgSrc({
 	return defaultGetSrc({ height, optimizerEndpoint, src, width, fit, format })
 }
 
+export const siteName = 'Netrunner Collection'
+
+/** A page's document title: "<Page> | Netrunner Collection". */
+export function pageTitle(page: string) {
+	return `${page} | ${siteName}`
+}
+
 export function getErrorMessage(error: unknown) {
 	if (typeof error === 'string') return error
 	if (

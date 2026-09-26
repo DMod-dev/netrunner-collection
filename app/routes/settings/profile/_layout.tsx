@@ -7,7 +7,7 @@ import { Spacer } from '#app/components/spacer.tsx'
 import { Icon } from '#app/components/ui/icon.tsx'
 import { requireUserId } from '#app/utils/auth.server.ts'
 import { prisma } from '#app/utils/db.server.ts'
-import { cn } from '#app/utils/misc.tsx'
+import { cn, pageTitle } from '#app/utils/misc.tsx'
 import { useUser } from '#app/utils/user.ts'
 import { type Route } from './+types/_layout.tsx'
 
@@ -18,6 +18,8 @@ export const handle: BreadcrumbHandle & SEOHandle = {
 	breadcrumb: <Icon icon={File06}>Edit Profile</Icon>,
 	getSitemapEntries: () => null,
 }
+
+export const meta: Route.MetaFunction = () => [{ title: pageTitle('Profile') }]
 
 export async function loader({ request }: Route.LoaderArgs) {
 	const userId = await requireUserId(request)
@@ -40,18 +42,18 @@ export default function EditUserProfile() {
 		.map((m) => {
 			const result = BreadcrumbHandleMatch.safeParse(m)
 			if (!result.success || !result.data.handle.breadcrumb) return null
-			return (
-				<Link key={m.id} to={m.pathname} className="flex items-center">
-					{result.data.handle.breadcrumb}
-				</Link>
-			)
+			return {
+				id: m.id,
+				pathname: m.pathname,
+				breadcrumb: result.data.handle.breadcrumb,
+			}
 		})
-		.filter(Boolean)
+		.filter((crumb) => crumb !== null)
 
 	return (
 		<div className="m-auto mt-16 mb-24 max-w-3xl">
-			<div className="container">
-				<ul className="flex gap-3">
+			<nav aria-label="Breadcrumb" className="container">
+				<ol className="flex flex-wrap gap-3">
 					<li>
 						<Link
 							className="text-muted-foreground"
@@ -60,20 +62,29 @@ export default function EditUserProfile() {
 							Profile
 						</Link>
 					</li>
-					{breadcrumbs.map((breadcrumb, i, arr) => (
-						<li
-							key={i}
-							className={cn('flex items-center gap-3', {
-								'text-muted-foreground': i < arr.length - 1,
-							})}
-						>
-							<Icon icon={ArrowRight} size="sm">
-								{breadcrumb}
-							</Icon>
-						</li>
-					))}
-				</ul>
-			</div>
+					{breadcrumbs.map((crumb, i, arr) => {
+						const isCurrent = i === arr.length - 1
+						return (
+							<li
+								key={crumb.id}
+								className={cn('flex items-center gap-3', {
+									'text-muted-foreground': !isCurrent,
+								})}
+							>
+								<Icon icon={ArrowRight} size="sm">
+									<Link
+										to={crumb.pathname}
+										className="flex items-center"
+										aria-current={isCurrent ? 'page' : undefined}
+									>
+										{crumb.breadcrumb}
+									</Link>
+								</Icon>
+							</li>
+						)
+					})}
+				</ol>
+			</nav>
 			<Spacer size="xs" />
 			<main className="bg-muted mx-auto px-6 py-8 md:container md:rounded-3xl">
 				<Outlet />

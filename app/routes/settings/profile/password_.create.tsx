@@ -13,7 +13,8 @@ import {
 	requireUserId,
 } from '#app/utils/auth.server.ts'
 import { prisma } from '#app/utils/db.server.ts'
-import { useIsPending } from '#app/utils/misc.tsx'
+import { pageTitle, useIsPending } from '#app/utils/misc.tsx'
+import { redirectWithToast } from '#app/utils/toast.server.ts'
 import { PasswordAndConfirmPasswordSchema } from '#app/utils/user-validation.ts'
 import { type Route } from './+types/password_.create.ts'
 import { type BreadcrumbHandle } from './_layout.tsx'
@@ -22,6 +23,10 @@ export const handle: BreadcrumbHandle & SEOHandle = {
 	breadcrumb: <Icon icon={Passcode}>Password</Icon>,
 	getSitemapEntries: () => null,
 }
+
+export const meta: Route.MetaFunction = () => [
+	{ title: pageTitle('Create password') },
+]
 
 const CreatePasswordForm = PasswordAndConfirmPasswordSchema
 
@@ -83,7 +88,15 @@ export async function action({ request }: Route.ActionArgs) {
 		},
 	})
 
-	return redirect(`/settings/profile`, { status: 302 })
+	return redirectWithToast(
+		`/settings/profile`,
+		{
+			type: 'success',
+			title: 'Password Created',
+			description: 'Your password has been created.',
+		},
+		{ status: 302 },
+	)
 }
 
 export default function CreatePasswordRoute({

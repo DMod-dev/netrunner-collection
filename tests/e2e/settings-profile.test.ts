@@ -19,6 +19,12 @@ test('Users can update their basic info', async ({ page, navigate, login }) => {
 		.fill(newUserData.username)
 
 	await page.getByRole('button', { name: /^save/i }).click()
+
+	await expect(page.getByText(/profile updated/i)).toBeVisible()
+	await expect(page).toHaveURL('/settings/profile')
+	await expect(page.getByRole('textbox', { name: /^name/i })).toHaveValue(
+		newUserData.name,
+	)
 })
 
 test('Users can update their password', async ({ page, navigate, login }) => {

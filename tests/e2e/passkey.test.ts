@@ -96,6 +96,11 @@ test('Users can register and use passkeys', async ({
 	await navigate('/settings/profile/passkeys')
 	await page.getByRole('button', { name: /delete/i }).click()
 
+	// Deleting asks for confirmation before anything is removed
+	await expect(page.getByText(/registered .* ago/i)).toBeVisible()
+	await page.getByRole('button', { name: /are you sure/i }).click()
+	await expect(page.getByText(/passkey deleted/i)).toBeVisible()
+
 	// Verify the passkey is no longer listed on the page
 	await expect(page.getByText(/no passkeys registered/i)).toBeVisible()
 

@@ -3,17 +3,21 @@
 // can know that the user is hitting a URL that doesn't exist. By throwing a
 // 404 from the loader, we can force the error boundary to render which will
 // ensure the user gets the right status code and we can display a nicer error
-// message for them than the Remix and/or browser default.
+// message for them than the React Router and/or browser default.
 
-import { ArrowLeft } from '@untitledui/icons'
 import { type SEOHandle } from '@nasa-gcn/remix-seo'
-import { Link, useLocation } from 'react-router'
+import { useLocation } from 'react-router'
 import { GeneralErrorBoundary } from '#app/components/error-boundary.tsx'
-import { Icon } from '#app/components/ui/icon.tsx'
+import { pageTitle } from '#app/utils/misc.tsx'
+import { type Route } from './+types/$.ts'
 
 export const handle: SEOHandle = {
 	getSitemapEntries: () => null,
 }
+
+export const meta: Route.MetaFunction = () => [
+	{ title: pageTitle('Page not found') },
+]
 
 export function loader() {
 	throw new Response('Not found', { status: 404 })
@@ -35,16 +39,11 @@ export function ErrorBoundary() {
 		<GeneralErrorBoundary
 			statusHandlers={{
 				404: () => (
-					<div className="flex flex-col gap-6">
-						<div className="flex flex-col gap-3">
-							<h1>We can't find this page:</h1>
-							<pre className="text-body-lg break-all whitespace-pre-wrap">
-								{location.pathname}
-							</pre>
-						</div>
-						<Link to="/" className="text-body-md underline">
-							<Icon icon={ArrowLeft}>Back to home</Icon>
-						</Link>
+					<div className="flex flex-col gap-3">
+						<p>We can't find this page:</p>
+						<pre className="text-foreground break-all whitespace-pre-wrap">
+							{location.pathname}
+						</pre>
 					</div>
 				),
 			}}
