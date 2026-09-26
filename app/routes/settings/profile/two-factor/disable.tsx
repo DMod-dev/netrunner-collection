@@ -6,7 +6,7 @@ import { StatusButton } from '#app/components/ui/status-button.tsx'
 import { requireRecentVerification } from '#app/routes/_auth/verify.server.ts'
 import { requireUserId } from '#app/utils/auth.server.ts'
 import { prisma } from '#app/utils/db.server.ts'
-import { useDoubleCheck } from '#app/utils/misc.tsx'
+import { pageTitle, useDoubleCheck } from '#app/utils/misc.tsx'
 import { redirectWithToast } from '#app/utils/toast.server.ts'
 import { type BreadcrumbHandle } from '../../profile/_layout.tsx'
 import { type Route } from './+types/disable.ts'
@@ -16,6 +16,10 @@ export const handle: BreadcrumbHandle & SEOHandle = {
 	breadcrumb: <Icon icon={LockUnlocked01}>Disable</Icon>,
 	getSitemapEntries: () => null,
 }
+
+export const meta: Route.MetaFunction = () => [
+	{ title: pageTitle('Disable 2FA') },
+]
 
 export async function loader({ request }: Route.LoaderArgs) {
 	await requireRecentVerification(request)

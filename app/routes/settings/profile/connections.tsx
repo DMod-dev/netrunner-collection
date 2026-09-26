@@ -20,9 +20,11 @@ import {
 	type ProviderName,
 	ProviderNameSchema,
 	providerIcons,
+	providerLabels,
 } from '#app/utils/connections.tsx'
 import { prisma } from '#app/utils/db.server.ts'
 import { pipeHeaders } from '#app/utils/headers.server.js'
+import { pageTitle } from '#app/utils/misc.tsx'
 import { makeTimings } from '#app/utils/timing.server.ts'
 import { createToastHeaders } from '#app/utils/toast.server.ts'
 import { type Route } from './+types/connections.ts'
@@ -32,6 +34,10 @@ export const handle: BreadcrumbHandle & SEOHandle = {
 	breadcrumb: <Icon icon={Link01}>Connections</Icon>,
 	getSitemapEntries: () => null,
 }
+
+export const meta: Route.MetaFunction = () => [
+	{ title: pageTitle('Connections') },
+]
 
 async function userCanDeleteConnections(userId: string) {
 	const user = await prisma.user.findUnique({
@@ -165,7 +171,12 @@ function Connection({
 				{icon}
 				<span>
 					{connection.link ? (
-						<a href={connection.link} className="underline">
+						<a
+							href={connection.link}
+							className="underline"
+							target="_blank"
+							rel="noreferrer"
+						>
 							{connection.displayName}
 						</a>
 					) : (
@@ -186,6 +197,7 @@ function Connection({
 									value="delete-connection"
 									variant="destructive"
 									size="sm"
+									aria-label={`Disconnect ${providerLabels[connection.providerName]} account ${connection.displayName}`}
 									status={
 										deleteFetcher.state !== 'idle'
 											? 'pending'

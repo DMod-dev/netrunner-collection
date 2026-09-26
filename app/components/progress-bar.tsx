@@ -33,6 +33,7 @@ function EpicProgress() {
 	return (
 		<div
 			role="progressbar"
+			aria-label="Page loading"
 			aria-hidden={delayedPending ? undefined : true}
 			aria-valuetext={delayedPending ? 'Loading' : undefined}
 			className="fixed inset-x-0 top-0 z-50 h-[0.20rem] animate-pulse"

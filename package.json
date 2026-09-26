@@ -101,6 +101,7 @@
     "zod": "~4.5.4"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@epic-web/config": "^3.2.1",
     "@faker-js/faker": "^10.6.0",
     "@playwright/test": "^1.63.0",

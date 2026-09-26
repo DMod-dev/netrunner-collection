@@ -15,6 +15,7 @@ import {
 } from '#app/utils/email-cooldown.server.ts'
 import { sendEmail } from '#app/utils/email.server.ts'
 import { checkHoneypot } from '#app/utils/honeypot.server.ts'
+import { pageTitle } from '#app/utils/misc.tsx'
 import { EmailSchema, UsernameSchema } from '#app/utils/user-validation.ts'
 import { type Route } from './+types/forgot-password.ts'
 import { getRedirectToUrl, prepareVerification } from './verify.server.ts'
@@ -110,7 +111,7 @@ function ForgotPasswordEmail({
 }
 
 export const meta: Route.MetaFunction = () => {
-	return [{ title: 'Password Recovery for Netrunner Collection' }]
+	return [{ title: pageTitle('Forgot password') }]
 }
 
 export default function ForgotPasswordRoute() {

@@ -5,7 +5,7 @@ import { invariantResponse } from '@epic-web/invariant'
 import { parseFormData } from '@mjackson/form-data-parser'
 import { type SEOHandle } from '@nasa-gcn/remix-seo'
 import { useState } from 'react'
-import { data, redirect, Form, useNavigation } from 'react-router'
+import { data, Form, useNavigation } from 'react-router'
 import { z } from 'zod'
 import { ErrorList } from '#app/components/forms.tsx'
 import { Button, buttonVariants } from '#app/components/ui/button.tsx'
@@ -22,11 +22,13 @@ import {
 	useDoubleCheck,
 	useIsPending,
 	cn,
+	pageTitle,
 } from '#app/utils/misc.tsx'
 import {
 	deleteProfileImage,
 	uploadProfileImage,
 } from '#app/utils/storage.server.ts'
+import { redirectWithToast } from '#app/utils/toast.server.ts'
 import { type Route } from './+types/photo.ts'
 import { type BreadcrumbHandle } from './_layout.tsx'
 
@@ -34,6 +36,8 @@ export const handle: BreadcrumbHandle & SEOHandle = {
 	breadcrumb: <Icon icon={User01}>Photo</Icon>,
 	getSitemapEntries: () => null,
 }
+
+export const meta: Route.MetaFunction = () => [{ title: pageTitle('Photo') }]
 
 const MAX_SIZE = 1024 * 1024 * 3 // 3MB
 
@@ -144,7 +148,18 @@ export async function action({ request }: Route.ActionArgs) {
 	// user with a broken image.
 	if (previous) await deleteProfileImage(previous.objectKey)
 
-	return redirect('/settings/profile')
+	return redirectWithToast('/settings/profile', {
+		type: 'success',
+		...(intent === 'delete'
+			? {
+					title: 'Photo deleted',
+					description: 'Your profile photo has been removed.',
+				}
+			: {
+					title: 'Photo updated',
+					description: 'Your profile photo has been saved.',
+				}),
+	})
 }
 
 export default function PhotoRoute({

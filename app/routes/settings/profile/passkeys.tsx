@@ -4,18 +4,37 @@ import { type SEOHandle } from '@nasa-gcn/remix-seo'
 import { startRegistration } from '@simplewebauthn/browser'
 import { formatDistanceToNow } from 'date-fns'
 import { useState } from 'react'
-import { Form, useRevalidator } from 'react-router'
+import { useFormStatus } from 'react-dom'
+import { data, useFetcher, useRevalidator } from 'react-router'
 import { z } from 'zod'
-import { Button } from '#app/components/ui/button.tsx'
 import { Icon } from '#app/components/ui/icon.tsx'
+import { StatusButton } from '#app/components/ui/status-button.tsx'
 import { requireUserId } from '#app/utils/auth.server.ts'
 import { prisma } from '#app/utils/db.server.ts'
+import { pageTitle, useDoubleCheck } from '#app/utils/misc.tsx'
+import {
+	createToastHeaders,
+	redirectWithToast,
+} from '#app/utils/toast.server.ts'
 import { type Route } from './+types/passkeys.ts'
 import { type BreadcrumbHandle } from './_layout.tsx'
 
 export const handle: BreadcrumbHandle & SEOHandle = {
 	breadcrumb: <Icon icon={Passkey}>Passkeys</Icon>,
 	getSitemapEntries: () => null,
+}
+
+export const meta: Route.MetaFunction = () => [{ title: pageTitle('Passkeys') }]
+
+async function errorWithToast(description: string) {
+	return data({ status: 'error' } as const, {
+		status: 400,
+		headers: await createToastHeaders({
+			type: 'error',
+			title: 'Could not delete passkey',
+			description,
+		}),
+	})
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
@@ -40,25 +59,26 @@ export async function action({ request }: Route.ActionArgs) {
 	if (intent === 'delete') {
 		const passkeyId = formData.get('passkeyId')
 		if (typeof passkeyId !== 'string') {
-			return Response.json(
-				{ status: 'error', error: 'Invalid passkey ID' },
-				{ status: 400 },
-			)
+			return errorWithToast('Invalid passkey ID.')
 		}
 
-		await prisma.passkey.delete({
+		const { count } = await prisma.passkey.deleteMany({
 			where: {
 				id: passkeyId,
 				userId, // Ensure the passkey belongs to the user
 			},
 		})
-		return Response.json({ status: 'success' })
+		if (count === 0) {
+			return errorWithToast('That passkey no longer exists.')
+		}
+		return redirectWithToast('/settings/profile/passkeys', {
+			type: 'success',
+			title: 'Passkey deleted',
+			description: 'Your passkey has been deleted.',
+		})
 	}
 
-	return Response.json(
-		{ status: 'error', error: 'Invalid intent' },
-		{ status: 400 },
-	)
+	return errorWithToast('Invalid intent.')
 }
 
 const RegistrationOptionsSchema = z.object({
@@ -130,16 +150,10 @@ export default function Passkeys({ loaderData }: Route.ComponentProps) {
 
 	return (
 		<div className="flex flex-col gap-6">
-			<div className="flex justify-between gap-4">
+			<div className="flex flex-wrap items-center justify-between gap-4">
 				<h1 className="text-h1">Passkeys</h1>
 				<form action={handlePasskeyRegistration}>
-					<Button
-						type="submit"
-						variant="secondary"
-						className="flex items-center gap-2"
-					>
-						<Icon icon={Plus}>Register new passkey</Icon>
-					</Button>
+					<RegisterPasskeyButton />
 				</form>
 			</div>
 
@@ -152,38 +166,7 @@ export default function Passkeys({ loaderData }: Route.ComponentProps) {
 			{loaderData.passkeys.length ? (
 				<ul className="flex flex-col gap-4" title="passkeys">
 					{loaderData.passkeys.map((passkey) => (
-						<li
-							key={passkey.id}
-							className="border-muted-foreground flex items-center justify-between gap-4 rounded-lg border p-4"
-						>
-							<div className="flex flex-col gap-2">
-								<div className="flex items-center gap-2">
-									<Icon icon={Lock01} />
-									<span className="font-semibold">
-										{passkey.deviceType === 'platform'
-											? 'Device'
-											: 'Security Key'}
-									</span>
-								</div>
-								<div className="text-muted-foreground text-sm">
-									Registered {formatDistanceToNow(new Date(passkey.createdAt))}{' '}
-									ago
-								</div>
-							</div>
-							<Form method="POST">
-								<input type="hidden" name="passkeyId" value={passkey.id} />
-								<Button
-									type="submit"
-									name="intent"
-									value="delete"
-									variant="destructive"
-									size="sm"
-									className="flex items-center gap-2"
-								>
-									<Icon icon={Trash01}>Delete</Icon>
-								</Button>
-							</Form>
-						</li>
+						<PasskeyItem key={passkey.id} passkey={passkey} />
 					))}
 				</ul>
 			) : (
@@ -192,5 +175,68 @@ export default function Passkeys({ loaderData }: Route.ComponentProps) {
 				</div>
 			)}
 		</div>
+	)
+}
+
+function RegisterPasskeyButton() {
+	// Pending for as long as the form action runs, which includes the time the
+	// browser's passkey prompt is open.
+	const { pending } = useFormStatus()
+	return (
+		<StatusButton
+			type="submit"
+			variant="secondary"
+			className="flex items-center gap-2"
+			disabled={pending}
+			status={pending ? 'pending' : 'idle'}
+		>
+			<Icon icon={Plus}>Register new passkey</Icon>
+		</StatusButton>
+	)
+}
+
+function PasskeyItem({
+	passkey,
+}: {
+	passkey: Route.ComponentProps['loaderData']['passkeys'][number]
+}) {
+	const dc = useDoubleCheck()
+	const fetcher = useFetcher<typeof action>()
+	return (
+		<li className="border-muted-foreground flex items-center justify-between gap-4 rounded-lg border p-4">
+			<div className="flex flex-col gap-2">
+				<div className="flex items-center gap-2">
+					<Icon icon={Lock01} />
+					<span className="font-semibold">
+						{passkey.deviceType === 'platform' ? 'Device' : 'Security Key'}
+					</span>
+				</div>
+				<div className="text-muted-foreground text-sm">
+					Registered {formatDistanceToNow(new Date(passkey.createdAt))} ago
+				</div>
+			</div>
+			<fetcher.Form method="POST">
+				<input type="hidden" name="passkeyId" value={passkey.id} />
+				<StatusButton
+					{...dc.getButtonProps({
+						type: 'submit',
+						name: 'intent',
+						value: 'delete',
+					})}
+					variant="destructive"
+					size="sm"
+					className="flex items-center gap-2"
+					status={
+						fetcher.state !== 'idle'
+							? 'pending'
+							: (fetcher.data?.status ?? 'idle')
+					}
+				>
+					<Icon icon={Trash01}>
+						{dc.doubleCheck ? 'Are you sure?' : 'Delete'}
+					</Icon>
+				</StatusButton>
+			</fetcher.Form>
+		</li>
 	)
 }

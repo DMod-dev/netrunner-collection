@@ -77,6 +77,9 @@ test('The user profile when signed in as someone else', async () => {
 
 	await screen.findByRole('heading', { level: 1, name: user.name! })
 	expect(screen.queryByRole('link', { name: /edit profile/i })).toBeNull()
+	// their collection stats show, but don't link to your own collection
+	expect(screen.getByText('0 cards · 0 copies')).toBeInTheDocument()
+	expect(screen.queryByRole('link', { name: /0 cards/i })).toBeNull()
 })
 
 test('The user profile when logged in as self', async () => {
@@ -130,6 +133,9 @@ test('The user profile when logged in as self', async () => {
 	await screen.findByRole('heading', { level: 1, name: user.name! })
 	await screen.findByRole('button', { name: /logout/i })
 	await screen.findByRole('link', { name: /my collection/i })
+	expect(
+		screen.getByRole('link', { name: '0 cards · 0 copies' }),
+	).toHaveAttribute('href', '/collection')
 	expect(
 		await screen.findByRole('link', { name: /edit profile/i }),
 	).toBeInTheDocument()

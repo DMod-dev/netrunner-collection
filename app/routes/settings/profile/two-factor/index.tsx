@@ -5,6 +5,7 @@ import { Icon } from '#app/components/ui/icon.tsx'
 import { StatusButton } from '#app/components/ui/status-button.tsx'
 import { requireUserId } from '#app/utils/auth.server.ts'
 import { prisma } from '#app/utils/db.server.ts'
+import { pageTitle } from '#app/utils/misc.tsx'
 import { generateTOTP } from '#app/utils/totp.server.ts'
 import { type Route } from './+types/index.ts'
 import { twoFAVerificationType } from './_layout.tsx'
@@ -13,6 +14,10 @@ import { twoFAVerifyVerificationType } from './verify.tsx'
 export const handle: SEOHandle = {
 	getSitemapEntries: () => null,
 }
+
+export const meta: Route.MetaFunction = () => [
+	{ title: pageTitle('Two-factor authentication') },
+]
 
 export async function loader({ request }: Route.LoaderArgs) {
 	const userId = await requireUserId(request)

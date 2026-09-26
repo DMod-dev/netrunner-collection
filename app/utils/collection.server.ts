@@ -524,3 +524,33 @@ export async function addProductCopies(
 	await prisma.$transaction(writes)
 	return { changed }
 }
+
+/** How many distinct cards a user owns, and how many copies in all. */
+export async function getCollectionTotals(userId: string) {
+	const [entries, variants, ownedCards] = await Promise.all([
+		prisma.collectionEntry.aggregate({
+			where: { userId },
+			_sum: { quantity: true },
+		}),
+		prisma.variant.aggregate({
+			where: { userId },
+			_sum: { quantity: true },
+		}),
+		prisma.card.count({
+			where: {
+				printings: {
+					some: {
+						OR: [
+							{ collectionEntries: { some: { userId, quantity: { gt: 0 } } } },
+							{ variants: { some: { userId, quantity: { gt: 0 } } } },
+						],
+					},
+				},
+			},
+		}),
+	])
+	return {
+		copies: (entries._sum.quantity ?? 0) + (variants._sum.quantity ?? 0),
+		ownedCards,
+	}
+}

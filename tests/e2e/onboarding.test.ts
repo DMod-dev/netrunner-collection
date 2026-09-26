@@ -68,7 +68,7 @@ test('onboarding with link', async ({ page, navigate, getOnboardingData }) => {
 	await emailTextbox.click()
 	await emailTextbox.fill(onboardingData.email)
 
-	await page.getByRole('button', { name: /submit/i }).click()
+	await page.getByRole('button', { name: /create account/i }).click()
 	await expect(page.getByText(/check your email/i)).toBeVisible()
 
 	const email = await readEmail(onboardingData.email)
@@ -131,7 +131,7 @@ test('onboarding with a short code', async ({
 	await emailTextbox.click()
 	await emailTextbox.fill(onboardingData.email)
 
-	await page.getByRole('button', { name: /submit/i }).click()
+	await page.getByRole('button', { name: /create account/i }).click()
 	await expect(page.getByText(/check your email/i)).toBeVisible()
 
 	const email = await readEmail(onboardingData.email)
@@ -504,7 +504,7 @@ test('signing up with a registered email sends a reminder, not a code', async ({
 	const user = await insertNewUser()
 	await navigate('/signup')
 	await page.getByRole('textbox', { name: /email/i }).fill(user.email)
-	await page.getByRole('button', { name: /submit/i }).click()
+	await page.getByRole('button', { name: /create account/i }).click()
 	// same page as a new signup, so the form doesn't confirm the account exists
 	await expect(page.getByText(/check your email/i)).toBeVisible()
 	await expect(page.getByText(/already exists/i)).not.toBeVisible()

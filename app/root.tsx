@@ -11,6 +11,7 @@ import {
 	ScrollRestoration,
 	type ShouldRevalidateFunction,
 	useLoaderData,
+	useLocation,
 } from 'react-router'
 import { HoneypotProvider } from 'remix-utils/honeypot/react'
 import { type Route } from './+types/root.ts'
@@ -67,7 +68,11 @@ export const meta: Route.MetaFunction = ({ loaderData }) => {
 				? 'Netrunner Collection'
 				: 'Error | Netrunner Collection',
 		},
-		{ name: 'description', content: `Your own captain's log` },
+		{
+			name: 'description',
+			content:
+				'Track which Netrunner cards you own, down to the printing and alt art.',
+		},
 	]
 }
 
@@ -214,6 +219,7 @@ function App() {
 	const data = useLoaderData<typeof loader>()
 	const user = useOptionalUser()
 	const theme = useTheme()
+	const { pathname } = useLocation()
 	useToast(data.toast)
 
 	return (
@@ -227,7 +233,7 @@ function App() {
 					<header className="container py-6">
 						<nav className="flex items-center justify-between gap-4 md:gap-8">
 							<Logo />
-							<div className="flex items-center gap-6">
+							<div className="flex items-center gap-3 sm:gap-6">
 								{user ? (
 									<>
 										<Link
@@ -240,9 +246,28 @@ function App() {
 										<UserDropdown />
 									</>
 								) : (
-									<Link to="/login" className={buttonVariants({ size: 'lg' })}>
-										Log In
-									</Link>
+									<>
+										{pathname === '/login' ? null : (
+											<Link
+												to="/login"
+												className={buttonVariants({
+													size: 'lg',
+													variant:
+														pathname === '/signup' ? 'default' : 'outline',
+												})}
+											>
+												Log in
+											</Link>
+										)}
+										{pathname === '/signup' ? null : (
+											<Link
+												to="/signup"
+												className={buttonVariants({ size: 'lg' })}
+											>
+												Sign up
+											</Link>
+										)}
+									</>
 								)}
 							</div>
 						</nav>
@@ -252,10 +277,25 @@ function App() {
 						<Outlet />
 					</div>
 
-					<div className="container flex justify-between pb-5">
+					<footer className="container flex flex-wrap items-center justify-between gap-x-8 gap-y-4 pt-6 pb-5">
 						<Logo />
+						<nav
+							aria-label="Footer"
+							className="text-muted-foreground flex flex-wrap gap-x-5 gap-y-2 text-sm max-sm:order-last max-sm:w-full"
+						>
+							{footerLinks.map(({ to, label }) => (
+								<Link
+									key={to}
+									to={to}
+									prefetch="intent"
+									className="hover:text-foreground hover:underline"
+								>
+									{label}
+								</Link>
+							))}
+						</nav>
 						<ThemeSwitch userPreference={data.requestInfo.userPrefs.theme} />
-					</div>
+					</footer>
 				</div>
 				<EpicToaster closeButton position="top-center" theme={theme} />
 				<EpicProgress />
@@ -263,6 +303,13 @@ function App() {
 		</OpenImgContextProvider>
 	)
 }
+
+const footerLinks = [
+	{ to: '/about', label: 'About' },
+	{ to: '/support', label: 'Support' },
+	{ to: '/privacy', label: 'Privacy' },
+	{ to: '/tos', label: 'Terms' },
+]
 
 function Logo() {
 	return (

@@ -11,7 +11,7 @@ import { StatusButton } from '#app/components/ui/status-button.tsx'
 import { isCodeValid } from '#app/routes/_auth/verify.server.ts'
 import { requireUserId } from '#app/utils/auth.server.ts'
 import { prisma } from '#app/utils/db.server.ts'
-import { getDomainUrl, useIsPending } from '#app/utils/misc.tsx'
+import { getDomainUrl, pageTitle, useIsPending } from '#app/utils/misc.tsx'
 import { redirectWithToast } from '#app/utils/toast.server.ts'
 import { getTOTPAuthUri } from '#app/utils/totp.server.ts'
 import { type BreadcrumbHandle } from '../../profile/_layout.tsx'
@@ -22,6 +22,10 @@ export const handle: BreadcrumbHandle & SEOHandle = {
 	breadcrumb: <Icon icon={Check}>Verify</Icon>,
 	getSitemapEntries: () => null,
 }
+
+export const meta: Route.MetaFunction = () => [
+	{ title: pageTitle('Verify 2FA') },
+]
 
 const CancelSchema = z.object({ intent: z.literal('cancel') })
 const VerifySchema = z.object({
