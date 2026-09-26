@@ -127,9 +127,9 @@ test('build a deck: pick an identity, add cards, reload, delete', async ({
 	await expect(identityRadio).toBeChecked()
 	await page.getByLabel('Name', { exact: true }).fill('E2E Glacier')
 	await page.getByRole('button', { name: 'Create deck' }).click()
-	await expect(page).toHaveURL(/\/decks\/[^/]+$/)
+	// the new deck's builder (not /decks/new, where the form was posted)
+	await expect(page).toHaveURL(/\/decks\/(?!new$)[^/]+$/)
 	await page.locator('html[data-hydrated]').waitFor({ state: 'attached' })
-	const deckUrl = page.url()
 
 	const panel = page.getByRole('complementary', { name: 'Deck' })
 	await expect(
@@ -173,8 +173,8 @@ test('build a deck: pick an identity, add cards, reload, delete', async ({
 	await expect(panel.getByText('3×')).toBeVisible()
 
 	await goto(page, '/decks')
-	await expect(page.getByRole('link', { name: /E2E Glacier/ })).toBeVisible()
-	await goto(page, deckUrl)
+	await page.getByRole('link', { name: /E2E Glacier/ }).click()
+	await expect(panel.getByText('3 / 44')).toBeVisible()
 
 	await page.getByRole('button', { name: 'Delete E2E Glacier' }).click()
 	await page.getByRole('button', { name: 'Confirm delete E2E Glacier' }).click()
