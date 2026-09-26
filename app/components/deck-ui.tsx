@@ -1,4 +1,9 @@
-import { AlertCircle, AlertTriangle, CheckCircle } from '@untitledui/icons'
+import {
+	AlertCircle,
+	AlertTriangle,
+	CheckCircle,
+	ChevronDown,
+} from '@untitledui/icons'
 import {
 	DeckCollectionStepper,
 	DeckQuantityStepper,
@@ -337,31 +342,42 @@ export function DecklistPanel({
 		<div className="flex flex-col gap-3">
 			{groupByType(entries, side).map((group) => (
 				<section key={group.typeId} aria-label={group.name}>
-					<h3 className="text-muted-foreground mb-1 text-xs font-semibold tracking-wide uppercase">
-						{group.name} ({group.count})
-					</h3>
-					<ul
-						className={cn(
-							'grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-2',
-							// the panel's column: as many as keep the steppers whole
-							'lg:grid-cols-2 xl:grid-cols-3 pointer-coarse:xl:grid-cols-2',
-						)}
-					>
-						{group.entries.map((entry) => (
-							<li
-								key={entry.card.id}
-								data-deck-card={entry.card.id}
-								className="flex min-w-0 flex-col gap-1"
-							>
-								<DeckCardTile
-									deckId={deckId}
-									entry={entry}
-									info={perCard[entry.card.id]}
-									collection={collection}
-								/>
-							</li>
-						))}
-					</ul>
+					{/* open to start with; collapsing one stays collapsed while
+					    the deck changes */}
+					<details open className="group/type">
+						<summary className="text-muted-foreground hover:text-foreground focus-visible:ring-ring mb-1 flex cursor-pointer list-none items-center gap-1 rounded-sm select-none focus-visible:ring-2 focus-visible:outline-none [&::-webkit-details-marker]:hidden">
+							<Icon
+								icon={ChevronDown}
+								size="sm"
+								className="-rotate-90 transition-transform group-open/type:rotate-0"
+							/>
+							<h3 className="text-xs font-semibold tracking-wide uppercase">
+								{group.name} ({group.count})
+							</h3>
+						</summary>
+						<ul
+							className={cn(
+								'grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-2',
+								// the panel's column: as many as keep the steppers whole
+								'lg:grid-cols-2 xl:grid-cols-3 pointer-coarse:xl:grid-cols-2',
+							)}
+						>
+							{group.entries.map((entry) => (
+								<li
+									key={entry.card.id}
+									data-deck-card={entry.card.id}
+									className="flex min-w-0 flex-col gap-1"
+								>
+									<DeckCardTile
+										deckId={deckId}
+										entry={entry}
+										info={perCard[entry.card.id]}
+										collection={collection}
+									/>
+								</li>
+							))}
+						</ul>
+					</details>
 				</section>
 			))}
 		</div>

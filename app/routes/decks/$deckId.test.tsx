@@ -91,6 +91,17 @@ test('adding cards from the browser updates the decklist and stats', async () =>
 			prisma.deckCard.findFirst({ select: { cardId: true, quantity: true } }),
 		)
 		.toEqual({ cardId: 'hedge_fund', quantity: 3 })
+
+	// each type collapses, and stays collapsed as the deck changes
+	const details = operations.querySelector('details')!
+	expect(details).toHaveAttribute('open')
+	await user.click(within(operations).getByText('Operation (3)'))
+	expect(details).not.toHaveAttribute('open')
+	await user.click(add)
+	await within(panel).findByText('Operation (4)')
+	expect(details).not.toHaveAttribute('open')
+	await user.click(within(operations).getByText('Operation (4)'))
+	expect(details).toHaveAttribute('open')
 })
 
 test('format problems show, as warnings, only with "Require deck legality" on', async () => {
