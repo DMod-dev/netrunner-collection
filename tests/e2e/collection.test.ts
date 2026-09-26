@@ -84,6 +84,11 @@ async function gotoCollection(page: Page, search = '') {
 
 const scrollY = (page: Page) => page.evaluate(() => window.scrollY)
 
+/** The result count under the filters, which screen readers announce. */
+function resultCount(page: Page) {
+	return page.getByRole('main').locator('[aria-live]')
+}
+
 function cardTile(page: Page, title: string) {
 	return page.getByRole('listitem').filter({
 		has: page.getByRole('button', { name: `${title}: show details` }),
@@ -113,7 +118,7 @@ test('searching, paging and clearing filters stay in place', async ({
 	const search = page.getByRole('searchbox', { name: 'Card name' })
 	await search.fill(prefix)
 	await search.press('Enter')
-	await expect(page.getByText('60 cards')).toBeVisible()
+	await expect(resultCount(page)).toHaveText('60 cards')
 	await page.waitForTimeout(600) // longer than the debounce
 	expect(dataRequests).toHaveLength(1)
 	expect(dataRequests[0]!.pathname).toBe('/collection.data')
@@ -173,16 +178,12 @@ test('the current cards stay up while a search loads', async ({
 
 	const grid = page.locator('ul[aria-busy]')
 	await expect(grid).toHaveAttribute('aria-busy', 'true')
-	await expect(page.getByRole('main').locator('[aria-live]')).toHaveText(
-		'Searching…',
-	)
+	await expect(resultCount(page)).toHaveText('Searching…')
 	await expect(cardTile(page, titles[0]!)).toBeAttached()
 
 	release()
 	await expect(grid).toHaveAttribute('aria-busy', 'false')
-	await expect(page.getByRole('main').locator('[aria-live]')).toHaveText(
-		'1 card',
-	)
+	await expect(resultCount(page)).toHaveText('1 card')
 	await expect(cardTile(page, titles[0]!)).toHaveCount(0)
 	await expect(cardTile(page, titles[1]!)).toBeAttached()
 })
