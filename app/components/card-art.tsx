@@ -184,9 +184,10 @@ export function CardArtTile({
 	)
 }
 
-// Unowned art fades toward white, keeping enough colour to recognise it. The
-// image goes see-through over a white backdrop.
-export const washedOutBackdrop = 'bg-white'
+// Unowned art fades toward the page (white, or near-black in dark mode),
+// keeping enough colour to recognise it. The image goes see-through over
+// that backdrop.
+export const washedOutBackdrop = 'bg-white dark:bg-background'
 export const washedOut = 'opacity-45 saturate-75'
 
 /** Owned vs target pill, green once the target is met. */
