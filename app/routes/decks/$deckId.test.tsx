@@ -115,6 +115,9 @@ test('format problems show, as warnings, only with "Require deck legality" on', 
 			.filter((text) => notInFormat.test(text ?? ''))
 	await screen.findByRole('region', { name: 'Problems' })
 	expect(formatProblems()).toEqual([])
+	// nor are cards in the browser marked
+	const browser = screen.getByRole('region', { name: 'Card browser' })
+	expect(within(browser).queryAllByText('Not in Startup')).toEqual([])
 
 	await user.click(
 		screen.getByRole('switch', { name: 'Require deck legality' }),
@@ -133,6 +136,9 @@ test('format problems show, as warnings, only with "Require deck legality" on', 
 			}),
 		)
 		.toEqual({ requireLegality: true })
+	expect(within(browser).getAllByText('Not in Startup').length).toBeGreaterThan(
+		0,
+	)
 })
 
 test('"Remove cards not legal" takes them out after a second click', async () => {
@@ -156,9 +162,9 @@ test('"Remove cards not legal" takes them out after a second click', async () =>
 	expect(await prisma.deckCard.count()).toBe(1)
 	await user.click(screen.getByRole('button', { name: 'Remove 3 cards?' }))
 	await expect.poll(() => prisma.deckCard.count()).toBe(0)
-	await expect(
-		screen.findByText('No cards yet. Add some from the card browser.'),
-	).resolves.toBeInTheDocument()
+	expect(
+		await screen.findByText('No cards yet. Add some from the card browser.'),
+	).toBeInTheDocument()
 	expect(
 		screen.queryByRole('button', { name: /not legal in Startup/ }),
 	).not.toBeInTheDocument()

@@ -79,9 +79,9 @@ import {
 import { toCardLite } from '#app/utils/deck-rules.server.ts'
 import {
 	type CardLite,
+	type BanList,
 	evaluateDeck,
 	formatIssue,
-	type FormatRules,
 	toBanList,
 } from '#app/utils/deck-rules.ts'
 import { getDeckForBuilder } from '#app/utils/deck.server.ts'
@@ -298,6 +298,7 @@ export default function DeckBuilderRoute({ loaderData }: Route.ComponentProps) {
 					inDeck={inDeck}
 					saved={saved}
 					collection={collection}
+					checkFormat={requireLegality}
 				/>
 
 				<aside
@@ -766,11 +767,14 @@ function CardBrowser({
 	inDeck,
 	saved,
 	collection,
+	checkFormat,
 }: {
 	deck: Deck
 	browser: LoaderData['browser']
 	filters: LoaderData['filters']
 	collection: Collection
+	/** "Require deck legality": mark the cards the format won't take */
+	checkFormat: boolean
 	/** Copies in the deck, counting changes still being saved. */
 	inDeck: Map<string, number>
 	/** Copies in the deck as last saved. */
@@ -780,6 +784,7 @@ function CardBrowser({
 	const location = useLocation()
 	const navigation = useNavigation()
 	const navigationType = useNavigationType()
+	const banList = toBanList(deck.rules)
 	const isLoading =
 		navigation.state === 'loading' &&
 		navigation.location.pathname === location.pathname
@@ -841,6 +846,8 @@ function CardBrowser({
 									inDeck={inDeck.get(card.id) ?? 0}
 									saved={saved.get(card.id) ?? 0}
 									collection={collection}
+									checkFormat={checkFormat}
+									banList={banList}
 								/>
 							</li>
 						))}
@@ -999,19 +1006,13 @@ function BrowserFilters({
 function formatStatus(
 	card: CardLite,
 	formatId: DeckFormat,
-	rules: FormatRules | null,
+	banList: BanList | null,
 ) {
-	if (!card.legalFormats.includes(formatId)) {
-		return `Not in ${DECK_FORMAT_NAMES[formatId]}`
-	}
-	if (
-		rules &&
-		(rules.banned.includes(card.id) ||
-			card.subtypes.some((s) => rules.bannedSubtypes.includes(s)))
-	) {
-		return 'Banned'
-	}
-	return null
+	const issue = formatIssue(card, formatId, banList)
+	if (!issue) return null
+	return issue.code === 'not_in_format'
+		? `Not in ${DECK_FORMAT_NAMES[formatId]}`
+		: 'Banned'
 }
 
 function BrowserCardTile({
@@ -1020,14 +1021,19 @@ function BrowserCardTile({
 	inDeck,
 	saved,
 	collection,
+	checkFormat,
+	banList,
 }: {
 	card: BrowserCard & DeckCardInfo
 	deck: Deck
 	inDeck: number
 	saved: number
 	collection: Collection
+	/** "Require deck legality": off, nothing is marked */
+	checkFormat: boolean
+	banList: BanList | null
 }) {
-	const status = formatStatus(card, deck.formatId, deck.rules)
+	const status = checkFormat ? formatStatus(card, deck.formatId, banList) : null
 	// a filled deck counts only the copies other decks don't hold
 	const availability = collection.availability[card.id] ?? NO_COPIES
 	const count = collection.filled ? availability.available : card.owned
@@ -1048,7 +1054,7 @@ function BrowserCardTile({
 			badge={
 				<span className="flex gap-1">
 					{status ? (
-						<span className="bg-destructive rounded-full px-2 py-0.5 text-xs font-bold text-white">
+						<span className="rounded-full bg-amber-500/90 px-1.5 py-0.5 text-[0.65rem] font-semibold text-amber-950">
 							{status}
 						</span>
 					) : null}
@@ -1108,7 +1114,9 @@ function BrowserCardTile({
 								: null}
 						</p>
 						{status ? (
-							<p className="text-destructive text-xs font-semibold">{status}</p>
+							<p className="text-xs font-semibold text-amber-700 dark:text-amber-300">
+								{status}
+							</p>
 						) : null}
 					</header>
 					<div className="mt-auto flex flex-col gap-1">
