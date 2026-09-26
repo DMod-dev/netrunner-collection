@@ -4,6 +4,7 @@ import {
 	Loading02,
 	SearchMd,
 	SearchRefraction,
+	XClose,
 } from '@untitledui/icons'
 import { type SEOHandle } from '@nasa-gcn/remix-seo'
 import { useEffect, useId, useRef, useState } from 'react'
@@ -366,6 +367,33 @@ function Filters({
 				<Button type="submit" size="icon" aria-label="Search">
 					<Icon icon={SearchMd} size="sm" />
 				</Button>
+				{/* always here, so the panel doesn't jump when filters are set */}
+				{hasFilters ? (
+					<Link
+						to="/collection"
+						replace
+						preventScrollReset
+						aria-label="Clear filters"
+						className={cn(
+							buttonVariants({ variant: 'outline' }),
+							clearClassName,
+						)}
+					>
+						<Icon icon={XClose} size="sm" />
+						<span className="max-sm:hidden">Clear</span>
+					</Link>
+				) : (
+					<Button
+						type="button"
+						variant="outline"
+						disabled
+						aria-label="Clear filters"
+						className={clearClassName}
+					>
+						<Icon icon={XClose} size="sm" />
+						<span className="max-sm:hidden">Clear</span>
+					</Button>
+				)}
 			</div>
 			<div className="flex flex-wrap gap-x-6 gap-y-3">
 				<ToggleFilter label="Side">
@@ -495,19 +523,11 @@ function Filters({
 					<NativeSelectOption value="missing">Not owned</NativeSelectOption>
 				</FilterSelect>
 			</div>
-			{hasFilters ? (
-				<Link
-					to="/collection"
-					replace
-					preventScrollReset
-					className="text-muted-foreground self-start text-sm underline"
-				>
-					Clear filters
-				</Link>
-			) : null}
 		</Form>
 	)
 }
+
+const clearClassName = 'bg-background dark:bg-input/30 shrink-0'
 
 // On the muted filter panel, toggles sit on the page background like the
 // selects, and a pressed one fills in.

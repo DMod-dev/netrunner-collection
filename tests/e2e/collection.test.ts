@@ -154,6 +154,10 @@ test('searching, paging and clearing filters stay in place', async ({
 	await expect(page).toHaveURL('/collection')
 	await expect(search).toHaveValue('')
 	expect(await scrollY(page)).toBe(150)
+	// nothing left to clear, but the button keeps its place
+	await expect(
+		page.getByRole('button', { name: 'Clear filters' }),
+	).toBeDisabled()
 
 	expect(loads).toBe(0)
 })
