@@ -1,5 +1,8 @@
 import { AlertCircle, AlertTriangle, CheckCircle } from '@untitledui/icons'
-import { DeckQuantityStepper } from '#app/routes/resources/deck.tsx'
+import {
+	DeckCollectionStepper,
+	DeckQuantityStepper,
+} from '#app/routes/resources/deck.tsx'
 import {
 	type Availability,
 	fillStatus,
@@ -15,6 +18,7 @@ import {
 } from '#app/utils/deck-rules.ts'
 import { type DeckSide, groupByType } from '#app/utils/deck.ts'
 import { cn } from '#app/utils/misc.tsx'
+import { CardArtTile } from './card-art.tsx'
 import { FactionDot, factionColor } from './printing-tile.tsx'
 import { Icon } from './ui/icon.tsx'
 
@@ -304,6 +308,11 @@ export function ProblemList({ problems }: { problems: Problem[] }) {
 	)
 }
 
+/**
+ * The deck's cards as their faces, grouped by type. The corner shows the
+ * copies (and, once filled, the copies from the collection); hovering or
+ * tapping a card opens its steppers for both.
+ */
 export function DecklistPanel({
 	deckId,
 	side,
@@ -331,74 +340,138 @@ export function DecklistPanel({
 					<h3 className="text-muted-foreground mb-1 text-xs font-semibold tracking-wide uppercase">
 						{group.name} ({group.count})
 					</h3>
-					<ul className="flex flex-col">
-						{group.entries.map(({ card, quantity, fromCollection }) => {
-							const info = perCard[card.id]
-							const fill = collection.filled
-								? rowFillStatus(collection, card.id, quantity, fromCollection)
-								: null
-							const problems = info?.problems ?? []
-							const worst = problems.some((p) => p.severity === 'error')
-								? 'error'
-								: problems.length
-									? 'warning'
-									: null
-							return (
-								<li
-									key={card.id}
-									data-deck-card={card.id}
-									className="flex flex-wrap items-center gap-x-2 py-0.5 text-sm"
-								>
-									<span className="w-6 shrink-0 text-right font-bold tabular-nums">
-										{quantity}×
-									</span>
-									<FactionDot factionId={card.factionId} />
-									<span className="min-w-0 flex-1 truncate" title={card.title}>
-										{card.title}
-									</span>
-									<InfluencePips
-										influence={info?.influence ?? 0}
-										factionId={card.factionId}
-									/>
-									{worst ? (
-										<span
-											title={problems.map((p) => p.message).join('\n')}
-											className="flex"
-										>
-											<ProblemIcon severity={worst} />
-											<span className="sr-only">
-												{problems.map((p) => p.message).join('. ')}
-											</span>
-										</span>
-									) : null}
-									{fill ? (
-										<FromCollectionCount
-											fromCollection={fromCollection}
-											quantity={quantity}
-											title={card.title}
-										/>
-									) : null}
-									<DeckQuantityStepper
-										deckId={deckId}
-										cardId={card.id}
-										title={card.title}
-										quantity={quantity}
-										deckLimit={card.deckLimit}
-										size="sm"
-									/>
-									{fill && fill.status.kind !== 'ok' ? (
-										// a line of its own, under the title
-										<span className="flex w-full min-w-0 flex-wrap gap-1 pb-1 pl-8">
-											<FillStatusBadge {...fill} />
-										</span>
-									) : null}
-								</li>
-							)
-						})}
+					<ul
+						className={cn(
+							'grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-2',
+							// the panel's column: as many as keep the steppers whole
+							'lg:grid-cols-2 xl:grid-cols-3 pointer-coarse:xl:grid-cols-2',
+						)}
+					>
+						{group.entries.map((entry) => (
+							<li
+								key={entry.card.id}
+								data-deck-card={entry.card.id}
+								className="flex min-w-0 flex-col gap-1"
+							>
+								<DeckCardTile
+									deckId={deckId}
+									entry={entry}
+									info={perCard[entry.card.id]}
+									collection={collection}
+								/>
+							</li>
+						))}
 					</ul>
 				</section>
 			))}
 		</div>
+	)
+}
+
+function DeckCardTile({
+	deckId,
+	entry: { card, quantity, fromCollection },
+	info,
+	collection,
+}: {
+	deckId: string
+	entry: DecklistEntry
+	info: DeckEvaluation['perCard'][string] | undefined
+	collection: DeckCollection
+}) {
+	const availability = collection.availability[card.id] ?? NO_COPIES
+	const fill = collection.filled
+		? rowFillStatus(collection, card.id, quantity, fromCollection)
+		: null
+	const problems = info?.problems ?? []
+	const worst = problems.some((p) => p.severity === 'error')
+		? 'error'
+		: problems.length
+			? 'warning'
+			: null
+	return (
+		<>
+			<CardArtTile
+				imageUrl={card.imageUrl}
+				alt={card.title}
+				compact
+				badge={
+					<span className="flex items-center gap-1">
+						{worst ? (
+							<span className="bg-background/90 flex rounded-full p-0.5">
+								<ProblemIcon severity={worst} />
+							</span>
+						) : null}
+						{fill ? (
+							<FromCollectionCount
+								fromCollection={fromCollection}
+								quantity={quantity}
+								title={card.title}
+							/>
+						) : null}
+						<span className="bg-selected text-selected-foreground rounded-full px-2 py-0.5 text-xs font-bold tabular-nums">
+							{quantity}×
+						</span>
+					</span>
+				}
+				overlay={
+					<>
+						<header className="flex flex-col gap-1">
+							<h4 className="text-xs leading-tight font-bold">
+								<FactionDot factionId={card.factionId} /> {card.title}
+							</h4>
+							<InfluencePips
+								influence={info?.influence ?? 0}
+								factionId={card.factionId}
+							/>
+							{problems.map((problem, i) => (
+								<p
+									key={i}
+									className={cn(
+										'text-xs font-semibold',
+										problem.severity === 'error'
+											? 'text-destructive'
+											: 'text-amber-700 dark:text-amber-300',
+									)}
+								>
+									{problem.message}
+								</p>
+							))}
+						</header>
+						<div className="mt-auto flex flex-col gap-1">
+							{/* the tile's keyboard shortcuts step this one */}
+							<div data-primary className="flex flex-col gap-0.5">
+								<span className="text-xs font-medium">In deck</span>
+								<DeckQuantityStepper
+									deckId={deckId}
+									cardId={card.id}
+									title={card.title}
+									quantity={quantity}
+									deckLimit={card.deckLimit}
+									size="sm"
+								/>
+							</div>
+							<div className="flex flex-col gap-0.5">
+								<span className="text-xs font-medium">From collection</span>
+								<DeckCollectionStepper
+									deckId={deckId}
+									cardId={card.id}
+									title={card.title}
+									fromCollection={fromCollection}
+									max={Math.min(quantity, availability.available)}
+									size="sm"
+								/>
+							</div>
+						</div>
+					</>
+				}
+			/>
+			{fill && fill.status.kind !== 'ok' ? (
+				<span className="flex min-w-0 flex-wrap gap-1">
+					<FillStatusBadge {...fill} />
+				</span>
+			) : null}
+		</>
 	)
 }
 

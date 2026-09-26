@@ -23,6 +23,7 @@ import { DeckImportError } from '#app/utils/deck-check.server.ts'
 import {
 	fillDeck,
 	type FillReport,
+	setFromCollection,
 	unfillDeck,
 } from '#app/utils/deck-fill.server.ts'
 import { DECK_FORMAT_NAMES, DECK_FORMATS } from '#app/utils/deck-formats.ts'
@@ -41,6 +42,7 @@ import {
 } from '#app/utils/deck.server.ts'
 import {
 	deckCardFetcherKey,
+	deckCollectionFetcherKey,
 	deckSettingsFetcherKey,
 	MAX_DECK_NAME_LENGTH,
 	MAX_DECK_NOTES_LENGTH,
@@ -66,6 +68,16 @@ const DeckActionSchema = z.discriminatedUnion('intent', [
 		cardId: z.string().min(1),
 		// digits only: a blank must not read as 0 and take the card out
 		quantity: z
+			.string()
+			.regex(/^\d+$/, 'Invalid quantity')
+			.transform(Number)
+			.pipe(z.number().int().max(MAX_DECK_QUANTITY)),
+	}),
+	z.object({
+		intent: z.literal('set-from-collection'),
+		deckId,
+		cardId: z.string().min(1),
+		fromCollection: z
 			.string()
 			.regex(/^\d+$/, 'Invalid quantity')
 			.transform(Number)
@@ -201,6 +213,19 @@ export async function action({ request }: Route.ActionArgs) {
 				submission.quantity,
 			)
 			if ('error' in result) return refused(result)
+			return { ok: true } as const
+		}
+		case 'set-from-collection': {
+			const result = await setFromCollection(
+				userId,
+				submission.deckId,
+				submission.cardId,
+				submission.fromCollection,
+			)
+			if (!result) return notFound()
+			if ('error' in result) {
+				return refused({ error: result.error, status: 400 })
+			}
 			return { ok: true } as const
 		}
 		case 'set-identity': {
@@ -403,12 +428,7 @@ export function DeckQuantityStepper({
 		}
 	})
 
-	const small = size === 'sm'
-	// big enough to tap on touch screens
-	const buttonClass = cn(
-		small ? 'size-7 text-base' : 'size-9 text-lg',
-		'pointer-coarse:size-11',
-	)
+	const buttonClass = stepperButtonClass(size)
 	return (
 		<div
 			ref={rootRef}
@@ -447,6 +467,107 @@ export function DeckQuantityStepper({
 				disabled={displayed >= MAX_DECK_QUANTITY}
 				onClick={() => submit(latestRef.current + 1)}
 				aria-label={`Add one ${title} to the deck`}
+			>
+				+
+			</Button>
+		</div>
+	)
+}
+
+function stepperButtonClass(size: 'default' | 'sm') {
+	return cn(
+		size === 'sm' ? 'size-7 text-base' : 'size-9 text-lg',
+		// big enough to tap on touch screens
+		'pointer-coarse:size-11',
+	)
+}
+
+/**
+ * The copies of a card the deck takes from the collection, while a change is
+ * in flight (see `pendingQuantity`).
+ */
+export function pendingFromCollection(formData: FormData | undefined) {
+	if (formData?.get('intent') !== 'set-from-collection') return null
+	const fromCollection = Number(formData.get('fromCollection'))
+	return Number.isInteger(fromCollection) ? fromCollection : null
+}
+
+/**
+ * −/+ for how many of a deck's copies of a card come from the collection, up
+ * to `max`: the copies it plays, or fewer if other decks hold the rest.
+ * Optimistic like `DeckQuantityStepper`.
+ */
+export function DeckCollectionStepper({
+	deckId,
+	cardId,
+	title,
+	fromCollection,
+	max,
+	size = 'default',
+}: {
+	deckId: string
+	cardId: string
+	title: string
+	fromCollection: number
+	max: number
+	size?: 'default' | 'sm'
+}) {
+	const key = deckCollectionFetcherKey(deckId, cardId)
+	const fetcher = useFetcher<typeof clientAction>({ key })
+	const displayed = pendingFromCollection(fetcher.formData) ?? fromCollection
+	useErrorToast(fetcher, title, key)
+	// as in DeckQuantityStepper: clicks can outrun re-renders
+	const latestRef = useRef(displayed)
+	useEffect(() => {
+		latestRef.current = displayed
+	}, [displayed])
+
+	function submit(next: number) {
+		const clamped = Math.max(0, Math.min(max, next))
+		if (clamped === latestRef.current) return
+		latestRef.current = clamped
+		void fetcher.submit(
+			{
+				intent: 'set-from-collection',
+				deckId,
+				cardId,
+				fromCollection: clamped,
+			},
+			{ method: 'POST', action: DECK_ACTION_PATH },
+		)
+	}
+
+	const buttonClass = stepperButtonClass(size)
+	return (
+		<div className="flex items-center gap-1">
+			<Button
+				type="button"
+				variant="outline"
+				size="icon"
+				className={buttonClass}
+				disabled={displayed <= 0}
+				onClick={() => submit(latestRef.current - 1)}
+				aria-label={`Give one ${title} back to your collection`}
+			>
+				−
+			</Button>
+			<output
+				aria-label={`${title} from your collection`}
+				className={cn(
+					'min-w-8 text-center text-sm tabular-nums',
+					displayed > 0 ? 'font-bold' : 'text-muted-foreground',
+				)}
+			>
+				{displayed}
+			</output>
+			<Button
+				type="button"
+				variant="outline"
+				size="icon"
+				className={buttonClass}
+				disabled={displayed >= max}
+				onClick={() => submit(latestRef.current + 1)}
+				aria-label={`Take one ${title} from your collection`}
 			>
 				+
 			</Button>

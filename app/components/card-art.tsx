@@ -52,6 +52,7 @@ export function CardArtTile({
 	imageUrl,
 	alt,
 	dimmed = false,
+	compact = false,
 	badge,
 	overlay,
 }: {
@@ -59,6 +60,8 @@ export function CardArtTile({
 	alt: string
 	/** Wash out the art, e.g. when none are owned. */
 	dimmed?: boolean
+	/** Less padding around the overlay, for small tiles. */
+	compact?: boolean
 	/**
 	 * Shown in the corner of the art while the overlay is closed, e.g. the
 	 * owned count. Hidden from screen readers: repeat it in the overlay.
@@ -177,7 +180,12 @@ export function CardArtTile({
 				{/* Cards with several printings overflow the tile. The bottom
 				    padding is where the content fades out, so the fade only
 				    shows while there's more to scroll to. */}
-				<div className="flex h-full flex-col gap-2 overflow-y-auto [mask-image:linear-gradient(to_top,transparent,black_1.5rem)] p-3 pb-6">
+				<div
+					className={cn(
+						'flex h-full flex-col overflow-y-auto [mask-image:linear-gradient(to_top,transparent,black_1.5rem)]',
+						compact ? 'gap-1.5 p-2 pb-6' : 'gap-2 p-3 pb-6',
+					)}
+				>
 					{overlay}
 				</div>
 			</div>

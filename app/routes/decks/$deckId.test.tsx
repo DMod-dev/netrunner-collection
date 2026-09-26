@@ -141,7 +141,7 @@ test('format problems show, as warnings, only with "Require deck legality" on', 
 	)
 })
 
-test('"Remove cards not legal" takes them out after a second click', async () => {
+test('"Remove cards not legal" shows with the format checked, and takes them out after a second click', async () => {
 	const user = userEvent.setup()
 	await insertCards()
 	const owner = await insertUser()
@@ -154,6 +154,14 @@ test('"Remove cards not legal" takes them out after a second click', async () =>
 	})
 	renderBuilder(owner.cookie, `/decks/${deck!.id}`)
 
+	// not while "Require deck legality" is off
+	await screen.findByRole('complementary', { name: 'Deck' })
+	expect(
+		screen.queryByRole('button', { name: /not legal in Startup/ }),
+	).not.toBeInTheDocument()
+	await user.click(
+		screen.getByRole('switch', { name: 'Require deck legality' }),
+	)
 	await user.click(
 		await screen.findByRole('button', {
 			name: 'Remove 3 cards not legal in Startup',
@@ -227,6 +235,89 @@ test('filling from the collection shows what’s missing and what’s in use', a
 			select: { fromCollection: true },
 		}),
 	).toEqual({ fromCollection: 2 })
+})
+
+test('each card in the deck takes copies from the collection by hand', async () => {
+	const user = userEvent.setup()
+	await insertCards()
+	const owner = await insertUser()
+	// 2 Hedge Funds (printing 30001) and the identity (30000)
+	await prisma.collectionEntry.createMany({
+		data: [
+			{ userId: owner.id, printingId: '30001', quantity: 2 },
+			{ userId: owner.id, printingId: '30000', quantity: 1 },
+		],
+	})
+	const deck = await createDeck(owner.id, {
+		identityCardId: 'precision_design',
+		formatId: 'standard',
+	})
+	await prisma.deckCard.create({
+		data: { deckId: deck!.id, cardId: 'hedge_fund', quantity: 3 },
+	})
+	renderBuilder(owner.cookie, `/decks/${deck!.id}`)
+
+	const panel = await screen.findByRole('complementary', { name: 'Deck' })
+	const row = panel.querySelector<HTMLElement>('[data-deck-card="hedge_fund"]')!
+	// the card's face, with its copies in the corner
+	expect(
+		within(row).getByRole('button', { name: 'Hedge Fund: show details' }),
+	).toBeInTheDocument()
+	expect(within(row).getByText('3×')).toBeInTheDocument()
+	const take = within(row).getByRole('button', {
+		name: 'Take one Hedge Fund from your collection',
+	})
+	await user.click(take)
+	await user.click(take)
+	// only 2 are owned
+	await within(row).findByText('2/3')
+	expect(take).toBeDisabled()
+	expect(within(row).getByText('need 1')).toBeInTheDocument()
+	await expect
+		.poll(() =>
+			prisma.deckCard.findFirst({
+				where: { deckId: deck!.id },
+				select: { fromCollection: true },
+			}),
+		)
+		.toEqual({ fromCollection: 2 })
+
+	// the identity has one to take
+	const identity = within(panel).getByRole('region', { name: 'Identity' })
+	await user.click(
+		within(identity).getByRole('button', {
+			name: 'Take one Haas-Bioroid: Precision Design from your collection',
+		}),
+	)
+	await expect
+		.poll(() =>
+			prisma.deck.findUnique({
+				where: { id: deck!.id },
+				select: { identityFromCollection: true },
+			}),
+		)
+		.toEqual({ identityFromCollection: 1 })
+
+	// fewer copies in the deck give reserved ones back
+	await user.click(
+		within(row).getByRole('button', {
+			name: 'Remove one Hedge Fund from the deck',
+		}),
+	)
+	await user.click(
+		within(row).getByRole('button', {
+			name: 'Remove one Hedge Fund from the deck',
+		}),
+	)
+	await within(row).findByText('1/1')
+	await expect
+		.poll(() =>
+			prisma.deckCard.findFirst({
+				where: { deckId: deck!.id },
+				select: { quantity: true, fromCollection: true },
+			}),
+		)
+		.toEqual({ quantity: 1, fromCollection: 1 })
 })
 
 test('"Copy as text" copies the decklist; an imported deck links back', async () => {

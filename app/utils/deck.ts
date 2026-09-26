@@ -32,10 +32,16 @@ export function parseDeckFormat(value: string): DeckFormat {
 
 /**
  * The fetcher key of a card's deck stepper. The builder overlays every
- * in-flight one onto the saved decklist, so they share this prefix.
+ * in-flight one (and every "from collection" one) onto the saved decklist,
+ * so they share this prefix.
  */
 export function deckCardFetcherKey(deckId: string, cardId: string) {
 	return `${deckCardFetcherPrefix(deckId)}${cardId}`
+}
+
+/** The fetcher key of a card's "from collection" stepper. */
+export function deckCollectionFetcherKey(deckId: string, cardId: string) {
+	return `${deckCardFetcherPrefix(deckId)}collection:${cardId}`
 }
 
 export function deckCardFetcherPrefix(deckId: string) {

@@ -170,6 +170,52 @@ export async function fillDeck(
 }
 
 /**
+ * Set how many of one card's copies come from the collection, by hand. It's
+ * capped at the copies the deck plays and the copies other decks leave free.
+ * The identity counts as the one copy it plays. Returns null if the user
+ * doesn't own the deck, or an error if the card isn't in it.
+ */
+export async function setFromCollection(
+	userId: string,
+	deckId: string,
+	cardId: string,
+	fromCollection: number,
+): Promise<{ error: string } | { fromCollection: number } | null> {
+	return prisma.$transaction(async (tx) => {
+		const deck = await tx.deck.findFirst({
+			where: { id: deckId, userId },
+			select: {
+				identityCardId: true,
+				cards: { where: { cardId }, select: { quantity: true } },
+			},
+		})
+		if (!deck) return null
+		const isIdentity = deck.identityCardId === cardId
+		const quantity = isIdentity ? 1 : (deck.cards[0]?.quantity ?? 0)
+		if (quantity === 0) return { error: 'That card isn’t in this deck' }
+		const availability =
+			(await getAvailability(userId, [cardId], deckId, tx)).get(cardId) ??
+			NO_COPIES
+		const next = Math.max(
+			0,
+			Math.min(Math.trunc(fromCollection), quantity, availability.available),
+		)
+		if (isIdentity) {
+			await tx.deck.update({
+				where: { id: deckId },
+				data: { identityFromCollection: next },
+			})
+		} else {
+			await tx.deckCard.update({
+				where: { deckId_cardId: { deckId, cardId } },
+				data: { fromCollection: next },
+			})
+		}
+		return { fromCollection: next }
+	})
+}
+
+/**
  * Give every copy the deck holds back to the collection. Returns false if the
  * user doesn't own the deck.
  */
@@ -190,8 +236,8 @@ export async function unfillDeck(userId: string, deckId: string) {
 
 /**
  * The deck's collection state for the builder: whether it's filled, whether
- * the collection changed under it, and (once filled) the availability of its
- * cards plus `extraCardIds` (the card browser's page).
+ * the collection changed under it, and the availability of its cards plus
+ * `extraCardIds` (the card browser's page).
  */
 export async function getDeckCollection(
 	userId: string,
@@ -217,24 +263,22 @@ export async function getDeckCollection(
 				]
 			: []),
 	]
-	// an unfilled deck's badges count every copy owned, as the browser has
-	if (!rows.some((r) => r.fromCollection > 0)) {
-		return {
-			filled: false,
-			stale: false,
-			availability: {} as Record<string, Availability>,
-		}
-	}
+	// every deck needs its cards' availability: each card's "from
+	// collection" stepper goes up to what's free
 	const map = await getAvailability(
 		userId,
 		[...rows.map((r) => r.cardId), ...extraCardIds],
 		deck.id,
 	)
 	const of = (cardId: string) => map.get(cardId) ?? NO_COPIES
+	// an unfilled deck's badges count every copy owned, as the browser has
+	const filled = rows.some((r) => r.fromCollection > 0)
 	return {
-		filled: true,
-		stale: rows.some((r) => isReservationStale(r.fromCollection, of(r.cardId))),
-		availability: Object.fromEntries(map),
+		filled,
+		stale:
+			filled &&
+			rows.some((r) => isReservationStale(r.fromCollection, of(r.cardId))),
+		availability: Object.fromEntries(map) as Record<string, Availability>,
 	}
 }
 
