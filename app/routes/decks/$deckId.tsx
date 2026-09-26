@@ -38,6 +38,7 @@ import {
 	rowFillStatus,
 } from '#app/components/deck-ui.tsx'
 import { DeckExportMenu, ImportDeckDialog } from '#app/components/deck-io.tsx'
+import { DeckView } from '#app/components/deck-view.tsx'
 import { GeneralErrorBoundary } from '#app/components/error-boundary.tsx'
 import { FactionDot } from '#app/components/printing-tile.tsx'
 import { Button, buttonVariants } from '#app/components/ui/button.tsx'
@@ -60,13 +61,15 @@ import {
 	FillControls,
 	pendingFromCollection,
 	pendingLegality,
+	pendingPublic,
 	pendingQuantity,
+	PublicDeckSwitch,
 	RefillButton,
 	RemoveIllegalCardsButton,
 	RequireLegalitySwitch,
 	useErrorToast,
 } from '#app/routes/resources/deck.tsx'
-import { requireUserId } from '#app/utils/auth.server.ts'
+import { getUserId, requireUserId } from '#app/utils/auth.server.ts'
 import { getFilterOptions, searchCards } from '#app/utils/collection.server.ts'
 import { pickArtPrinting } from '#app/utils/collection.ts'
 import { getDeckCollection } from '#app/utils/deck-fill.server.ts'
@@ -103,8 +106,20 @@ export const handle: SEOHandle = {
 }
 
 export async function loader({ request, params }: Route.LoaderArgs) {
-	const userId = await requireUserId(request)
-	const deck = await getDeckForBuilder(userId, params.deckId)
+	const userId = await getUserId(request)
+	const deck = await getDeckForBuilder(userId, params.deckId).catch(
+		async (error: unknown) => {
+			// signed out, a private deck might be theirs: sign in first
+			if (!userId && error instanceof Response && error.status === 404) {
+				await requireUserId(request)
+			}
+			throw error
+		},
+	)
+	// someone else's public deck: read only
+	if (!userId || !deck.isOwner) {
+		return { mode: 'view' as const, deck, signedIn: userId !== null }
+	}
 
 	// the card browser: the collection's search, locked to the deck's side
 	// and the types a deck can hold
@@ -142,6 +157,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
 	)
 
 	return {
+		mode: 'build' as const,
 		deck,
 		collection,
 		browser: {
@@ -180,11 +196,19 @@ export async function loader({ request, params }: Route.LoaderArgs) {
 	}
 }
 
-export const meta: Route.MetaFunction = ({ loaderData }) => [
-	{ title: pageTitle(loaderData?.deck.name ?? 'Deck') },
-]
+export const meta: Route.MetaFunction = ({ loaderData }) => {
+	if (!loaderData) return [{ title: pageTitle('Deck') }]
+	const { deck } = loaderData
+	const description = `${deck.identity?.title ?? 'A'} deck by ${deck.owner.name ?? deck.owner.username}`
+	return [
+		{ title: pageTitle(deck.name) },
+		{ name: 'description', content: description },
+		{ property: 'og:title', content: deck.name },
+		{ property: 'og:description', content: description },
+	]
+}
 
-type LoaderData = Route.ComponentProps['loaderData']
+type LoaderData = Extract<Route.ComponentProps['loaderData'], { mode: 'build' }>
 type BrowserCard = LoaderData['browser']['cards'][number]
 type Deck = LoaderData['deck']
 type Collection = LoaderData['collection']
@@ -247,7 +271,15 @@ function useOptimisticDeck(deck: Deck, browserCards: BrowserCard[]) {
 	}
 }
 
-export default function DeckBuilderRoute({ loaderData }: Route.ComponentProps) {
+export default function DeckRoute({ loaderData }: Route.ComponentProps) {
+	return loaderData.mode === 'view' ? (
+		<DeckView deck={loaderData.deck} signedIn={loaderData.signedIn} />
+	) : (
+		<DeckBuilder loaderData={loaderData} />
+	)
+}
+
+function DeckBuilder({ loaderData }: { loaderData: LoaderData }) {
 	const { deck, collection, browser, filters } = loaderData
 	const [sheetOpen, setSheetOpen] = useState(false)
 	const { entries, identityFromCollection, requireLegality } =
@@ -442,6 +474,11 @@ function DeckToolbar({
 	const formatFetcher = useFetcher<typeof deckClientAction>({
 		key: deckSettingsFetcherKey(deck.id, 'format'),
 	})
+	// the export menu offers the link while the deck is (going) public
+	const visibilityFetcher = useFetcher({
+		key: deckSettingsFetcherKey(deck.id, 'visibility'),
+	})
+	const isPublic = pendingPublic(visibilityFetcher.formData) ?? deck.isPublic
 	useErrorToast(nameFetcher, 'Name', `name-${deck.id}`)
 	useErrorToast(formatFetcher, 'Format', `format-${deck.id}`)
 	const pendingFormat = formatFetcher.formData?.get('formatId')
@@ -525,6 +562,9 @@ function DeckToolbar({
 						requireLegality={requireLegality}
 					/>
 				</div>
+				<div className="flex h-9 items-center">
+					<PublicDeckSwitch deckId={deck.id} isPublic={isPublic} />
+				</div>
 				<FillControls
 					deckId={deck.id}
 					filled={filled}
@@ -532,7 +572,12 @@ function DeckToolbar({
 					total={total}
 				/>
 				<ImportDeckDialog deckId={deck.id} />
-				<DeckExportMenu deckId={deck.id} text={text} missing={missing} />
+				<DeckExportMenu
+					deckId={deck.id}
+					text={text}
+					missing={missing}
+					isPublic={isPublic}
+				/>
 				<DeleteDeckButton deckId={deck.id} name={deck.name} />
 			</div>
 			{deck.rules?.restrictionName || deck.nrdbUrl ? (
@@ -911,6 +956,9 @@ function BrowserFilters({
 	const location = useLocation()
 	const submit = useSubmit()
 	const id = useId()
+	// the form remounts when the filters change from outside it, so the
+	// input only needs the URL's value once
+	const [initialQuery] = useState(() => searchParams.get('q') ?? '')
 
 	// Submit only the filters that are set, so URLs stay short.
 	function submitFilters(form: HTMLFormElement) {
@@ -950,7 +998,7 @@ function BrowserFilters({
 					type="search"
 					name="q"
 					placeholder="Search cards by name"
-					defaultValue={searchParams.get('q') ?? ''}
+					defaultValue={initialQuery}
 					autoComplete="off"
 					className="bg-background"
 				/>

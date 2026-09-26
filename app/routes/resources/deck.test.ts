@@ -85,6 +85,11 @@ test('every intent 404s on someone else’s deck', async () => {
 	const owner = await insertUser()
 	const other = await insertUser()
 	const deck = await insertDeck(owner.id)
+	// a public deck can be copied, so it has to be private to 404 everything
+	await prisma.deck.update({
+		where: { id: deck.id },
+		data: { isPublic: false },
+	})
 	await prisma.deckCard.create({
 		data: { deckId: deck.id, cardId: 'hedge_fund', quantity: 2 },
 	})
@@ -100,6 +105,8 @@ test('every intent 404s on someone else’s deck', async () => {
 		{ intent: 'set-notes', notes: 'mine now' },
 		{ intent: 'set-format', formatId: 'eternal' },
 		{ intent: 'set-require-legality', requireLegality: 'false' },
+		{ intent: 'set-public', isPublic: 'true' },
+		{ intent: 'copy' },
 		{
 			intent: 'set-from-collection',
 			cardId: 'hedge_fund',
@@ -138,6 +145,7 @@ test('rename, notes, format and legality', async () => {
 				notes: true,
 				formatId: true,
 				requireLegality: true,
+				isPublic: true,
 			},
 		})
 
@@ -153,11 +161,16 @@ test('rename, notes, format and legality', async () => {
 	await send({ intent: 'set-notes', notes: 'Mulligan for ice' })
 	await send({ intent: 'set-format', formatId: 'eternal' })
 	await send({ intent: 'set-require-legality', requireLegality: 'false' })
+	expect(await send({ intent: 'set-public', isPublic: 'no' })).toMatchObject({
+		status: 400,
+	})
+	await send({ intent: 'set-public', isPublic: 'false' })
 	expect(await saved()).toEqual({
 		name: 'Glacier',
 		notes: 'Mulligan for ice',
 		formatId: 'eternal',
 		requireLegality: false,
+		isPublic: false,
 	})
 
 	// clearing the notes stores nothing
@@ -187,9 +200,11 @@ test('set-identity reports why it refused', async () => {
 /** The toast an action's response sets, as the next page load reads it. */
 async function toastOf(result: Awaited<ReturnType<typeof post>>) {
 	const headers =
-		result && !(result instanceof Response) && 'init' in result
-			? new Headers(result.init?.headers)
-			: null
+		result instanceof Response
+			? result.headers
+			: result && 'init' in result
+				? new Headers(result.init?.headers)
+				: null
 	const cookie = headers?.get('set-cookie')?.split(';')[0]
 	if (!cookie) return null
 	const { toast } = await getToast(
@@ -339,6 +354,36 @@ test('delete redirects to the deck list', async () => {
 		outcome(await post(user.cookie, { intent: 'delete', deckId: deck.id })),
 	).toEqual({ status: 302, location: '/decks' })
 	expect(await prisma.deck.count()).toBe(0)
+})
+
+test('copy makes the deck the user’s own and opens it', async () => {
+	await insertCards()
+	const owner = await insertUser()
+	const other = await insertUser()
+	const deck = await insertDeck(owner.id)
+	await prisma.deckCard.create({
+		data: { deckId: deck.id, cardId: 'hedge_fund', quantity: 2 },
+	})
+
+	const result = await post(other.cookie, { intent: 'copy', deckId: deck.id })
+	const copy = await prisma.deck.findFirstOrThrow({
+		where: { userId: other.id },
+		select: { id: true, name: true, cards: { select: { quantity: true } } },
+	})
+	expect(outcome(result)).toEqual({
+		status: 302,
+		location: `/decks/${copy.id}`,
+	})
+	expect(copy).toEqual({
+		id: copy.id,
+		name: 'Haas-Bioroid: Precision Design (copy)',
+		cards: [{ quantity: 2 }],
+	})
+	expect(await toastOf(result)).toEqual({
+		type: 'success',
+		description:
+			'Copied to your decks as Haas-Bioroid: Precision Design (copy)',
+	})
 })
 
 test('signed out, it sends you to log in', async () => {

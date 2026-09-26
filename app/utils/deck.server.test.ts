@@ -2,7 +2,10 @@ import { expect, test } from 'vitest'
 import { createUser } from '#tests/db-utils.ts'
 import { insertCards } from '#tests/deck-db.ts'
 import { prisma } from './db.server.ts'
+import { MAX_DECK_NAME_LENGTH } from './deck.ts'
 import {
+	copyDeck,
+	copyName,
 	createDeck,
 	deleteDeck,
 	getDeckForBuilder,
@@ -10,6 +13,7 @@ import {
 	listDecks,
 	removeIllegalCards,
 	requireDeck,
+	searchPublicDecks,
 	setDeckCardQuantity,
 	setDeckIdentity,
 	updateDeck,
@@ -198,21 +202,34 @@ test('setDeckIdentity switches sides only while the deck is empty', async () => 
 	})
 })
 
-test('only the owner can see or change a deck', async () => {
+test('only the owner can change a deck, or see it while it’s private', async () => {
 	await insertCards()
 	const owner = await insertUser()
 	const other = await insertUser()
 	const deck = await insertDeck(owner.id)
 	await setDeckCardQuantity(owner.id, deck.id, 'hedge_fund', 2)
 
+	// public by default: anyone, signed in or not, can look
+	expect(
+		await requireDeck(other.id, deck.id, { select: { name: true } }),
+	).toMatchObject({ name: 'Haas-Bioroid: Precision Design' })
+	expect(await requireDeck(null, deck.id, { select: { id: true } })).toEqual(
+		expect.objectContaining({ id: deck.id }),
+	)
+
+	expect(await updateDeck(owner.id, deck.id, { isPublic: false })).toBe(true)
 	const notFound = expect.objectContaining({ status: 404 })
 	await expect(
 		requireDeck(other.id, deck.id, { select: { id: true } }),
+	).rejects.toEqual(notFound)
+	await expect(
+		requireDeck(null, deck.id, { select: { id: true } }),
 	).rejects.toEqual(notFound)
 	await expect(getDeckForBuilder(other.id, deck.id)).rejects.toEqual(notFound)
 	await expect(
 		requireDeck(owner.id, 'missing', { select: { id: true } }),
 	).rejects.toEqual(notFound)
+	expect(await updateDeck(other.id, deck.id, { isPublic: true })).toBe(false)
 
 	expect(
 		await setDeckCardQuantity(other.id, deck.id, 'hedge_fund', 3),
@@ -365,4 +382,158 @@ test('removeIllegalCards takes out what the format doesn’t allow', async () =>
 			select: { identityCardId: true },
 		}),
 	).toEqual({ identityCardId: 'precision_design' })
+})
+
+test('getDeckForBuilder tells only the owner what’s from their collection', async () => {
+	await insertCards()
+	const owner = await insertUser()
+	const other = await insertUser()
+	const deck = await insertDeck(owner.id)
+	await setDeckCardQuantity(owner.id, deck.id, 'hedge_fund', 3)
+	await prisma.deckCard.updateMany({ data: { fromCollection: 2 } })
+	await prisma.deck.update({
+		where: { id: deck.id },
+		data: { identityFromCollection: 1 },
+	})
+
+	const own = await getDeckForBuilder(owner.id, deck.id)
+	expect(own).toMatchObject({
+		isOwner: true,
+		isPublic: true,
+		identityFromCollection: 1,
+		cards: [{ quantity: 3, fromCollection: 2 }],
+	})
+	expect(own.owner.username).toEqual(expect.any(String))
+
+	for (const viewer of [other.id, null]) {
+		expect(await getDeckForBuilder(viewer, deck.id)).toMatchObject({
+			isOwner: false,
+			identityFromCollection: 0,
+			cards: [{ quantity: 3, fromCollection: 0 }],
+		})
+	}
+})
+
+test('searchPublicDecks finds public decks by name, identity, card or owner', async () => {
+	await insertCards()
+	const alice = await prisma.user.create({
+		data: { ...createUser(), username: 'alice_runs', name: 'Alice' },
+		select: { id: true },
+	})
+	const bob = await prisma.user.create({
+		data: { ...createUser(), username: 'bob_brews', name: 'Bob' },
+		select: { id: true },
+	})
+	const glacier = await createDeck(alice.id, {
+		identityCardId: 'precision_design',
+		formatId: 'standard',
+		name: 'Glacier',
+	})
+	await setDeckCardQuantity(alice.id, glacier!.id, 'hedge_fund', 3)
+	const breaker = await createDeck(bob.id, {
+		identityCardId: 'the_catalyst',
+		formatId: 'startup',
+		name: 'Breaker suite',
+	})
+	await setDeckCardQuantity(bob.id, breaker!.id, 'corroder', 2)
+	const secret = await createDeck(bob.id, {
+		identityCardId: 'the_catalyst',
+		formatId: 'standard',
+		name: 'Secret tech',
+	})
+	await updateDeck(bob.id, secret!.id, { isPublic: false })
+
+	const names = async (search: Parameters<typeof searchPublicDecks>[0]) =>
+		(await searchPublicDecks(search)).decks.map((d) => d.name).sort()
+
+	// private decks never show up
+	expect(await names({})).toEqual(['Breaker suite', 'Glacier'])
+	expect(await names({ q: 'secret' })).toEqual([])
+	// deck name, identity, card and owner; every word has to match something
+	expect(await names({ q: 'glac' })).toEqual(['Glacier'])
+	expect(await names({ q: 'catalyst' })).toEqual(['Breaker suite'])
+	expect(await names({ q: 'corroder' })).toEqual(['Breaker suite'])
+	expect(await names({ q: 'alice' })).toEqual(['Glacier'])
+	expect(await names({ q: 'bob corroder' })).toEqual(['Breaker suite'])
+	expect(await names({ q: 'bob hedge' })).toEqual([])
+	// filters
+	expect(await names({ side: 'corp' })).toEqual(['Glacier'])
+	expect(await names({ factionId: 'anarch' })).toEqual(['Breaker suite'])
+	expect(await names({ formatId: 'startup' })).toEqual(['Breaker suite'])
+	expect(await names({ author: 'alice_runs' })).toEqual(['Glacier'])
+	expect(await names({ author: 'alice' })).toEqual([])
+
+	const { decks, total, page, pageCount } = await searchPublicDecks({
+		q: 'glacier',
+		page: 5,
+	})
+	expect({ total, page, pageCount }).toEqual({
+		total: 1,
+		page: 1,
+		pageCount: 1,
+	})
+	expect(decks[0]).toMatchObject({
+		name: 'Glacier',
+		owner: { username: 'alice_runs', name: 'Alice' },
+		cardCount: 3,
+		identity: { title: 'Haas-Bioroid: Precision Design' },
+	})
+	// what's in the owner's collection isn't part of it
+	expect(decks[0]).not.toHaveProperty('copiesFromCollection')
+})
+
+test('copyDeck copies a public deck or the user’s own, not a private one', async () => {
+	await insertCards()
+	const owner = await insertUser()
+	const other = await insertUser()
+	const deck = await insertDeck(owner.id)
+	await setDeckCardQuantity(owner.id, deck.id, 'hedge_fund', 3)
+	await updateDeck(owner.id, deck.id, {
+		notes: 'Score out',
+		formatId: 'startup',
+		requireLegality: true,
+	})
+	await prisma.deckCard.updateMany({ data: { fromCollection: 3 } })
+
+	const copy = await copyDeck(other.id, deck.id)
+	expect(copy?.name).toBe('Haas-Bioroid: Precision Design (copy)')
+	expect(
+		await prisma.deck.findUniqueOrThrow({
+			where: { id: copy!.id },
+			select: {
+				userId: true,
+				identityCardId: true,
+				formatId: true,
+				requireLegality: true,
+				notes: true,
+				isPublic: true,
+				identityFromCollection: true,
+				cards: {
+					select: { cardId: true, quantity: true, fromCollection: true },
+				},
+			},
+		}),
+	).toEqual({
+		userId: other.id,
+		identityCardId: 'precision_design',
+		formatId: 'startup',
+		requireLegality: true,
+		notes: 'Score out',
+		isPublic: true,
+		identityFromCollection: 0,
+		// nothing is reserved from the new owner's collection yet
+		cards: [{ cardId: 'hedge_fund', quantity: 3, fromCollection: 0 }],
+	})
+
+	await updateDeck(owner.id, deck.id, { isPublic: false })
+	expect(await copyDeck(other.id, deck.id)).toBeNull()
+	expect(await copyDeck(owner.id, deck.id)).not.toBeNull()
+	expect(await copyDeck(owner.id, 'missing')).toBeNull()
+})
+
+test('copyName keeps the name within the limit', () => {
+	expect(copyName('Glacier')).toBe('Glacier (copy)')
+	const long = copyName('x'.repeat(MAX_DECK_NAME_LENGTH))
+	expect(long).toHaveLength(MAX_DECK_NAME_LENGTH)
+	expect(long.endsWith(' (copy)')).toBe(true)
 })

@@ -426,6 +426,9 @@ model Deck {
   notes           String?
   /// the NetrunnerDB deck it was imported from
   nrdbUrl         String?
+  /// on: anyone can find it in the decklist search and open its link (read
+  /// only); off: only its owner sees it
+  isPublic        Boolean  @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -441,6 +444,8 @@ model Deck {
 
   @@index([userId, updatedAt])
   @@index([identityCardId])
+  // the decklist search: public decks, newest first
+  @@index([isPublic, updatedAt])
 }
 
 /// How many copies of a card a deck has.
