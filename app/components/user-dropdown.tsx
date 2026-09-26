@@ -4,6 +4,7 @@ import {
 	LayersThree01,
 	LogOut01,
 	RefreshCw01,
+	SearchMd,
 	Settings01,
 	User01,
 } from '@untitledui/icons'
@@ -67,6 +68,11 @@ export function UserDropdown() {
 				<DropdownMenuItem render={<Link prefetch="intent" to="/decks" />}>
 					<Icon className="text-body-md" icon={BookOpen01}>
 						Decks
+					</Icon>
+				</DropdownMenuItem>
+				<DropdownMenuItem render={<Link prefetch="intent" to="/decklists" />}>
+					<Icon className="text-body-md" icon={SearchMd}>
+						Decklists
 					</Icon>
 				</DropdownMenuItem>
 				<DropdownMenuItem

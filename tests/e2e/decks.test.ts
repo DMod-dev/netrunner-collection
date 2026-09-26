@@ -4,6 +4,7 @@ import { prisma } from '#app/utils/db.server.ts'
 import { expect, test as base } from '#tests/playwright-utils.ts'
 
 type SeededDeckCards = {
+	identityId: string
 	identityTitle: string
 	cardTitle: string
 	/** the operation's id, which its only printing shares */
@@ -87,7 +88,12 @@ const test = base.extend<{ seedDeckCards(): Promise<SeededDeckCards> }>({
 					},
 				})
 			}
-			return { identityTitle, cardTitle, cardId: cardIds[1]! }
+			return {
+				identityId: cardIds[0]!,
+				identityTitle,
+				cardTitle,
+				cardId: cardIds[1]!,
+			}
 		})
 		// a failed test can leave its deck behind
 		await prisma.deckCard.deleteMany({ where: { cardId: { in: cardIds } } })
@@ -404,4 +410,63 @@ test('deck check shows copies in use, and saves the deck', async ({
 	).toBeVisible()
 	await expect(page.getByLabel('Deck name')).toHaveValue(identityTitle)
 	expect(await prisma.deck.count({ where: { userId: user.id } })).toBe(2)
+})
+
+test('find a public deck in the decklists, open it read only, and copy it', async ({
+	page,
+	insertNewUser,
+	login,
+	seedDeckCards,
+}) => {
+	const { identityId, identityTitle, cardTitle, cardId } = await seedDeckCards()
+	const owner = await insertNewUser()
+	const deck = await prisma.deck.create({
+		data: {
+			userId: owner.id,
+			name: `${identityTitle} shared`,
+			sideId: 'corp',
+			identityCardId: identityId,
+			cards: { create: { cardId, quantity: 3 } },
+		},
+		select: { id: true },
+	})
+
+	// signed out, anyone can search and open it
+	await goto(page, '/decklists')
+	const search = page.getByRole('searchbox', { name: 'Search decks' })
+	await search.fill(cardTitle)
+	await search.press('Enter')
+	await expect(page.getByText('1 deck', { exact: true })).toBeVisible()
+	await page
+		.getByRole('link', { name: new RegExp(`${identityTitle} shared`) })
+		.click()
+	await expect(page).toHaveURL(`/decks/${deck.id}`)
+	await expect(
+		page.getByRole('heading', { level: 1, name: `${identityTitle} shared` }),
+	).toBeVisible()
+	await expect(page.getByText('Operation (3)')).toBeVisible()
+	await expect(page.getByRole('region', { name: 'Card browser' })).toHaveCount(
+		0,
+	)
+	await expect(page.getByRole('link', { name: 'Log in to copy' })).toBeVisible()
+
+	// signed in, it's one click to a copy of your own
+	const viewer = await login()
+	await page.reload()
+	await page.locator('html[data-hydrated]').waitFor({ state: 'attached' })
+	await page.getByRole('button', { name: 'Copy to my decks' }).click()
+	await expect(page).toHaveURL(new RegExp(`/decks/(?!${deck.id})[^/]+$`))
+	await expect(page.getByRole('region', { name: 'Card browser' })).toBeVisible()
+	await expect(page.getByLabel('Deck name')).toHaveValue(
+		`${identityTitle} shared (copy)`,
+	)
+	expect(await prisma.deck.count({ where: { userId: viewer.id } })).toBe(1)
+
+	// made private, only the owner can open it
+	await prisma.deck.update({
+		where: { id: deck.id },
+		data: { isPublic: false },
+	})
+	const response = await page.goto(`/decks/${deck.id}`)
+	expect(response?.status()).toBe(404)
 })

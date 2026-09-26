@@ -13,14 +13,14 @@ you've completed and which cards you still need for a deck. Card data comes from
   per printing, including alt arts and promos, and pick the default art for each
   card. Cards you don't own are shown washed out.
 - **Set completion:** progress for every set, down to which cards are missing.
-- **Decks:** build private decks for Standard, Startup or Eternal. Pick an
-  identity, add cards from a browser that searches like the collection, and see
-  the card count, influence, agenda points and any problems (deck size,
-  influence, deck limits) update as you go. Decks with problems still save. Turn
-  on **Require deck legality** to see the format's bans, rotation and points as
-  warnings; with it on, one button takes out every card the format doesn't
-  allow. The deck shows its cards as their faces: hover or tap one to change its
-  copies in the deck and its copies from your collection.
+- **Decks:** build decks for Standard, Startup or Eternal. Pick an identity, add
+  cards from a browser that searches like the collection, and see the card
+  count, influence, agenda points and any problems (deck size, influence, deck
+  limits) update as you go. Decks with problems still save. Turn on **Require
+  deck legality** to see the format's bans, rotation and points as warnings;
+  with it on, one button takes out every card the format doesn't allow. The deck
+  shows its cards as their faces: hover or tap one to change its copies in the
+  deck and its copies from your collection.
 - **Fill with collection:** reserve a deck's cards from your collection. Each
   card shows how many copies are yours, how many you still need, and which of
   your other decks hold the rest. The first deck filled keeps the copies; unfill
@@ -29,6 +29,12 @@ you've completed and which cards you still need for a deck. Card data comes from
   a deck, filled from your collection, or to replace a deck's cards. Copy or
   download a deck as text in NetrunnerDB's format, or copy the cards you're
   missing.
+- **Decklists:** decks are public unless you switch **Public** off. Anyone,
+  signed in or not, can search the public decks by name, identity, card or
+  player, filter by side, faction and format, and open or share a deck's link.
+  Someone else's deck is read only: export it, or copy it to your decks. A
+  private deck is only visible to you, and what's reserved from your collection
+  is never shown to others.
 - **Deck check:** paste a decklist and see what you're short, and which copies
   your decks already use, without saving anything; save it as a deck from there.
 - **Import and export:** a CSV of your collection.
@@ -91,7 +97,9 @@ whenever you want fresh card data locally.
 app/
   routes/          file-based routes (react-router-auto-routes)
     collection/    collection, sets, deck check, import/export, shared with me
-    decks/         your decks, a new deck, and the deck builder
+    decks/         your decks, a new deck, and the deck builder (or, for
+                   someone else's public deck, a read-only view)
+    decklists/     search everyone's public decks
     users/         profiles, and read-only views of collections shared with you
     admin/         card data sync and cache admin
     settings/      profile, sharing, password, passkeys, 2FA, connections

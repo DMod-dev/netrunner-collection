@@ -250,10 +250,12 @@ function App() {
 										>
 											Decks
 										</Link>
+										<DecklistsLink />
 										<UserDropdown />
 									</>
 								) : (
 									<>
+										<DecklistsLink />
 										{pathname === '/login' ? null : (
 											<Link
 												to="/login"
@@ -317,6 +319,19 @@ const footerLinks = [
 	{ to: '/privacy', label: 'Privacy' },
 	{ to: '/tos', label: 'Terms' },
 ]
+
+/** Everyone's public decks. Phones get there from the user menu or the decks pages. */
+function DecklistsLink() {
+	return (
+		<Link
+			to="/decklists"
+			prefetch="intent"
+			className="font-semibold hover:underline max-sm:hidden"
+		>
+			Decklists
+		</Link>
+	)
+}
 
 function Logo() {
 	return (

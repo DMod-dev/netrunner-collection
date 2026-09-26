@@ -1,4 +1,4 @@
-import { ChevronDown, Trash01 } from '@untitledui/icons'
+import { ChevronDown, Copy01, Trash01 } from '@untitledui/icons'
 import { useEffect, useId, useRef } from 'react'
 import { data, Form, useFetcher } from 'react-router'
 import { toast } from 'sonner'
@@ -33,6 +33,7 @@ import {
 } from '#app/utils/deck-import.server.ts'
 import { MAX_UNRECOGNIZED_SHOWN } from '#app/utils/deck-import.ts'
 import {
+	copyDeck,
 	deleteDeck,
 	type DeckWriteError,
 	removeIllegalCards,
@@ -49,7 +50,7 @@ import {
 	MAX_DECK_QUANTITY,
 } from '#app/utils/deck.ts'
 import { ensurePrimary } from '#app/utils/litefs.server.ts'
-import { cn, useDoubleCheck } from '#app/utils/misc.tsx'
+import { cn, useDoubleCheck, useIsPending } from '#app/utils/misc.tsx'
 import {
 	createToastHeaders,
 	redirectWithToast,
@@ -112,6 +113,13 @@ const DeckActionSchema = z.discriminatedUnion('intent', [
 		deckId,
 		requireLegality: z.enum(['true', 'false']).transform((v) => v === 'true'),
 	}),
+	z.object({
+		intent: z.literal('set-public'),
+		deckId,
+		isPublic: z.enum(['true', 'false']).transform((v) => v === 'true'),
+	}),
+	// a copy of the user's own deck or anyone's public one, for them to change
+	z.object({ intent: z.literal('copy'), deckId }),
 	z.object({ intent: z.literal('fill'), deckId }),
 	z.object({ intent: z.literal('unfill'), deckId }),
 	// replace the deck's cards with a pasted list or NetrunnerDB link
@@ -188,7 +196,8 @@ const notFound = () => refused({ error: 'Deck not found', status: 404 })
 
 export async function action({ request }: Route.ActionArgs) {
 	// Every write below is scoped to decks this user owns; anyone else's deck
-	// id is a 404, the same as one that doesn't exist.
+	// id is a 404, the same as one that doesn't exist. Only `copy` reads
+	// someone else's deck, and only a public one.
 	const userId = await requireUserId(request)
 	await ensurePrimary()
 	const formData = await request.formData()
@@ -260,6 +269,21 @@ export async function action({ request }: Route.ActionArgs) {
 				return notFound()
 			}
 			return { ok: true } as const
+		}
+		case 'set-public': {
+			const { deckId, isPublic } = submission
+			if (!(await updateDeck(userId, deckId, { isPublic }))) {
+				return notFound()
+			}
+			return { ok: true } as const
+		}
+		case 'copy': {
+			const copy = await copyDeck(userId, submission.deckId)
+			if (!copy) return notFound()
+			throw await redirectWithToast(`/decks/${copy.id}`, {
+				type: 'success',
+				description: `Copied to your decks as ${copy.name}`,
+			})
 		}
 		case 'fill': {
 			const report = await fillDeck(userId, submission.deckId)
@@ -619,6 +643,78 @@ export function RequireLegalitySwitch({
 export function pendingLegality(formData: FormData | undefined) {
 	if (formData?.get('intent') !== 'set-require-legality') return null
 	return formData.get('requireLegality') === 'true'
+}
+
+/**
+ * "Public": on, anyone can find the deck in the decklist search and open its
+ * link; off, only its owner sees it. Optimistic via `pendingPublic`.
+ */
+export function PublicDeckSwitch({
+	deckId,
+	isPublic,
+}: {
+	deckId: string
+	isPublic: boolean
+}) {
+	const id = useId()
+	const fetcher = useFetcher<typeof clientAction>({
+		key: deckSettingsFetcherKey(deckId, 'visibility'),
+	})
+	useErrorToast(fetcher, 'Public', `visibility-${deckId}`)
+	const checked = pendingPublic(fetcher.formData) ?? isPublic
+	return (
+		<div className="flex items-center gap-2">
+			<Switch
+				id={id}
+				checked={checked}
+				aria-describedby={`${id}-hint`}
+				onCheckedChange={(next: boolean) => {
+					void fetcher.submit(
+						{ intent: 'set-public', deckId, isPublic: String(next) },
+						{ method: 'POST', action: DECK_ACTION_PATH },
+					)
+				}}
+			/>
+			<Label htmlFor={id} className="text-sm font-normal">
+				Public
+			</Label>
+			<span id={`${id}-hint`} className="sr-only">
+				{checked
+					? 'Anyone can find this deck and open its link'
+					: 'Only you can see this deck'}
+			</span>
+		</div>
+	)
+}
+
+export function pendingPublic(formData: FormData | undefined) {
+	if (formData?.get('intent') !== 'set-public') return null
+	return formData.get('isPublic') === 'true'
+}
+
+/** Make a copy of the deck in the user's decks and open it. */
+export function CopyDeckButton({
+	deckId,
+	variant = 'outline',
+}: {
+	deckId: string
+	variant?: 'default' | 'outline'
+}) {
+	const pending = useIsPending({ formAction: DECK_ACTION_PATH })
+	return (
+		<Form method="POST" action={DECK_ACTION_PATH}>
+			<input type="hidden" name="intent" value="copy" />
+			<input type="hidden" name="deckId" value={deckId} />
+			<StatusButton
+				type="submit"
+				variant={variant}
+				status={pending ? 'pending' : 'idle'}
+				disabled={pending}
+			>
+				<Icon icon={Copy01}>Copy to my decks</Icon>
+			</StatusButton>
+		</Form>
+	)
 }
 
 export function DeleteDeckButton({

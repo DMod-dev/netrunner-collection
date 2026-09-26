@@ -313,28 +313,36 @@ export function ProblemList({ problems }: { problems: Problem[] }) {
 	)
 }
 
+/** A deck that isn't filled from anyone's collection. */
+const UNFILLED: DeckCollection = { filled: false, availability: {} }
+
 /**
  * The deck's cards as their faces, grouped by type. The corner shows the
  * copies (and, once filled, the copies from the collection); hovering or
- * tapping a card opens its steppers for both.
+ * tapping a card opens its steppers for both. `readOnly` (someone else's
+ * deck) leaves the steppers and the collection out and uses the whole width.
  */
 export function DecklistPanel({
 	deckId,
 	side,
 	entries,
 	perCard,
-	collection,
+	collection = UNFILLED,
+	readOnly = false,
 }: {
 	deckId: string
 	side: DeckSide
 	entries: DecklistEntry[]
 	perCard: DeckEvaluation['perCard']
-	collection: DeckCollection
+	collection?: DeckCollection
+	readOnly?: boolean
 }) {
 	if (entries.length === 0) {
 		return (
 			<p className="text-muted-foreground text-sm">
-				No cards yet. Add some from the card browser.
+				{readOnly
+					? 'This deck has no cards yet.'
+					: 'No cards yet. Add some from the card browser.'}
 			</p>
 		)
 	}
@@ -359,7 +367,8 @@ export function DecklistPanel({
 							className={cn(
 								'grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-2',
 								// the panel's column: as many as keep the steppers whole
-								'lg:grid-cols-2 xl:grid-cols-3 pointer-coarse:xl:grid-cols-2',
+								!readOnly &&
+									'lg:grid-cols-2 xl:grid-cols-3 pointer-coarse:xl:grid-cols-2',
 							)}
 						>
 							{group.entries.map((entry) => (
@@ -373,6 +382,7 @@ export function DecklistPanel({
 										entry={entry}
 										info={perCard[entry.card.id]}
 										collection={collection}
+										readOnly={readOnly}
 									/>
 								</li>
 							))}
@@ -389,11 +399,13 @@ function DeckCardTile({
 	entry: { card, quantity, fromCollection },
 	info,
 	collection,
+	readOnly,
 }: {
 	deckId: string
 	entry: DecklistEntry
 	info: DeckEvaluation['perCard'][string] | undefined
 	collection: DeckCollection
+	readOnly: boolean
 }) {
 	const availability = collection.availability[card.id] ?? NO_COPIES
 	const fill = collection.filled
@@ -454,31 +466,37 @@ function DeckCardTile({
 								</p>
 							))}
 						</header>
-						<div className="mt-auto flex flex-col gap-1">
-							{/* the tile's keyboard shortcuts step this one */}
-							<div data-primary className="flex flex-col gap-0.5">
-								<span className="text-xs font-medium">In deck</span>
-								<DeckQuantityStepper
-									deckId={deckId}
-									cardId={card.id}
-									title={card.title}
-									quantity={quantity}
-									deckLimit={card.deckLimit}
-									size="sm"
-								/>
+						{readOnly ? (
+							<p className="mt-auto text-xs font-medium tabular-nums">
+								{quantity} {quantity === 1 ? 'copy' : 'copies'}
+							</p>
+						) : (
+							<div className="mt-auto flex flex-col gap-1">
+								{/* the tile's keyboard shortcuts step this one */}
+								<div data-primary className="flex flex-col gap-0.5">
+									<span className="text-xs font-medium">In deck</span>
+									<DeckQuantityStepper
+										deckId={deckId}
+										cardId={card.id}
+										title={card.title}
+										quantity={quantity}
+										deckLimit={card.deckLimit}
+										size="sm"
+									/>
+								</div>
+								<div className="flex flex-col gap-0.5">
+									<span className="text-xs font-medium">From collection</span>
+									<DeckCollectionStepper
+										deckId={deckId}
+										cardId={card.id}
+										title={card.title}
+										fromCollection={fromCollection}
+										max={Math.min(quantity, availability.available)}
+										size="sm"
+									/>
+								</div>
 							</div>
-							<div className="flex flex-col gap-0.5">
-								<span className="text-xs font-medium">From collection</span>
-								<DeckCollectionStepper
-									deckId={deckId}
-									cardId={card.id}
-									title={card.title}
-									fromCollection={fromCollection}
-									max={Math.min(quantity, availability.available)}
-									size="sm"
-								/>
-							</div>
-						</div>
+						)}
 					</>
 				}
 			/>

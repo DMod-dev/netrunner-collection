@@ -16,30 +16,42 @@ import {
 } from './deck-rules.ts'
 import {
 	IDENTITY_TYPES,
+	MAX_DECK_NAME_LENGTH,
 	MAX_DECK_QUANTITY,
 	type DeckSide,
 	parseDeckFormat,
 } from './deck.ts'
 
-// Decks are private to their owner for now. Every loader goes through
-// `requireDeck`, and every write is scoped to the owner, so making decks
-// public later only needs a new branch in `canViewDeck`.
+// Anyone (signed in or not) can see a public deck; only its owner can see a
+// private one. Every loader goes through `requireDeck`, and every write is
+// scoped to the owner, so no one else can change either.
 
-export function canViewDeck(deck: { userId: string }, userId: string | null) {
-	return deck.userId === userId
+export function canViewDeck(
+	deck: { userId: string; isPublic: boolean },
+	userId: string | null,
+) {
+	return deck.isPublic || deck.userId === userId
 }
 
-/** A deck `userId` may see, or a 404 (whether it doesn't exist or isn't theirs). */
+/**
+ * A deck `userId` (null when signed out) may see, or a 404 whether it doesn't
+ * exist or is someone else's private deck.
+ */
 export async function requireDeck<Select extends Prisma.DeckSelect>(
-	userId: string,
+	userId: string | null,
 	deckId: string,
 	{ select }: { select: Select },
 ) {
 	// Prisma can't infer a spread generic select; this is what it returns
 	const deck = (await prisma.deck.findUnique({
 		where: { id: deckId },
-		select: { ...select, userId: true },
-	})) as (Prisma.DeckGetPayload<{ select: Select }> & { userId: string }) | null
+		select: { ...select, userId: true, isPublic: true },
+	})) as
+		| (Prisma.DeckGetPayload<{ select: Select }> & {
+				userId: string
+				isPublic: boolean
+		  })
+		| null
 	invariantResponse(deck && canViewDeck(deck, userId), 'Deck not found', {
 		status: 404,
 	})
@@ -107,6 +119,19 @@ export function getIdentities(side: DeckSide) {
 
 export type IdentityOption = Awaited<ReturnType<typeof getIdentities>>[number]
 
+/** The factions that have identities, for the decklist search. */
+export function getIdentityFactions() {
+	return cachedUntilNextSync('identity-factions', () =>
+		prisma.faction.findMany({
+			where: {
+				cards: { some: { typeId: { in: Object.values(IDENTITY_TYPES) } } },
+			},
+			orderBy: [{ sideId: 'asc' }, { name: 'asc' }],
+			select: { id: true, name: true, sideId: true },
+		}),
+	)
+}
+
 // ---------------------------------------------------------------------------
 // Reading decks
 // ---------------------------------------------------------------------------
@@ -119,78 +144,181 @@ async function getAllFormatRules() {
 	return new Map(entries)
 }
 
+const deckSummarySelect = {
+	id: true,
+	name: true,
+	sideId: true,
+	formatId: true,
+	requireLegality: true,
+	isPublic: true,
+	updatedAt: true,
+	identityFromCollection: true,
+	identity: {
+		select: {
+			...CARD_LITE_SELECT,
+			faction: { select: { name: true } },
+			printings: latestImageSelect,
+		},
+	},
+	cards: {
+		select: {
+			quantity: true,
+			fromCollection: true,
+			card: { select: CARD_LITE_SELECT },
+		},
+	},
+} satisfies Prisma.DeckSelect
+
+/** A deck's card for the deck lists: its identity, size and legality. */
+function summarizeDeck(
+	deck: Prisma.DeckGetPayload<{ select: typeof deckSummarySelect }>,
+	rules: Awaited<ReturnType<typeof getAllFormatRules>>,
+) {
+	const formatId = parseDeckFormat(deck.formatId)
+	const { stats, problems, isLegal } = evaluateDeck({
+		identity: deck.identity ? toCardLite(deck.identity) : null,
+		cards: deck.cards.map(({ card, quantity }) => ({
+			card: toCardLite(card),
+			quantity,
+		})),
+		formatId,
+		requireLegality: deck.requireLegality,
+		rules: rules.get(formatId) ?? null,
+	})
+	return {
+		id: deck.id,
+		name: deck.name,
+		sideId: deck.sideId as DeckSide,
+		formatId,
+		requireLegality: deck.requireLegality,
+		isPublic: deck.isPublic,
+		updatedAt: deck.updatedAt,
+		identity: deck.identity
+			? {
+					id: deck.identity.id,
+					title: deck.identity.title,
+					factionId: deck.identity.factionId,
+					factionName: deck.identity.faction.name,
+					imageUrl: imageOf(deck.identity),
+				}
+			: null,
+		cardCount: stats.cardCount,
+		minDeckSize: stats.minDeckSize,
+		isLegal,
+		errorCount: problems.filter((p) => p.severity === 'error').length,
+		warningCount: problems.filter((p) => p.severity === 'warning').length,
+	}
+}
+
 /** A user's decks, most recently changed first, with their stats. */
 export async function listDecks(userId: string) {
 	const [decks, rules] = await Promise.all([
 		prisma.deck.findMany({
 			where: { userId },
 			orderBy: { updatedAt: 'desc' },
+			select: deckSummarySelect,
+		}),
+		getAllFormatRules(),
+	])
+	return decks.map((deck) => ({
+		...summarizeDeck(deck, rules),
+		...collectionSummary(deck),
+	}))
+}
+
+export type DeckSummary = Awaited<ReturnType<typeof listDecks>>[number]
+
+export const PUBLIC_DECKS_PER_PAGE = 24
+
+export type PublicDeckSearch = {
+	/**
+	 * Words that must each match the deck's name, its identity, its owner or
+	 * one of its cards.
+	 */
+	q?: string
+	side?: DeckSide
+	/** the identity's faction */
+	factionId?: string
+	formatId?: DeckFormat
+	/** only this user's decks, by username */
+	author?: string
+	page?: number
+}
+
+/** Up to this many words of a search count; the rest are ignored. */
+const MAX_SEARCH_WORDS = 8
+
+/**
+ * Everyone's public decks that match a search, most recently changed first,
+ * with their stats and owners. What owners hold in their collections stays
+ * out of it.
+ */
+export async function searchPublicDecks({
+	q,
+	side,
+	factionId,
+	formatId,
+	author,
+	page = 1,
+}: PublicDeckSearch) {
+	const words = (q ?? '')
+		.split(/\s+/)
+		.filter(Boolean)
+		.slice(0, MAX_SEARCH_WORDS)
+	const where = {
+		isPublic: true,
+		...(side ? { sideId: side } : {}),
+		...(formatId ? { formatId } : {}),
+		...(factionId ? { identity: { factionId } } : {}),
+		...(author ? { user: { username: author } } : {}),
+		AND: words.map((word) => {
+			const title = [
+				{ title: { contains: word } },
+				// "Cafe" finds "Café"
+				{ strippedTitle: { contains: word } },
+			]
+			return {
+				OR: [
+					{ name: { contains: word } },
+					{ identity: { OR: title } },
+					{ user: { username: { contains: word } } },
+					{ user: { name: { contains: word } } },
+					{ cards: { some: { card: { OR: title } } } },
+				],
+			}
+		}),
+	} satisfies Prisma.DeckWhereInput
+
+	const total = await prisma.deck.count({ where })
+	const pageCount = Math.max(1, Math.ceil(total / PUBLIC_DECKS_PER_PAGE))
+	const current = Math.min(Math.max(1, Math.trunc(page) || 1), pageCount)
+	const [decks, rules] = await Promise.all([
+		prisma.deck.findMany({
+			where,
+			orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
+			skip: (current - 1) * PUBLIC_DECKS_PER_PAGE,
+			take: PUBLIC_DECKS_PER_PAGE,
 			select: {
-				id: true,
-				name: true,
-				sideId: true,
-				formatId: true,
-				requireLegality: true,
-				updatedAt: true,
-				identityFromCollection: true,
-				identity: {
-					select: {
-						...CARD_LITE_SELECT,
-						faction: { select: { name: true } },
-						printings: latestImageSelect,
-					},
-				},
-				cards: {
-					select: {
-						quantity: true,
-						fromCollection: true,
-						card: { select: CARD_LITE_SELECT },
-					},
-				},
+				...deckSummarySelect,
+				user: { select: { username: true, name: true } },
 			},
 		}),
 		getAllFormatRules(),
 	])
-
-	return decks.map((deck) => {
-		const formatId = parseDeckFormat(deck.formatId)
-		const { stats, problems, isLegal } = evaluateDeck({
-			identity: deck.identity ? toCardLite(deck.identity) : null,
-			cards: deck.cards.map(({ card, quantity }) => ({
-				card: toCardLite(card),
-				quantity,
-			})),
-			formatId,
-			requireLegality: deck.requireLegality,
-			rules: rules.get(formatId) ?? null,
-		})
-		return {
-			id: deck.id,
-			name: deck.name,
-			sideId: deck.sideId,
-			formatId,
-			requireLegality: deck.requireLegality,
-			updatedAt: deck.updatedAt,
-			identity: deck.identity
-				? {
-						id: deck.identity.id,
-						title: deck.identity.title,
-						factionId: deck.identity.factionId,
-						factionName: deck.identity.faction.name,
-						imageUrl: imageOf(deck.identity),
-					}
-				: null,
-			cardCount: stats.cardCount,
-			minDeckSize: stats.minDeckSize,
-			isLegal,
-			errorCount: problems.filter((p) => p.severity === 'error').length,
-			warningCount: problems.filter((p) => p.severity === 'warning').length,
-			...collectionSummary(deck),
-		}
-	})
+	return {
+		total,
+		page: current,
+		pageCount,
+		decks: decks.map((deck) => ({
+			...summarizeDeck(deck, rules),
+			owner: deck.user,
+		})),
+	}
 }
 
-export type DeckSummary = Awaited<ReturnType<typeof listDecks>>[number]
+export type PublicDeckSummary = Awaited<
+	ReturnType<typeof searchPublicDecks>
+>['decks'][number]
 
 /**
  * How much of a deck comes from the collection: whether it's filled at all,
@@ -215,12 +343,17 @@ function collectionSummary(deck: {
 	}
 }
 
-/** Everything the builder shows about a deck (not the card browser). */
-export async function getDeckForBuilder(userId: string, deckId: string) {
+/**
+ * Everything the builder shows about a deck (not the card browser), for its
+ * owner or, if it's public, anyone else (`userId` null when signed out). Only
+ * the owner is told what's reserved from their collection.
+ */
+export async function getDeckForBuilder(userId: string | null, deckId: string) {
 	const deck = await requireDeck(userId, deckId, {
 		select: {
 			id: true,
 			name: true,
+			user: { select: { username: true, name: true } },
 			sideId: true,
 			formatId: true,
 			requireLegality: true,
@@ -253,16 +386,20 @@ export async function getDeckForBuilder(userId: string, deckId: string) {
 	})
 	const formatId = parseDeckFormat(deck.formatId)
 	const { identity } = deck
+	const isOwner = deck.userId === userId
 	return {
 		id: deck.id,
 		name: deck.name,
 		sideId: deck.sideId as DeckSide,
 		formatId,
 		requireLegality: deck.requireLegality,
+		isPublic: deck.isPublic,
+		isOwner,
+		owner: deck.user,
 		notes: deck.notes,
 		nrdbUrl: deck.nrdbUrl,
 		updatedAt: deck.updatedAt,
-		identityFromCollection: deck.identityFromCollection,
+		identityFromCollection: isOwner ? deck.identityFromCollection : 0,
 		identity: identity
 			? {
 					...toCardLite(identity),
@@ -272,7 +409,7 @@ export async function getDeckForBuilder(userId: string, deckId: string) {
 			: null,
 		cards: deck.cards.map(({ card, quantity, fromCollection }) => ({
 			quantity,
-			fromCollection,
+			fromCollection: isOwner ? fromCollection : 0,
 			card: {
 				...toCardLite(card),
 				typeName: card.type.name,
@@ -417,8 +554,8 @@ export async function setDeckIdentity(
 }
 
 /**
- * Change a deck's name, notes, format or whether it must be legal. Returns
- * false if the user doesn't own the deck.
+ * Change a deck's name, notes, format, whether it must be legal or whether
+ * it's public. Returns false if the user doesn't own the deck.
  */
 export async function updateDeck(
 	userId: string,
@@ -428,6 +565,7 @@ export async function updateDeck(
 		notes?: string | null
 		formatId?: DeckFormat
 		requireLegality?: boolean
+		isPublic?: boolean
 	},
 ) {
 	const { count } = await prisma.deck.updateMany({
@@ -473,6 +611,49 @@ export async function removeIllegalCards(userId: string, deckId: string) {
 		removed: illegal.reduce((n, { quantity }) => n + quantity, 0),
 		formatId,
 	}
+}
+
+/**
+ * A new deck for `userId` with the same identity, format, cards and notes as
+ * one they can see (theirs, or anyone's public deck). The copy is theirs to
+ * change; nothing is reserved from their collection until they fill it.
+ * Returns null if they can't see the deck.
+ */
+export async function copyDeck(userId: string, deckId: string) {
+	const deck = await prisma.deck.findUnique({
+		where: { id: deckId },
+		select: {
+			userId: true,
+			isPublic: true,
+			name: true,
+			sideId: true,
+			formatId: true,
+			requireLegality: true,
+			notes: true,
+			identityCardId: true,
+			cards: { select: { cardId: true, quantity: true } },
+		},
+	})
+	if (!deck || !canViewDeck(deck, userId)) return null
+	return prisma.deck.create({
+		data: {
+			userId,
+			name: copyName(deck.name),
+			sideId: deck.sideId,
+			formatId: deck.formatId,
+			requireLegality: deck.requireLegality,
+			notes: deck.notes,
+			identityCardId: deck.identityCardId,
+			cards: { create: deck.cards },
+		},
+		select: { id: true, name: true },
+	})
+}
+
+/** "Name (copy)", cut short if it would be too long. */
+export function copyName(name: string) {
+	const suffix = ' (copy)'
+	return `${name.slice(0, MAX_DECK_NAME_LENGTH - suffix.length).trimEnd()}${suffix}`
 }
 
 export async function deleteDeck(userId: string, deckId: string) {

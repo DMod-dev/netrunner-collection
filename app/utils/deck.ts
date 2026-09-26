@@ -54,6 +54,7 @@ export function deckSettingsFetcherKey(
 	setting:
 		| 'identity'
 		| 'legality'
+		| 'visibility'
 		| 'format'
 		| 'name'
 		| 'notes'

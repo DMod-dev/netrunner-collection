@@ -362,7 +362,99 @@ test('"Copy as text" copies the decklist; an imported deck links back', async ()
 		)
 })
 
-test('someone else’s deck is a 404', async () => {
+test('someone else’s public deck is read only, and can be copied', async () => {
+	const user = userEvent.setup()
+	await insertCards()
+	const owner = await prisma.user.create({
+		data: { ...createUser(), username: 'glacier_fan', name: 'Gia' },
+		select: { id: true },
+	})
+	const viewer = await insertUser()
+	const deck = await createDeck(owner.id, {
+		identityCardId: 'precision_design',
+		formatId: 'standard',
+		name: 'Glacier',
+	})
+	await prisma.deck.update({
+		where: { id: deck!.id },
+		data: { notes: 'Rez everything', identityFromCollection: 1 },
+	})
+	await prisma.deckCard.create({
+		data: {
+			deckId: deck!.id,
+			cardId: 'hedge_fund',
+			quantity: 3,
+			fromCollection: 3,
+		},
+	})
+	renderBuilder(viewer.cookie, `/decks/${deck!.id}`)
+
+	expect(
+		await screen.findByRole('heading', { level: 1, name: 'Glacier' }),
+	).toBeInTheDocument()
+	expect(screen.getByRole('link', { name: 'Gia' })).toHaveAttribute(
+		'href',
+		'/decklists?author=glacier_fan',
+	)
+	const operations = screen.getByRole('region', { name: 'Operation' })
+	expect(within(operations).getByText('3 copies')).toBeInTheDocument()
+	expect(screen.getByText('Rez everything')).toBeInTheDocument()
+	// nothing to change, no browser, and nothing about the owner's collection
+	expect(screen.queryByRole('region', { name: 'Card browser' })).toBeNull()
+	expect(screen.queryByRole('button', { name: /^Add one/ })).toBeNull()
+	expect(screen.queryByRole('switch')).toBeNull()
+	expect(screen.queryByText(/from your collection/i)).toBeNull()
+
+	await user.click(screen.getByRole('button', { name: 'Export' }))
+	await user.click(await screen.findByRole('menuitem', { name: 'Copy link' }))
+	await expect
+		.poll(() => navigator.clipboard.readText())
+		.toBe(`http://localhost:3000/decks/${deck!.id}`)
+	await user.keyboard('{Escape}')
+
+	await user.click(screen.getByRole('button', { name: 'Copy to my decks' }))
+	// the copy opens in the builder
+	expect(
+		await screen.findByRole('region', { name: 'Card browser' }),
+	).toBeInTheDocument()
+	expect(screen.getByLabelText('Deck name')).toHaveValue('Glacier (copy)')
+	expect(await prisma.deck.count({ where: { userId: viewer.id } })).toBe(1)
+})
+
+test('the owner can make a deck private; then the link only works for them', async () => {
+	const user = userEvent.setup()
+	await insertCards()
+	const owner = await insertUser()
+	const deck = await createDeck(owner.id, {
+		identityCardId: 'precision_design',
+		formatId: 'standard',
+	})
+	renderBuilder(owner.cookie, `/decks/${deck!.id}`)
+
+	const visibility = await screen.findByRole('switch', { name: 'Public' })
+	expect(visibility).toBeChecked()
+	await user.click(screen.getByRole('button', { name: 'Export' }))
+	expect(
+		await screen.findByRole('menuitem', { name: 'Copy link' }),
+	).toBeInTheDocument()
+	await user.keyboard('{Escape}')
+
+	await user.click(visibility)
+	await expect
+		.poll(() =>
+			prisma.deck.findUnique({
+				where: { id: deck!.id },
+				select: { isPublic: true },
+			}),
+		)
+		.toEqual({ isPublic: false })
+	expect(screen.getByRole('switch', { name: 'Public' })).not.toBeChecked()
+	await user.click(screen.getByRole('button', { name: 'Export' }))
+	await screen.findByRole('menuitem', { name: 'Copy as text' })
+	expect(screen.queryByRole('menuitem', { name: 'Copy link' })).toBeNull()
+})
+
+test('someone else’s private deck is a 404; signed out, you log in first', async () => {
 	await insertCards()
 	const owner = await insertUser()
 	const other = await insertUser()
@@ -370,12 +462,34 @@ test('someone else’s deck is a 404', async () => {
 		identityCardId: 'precision_design',
 		formatId: 'standard',
 	})
-	const request = new Request(`http://localhost/decks/${deck!.id}`, {
-		headers: { cookie: other.cookie },
+	await prisma.deck.update({
+		where: { id: deck!.id },
+		data: { isPublic: false },
 	})
-	await expect(
-		loader({ request, params: { deckId: deck!.id } } as Parameters<
-			typeof loader
-		>[0]),
-	).rejects.toMatchObject({ status: 404 })
+	const load = (cookie: string) =>
+		loader({
+			request: new Request(`http://localhost/decks/${deck!.id}`, {
+				headers: { cookie },
+			}),
+			params: { deckId: deck!.id },
+		} as Parameters<typeof loader>[0])
+
+	await expect(load(other.cookie)).rejects.toMatchObject({ status: 404 })
+	const signedOut = await load('').catch((error: unknown) => error)
+	expect(signedOut).toBeInstanceOf(Response)
+	expect((signedOut as Response).headers.get('location')).toBe(
+		`/login?redirectTo=${encodeURIComponent(`/decks/${deck!.id}`)}`,
+	)
+
+	// public, anyone can open it, signed in or not
+	await prisma.deck.update({
+		where: { id: deck!.id },
+		data: { isPublic: true },
+	})
+	expect(await load('')).toMatchObject({ mode: 'view', signedIn: false })
+	expect(await load(other.cookie)).toMatchObject({
+		mode: 'view',
+		signedIn: true,
+	})
+	expect(await load(owner.cookie)).toMatchObject({ mode: 'build' })
 })
