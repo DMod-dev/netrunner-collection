@@ -4,6 +4,7 @@ import {
 	Loading02,
 	SearchMd,
 	SearchRefraction,
+	XClose,
 } from '@untitledui/icons'
 import { type SEOHandle } from '@nasa-gcn/remix-seo'
 import { useEffect, useId, useRef, useState } from 'react'
@@ -47,6 +48,7 @@ import {
 	getFilterOptions,
 	searchCards,
 } from '#app/utils/collection.server.ts'
+import { pickArtPrinting } from '#app/utils/collection.ts'
 import { prisma } from '#app/utils/db.server.ts'
 import { cn, useDebounce } from '#app/utils/misc.tsx'
 import { type Route } from './+types/index.ts'
@@ -68,7 +70,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 	const owned = get('owned')
 	const params: CardSearchParams = {
 		q: get('q'),
-		side: get('side'),
+		sides: url.searchParams.getAll('side').filter(Boolean),
 		factions: url.searchParams.getAll('faction').filter(Boolean),
 		type: get('type'),
 		set: get('set'),
@@ -286,10 +288,20 @@ function Filters({
 	const formRef = useRef<HTMLFormElement>(null)
 	// Toggles aren't form controls, so they're mirrored into hidden inputs and
 	// submit the form themselves.
-	const [side, setSide] = useState(searchParams.get('side') ?? '')
+	const [sides, setSides] = useState(() =>
+		searchParams.getAll('side').filter(Boolean),
+	)
 	const [factions, setFactions] = useState(() =>
 		searchParams.getAll('faction').filter(Boolean),
 	)
+	// With no side picked, every faction can be; otherwise only the ones that
+	// have cards on a picked side.
+	const inPickedSides = (
+		toggle: (typeof filters.factionToggles)[number],
+		picked = sides,
+	) =>
+		picked.length === 0 ||
+		toggle.factions.some((f) => picked.includes(f.sideId))
 
 	// "/" jumps to the search box. It isn't autofocused, so that card
 	// shortcuts work as soon as the page loads.
@@ -355,27 +367,52 @@ function Filters({
 				<Button type="submit" size="icon" aria-label="Search">
 					<Icon icon={SearchMd} size="sm" />
 				</Button>
+				{/* always here, so the panel doesn't jump when filters are set */}
+				{hasFilters ? (
+					<Link
+						to="/collection"
+						replace
+						preventScrollReset
+						aria-label="Clear filters"
+						className={cn(
+							buttonVariants({ variant: 'outline' }),
+							clearClassName,
+						)}
+					>
+						<Icon icon={XClose} size="sm" />
+						<span className="max-sm:hidden">Clear</span>
+					</Link>
+				) : (
+					<Button
+						type="button"
+						variant="outline"
+						disabled
+						aria-label="Clear filters"
+						className={clearClassName}
+					>
+						<Icon icon={XClose} size="sm" />
+						<span className="max-sm:hidden">Clear</span>
+					</Button>
+				)}
 			</div>
 			<div className="flex flex-wrap gap-x-6 gap-y-3">
 				<ToggleFilter label="Side">
 					<ToggleGroup
 						aria-label="Side"
 						variant="outline"
-						spacing={0}
-						value={side ? [side] : []}
+						multiple
+						value={sides}
 						onValueChange={(value: string[]) => {
-							const next = value[0] ?? ''
-							setSide(next)
-							// a side drops the other side's factions
-							if (next) {
-								setFactions((current) =>
-									current.filter((id) =>
-										filters.factions.some(
-											(f) => f.id === id && f.sideId === next,
-										),
-									),
-								)
-							}
+							setSides(value)
+							// drop factions the picked sides don't have
+							setFactions((current) =>
+								current.filter((faction) => {
+									const toggle = filters.factionToggles.find(
+										(t) => t.value === faction,
+									)
+									return !toggle || inPickedSides(toggle, value)
+								}),
+							)
 							if (formRef.current) autoSubmit(formRef.current)
 						}}
 					>
@@ -399,34 +436,47 @@ function Filters({
 							if (formRef.current) autoSubmit(formRef.current)
 						}}
 					>
-						{filters.factions.map((f) => (
-							<ToggleGroupItem
-								key={f.id}
-								value={f.id}
-								disabled={Boolean(side) && f.sideId !== side}
-								// both sides have a "Neutral"
-								aria-label={
-									filters.factions.some(
-										(o) => o.id !== f.id && o.name === f.name,
-									)
-										? `${f.name} (${f.sideId === 'corp' ? 'Corp' : 'Runner'})`
-										: undefined
-								}
-								style={
-									{ '--faction': factionColor(f.id) } as React.CSSProperties
-								}
-								className={cn(toggleClassName, factionToggleClassName)}
-							>
-								<span
-									aria-hidden
-									className="size-2.5 shrink-0 rounded-full bg-(--faction) transition-colors group-disabled/toggle:bg-current"
-								/>
-								{f.name}
-							</ToggleGroupItem>
-						))}
+						{filters.factionToggles.map((toggle) => {
+							const colors = [
+								...new Set(toggle.factions.map((f) => factionColor(f.id))),
+							]
+							return (
+								<ToggleGroupItem
+									key={toggle.value}
+									value={toggle.value}
+									disabled={!inPickedSides(toggle)}
+									title={
+										toggle.factions.length > 1
+											? toggle.factions.map((f) => f.name).join(', ')
+											: undefined
+									}
+									style={
+										{
+											// a group's own color would be arbitrary
+											'--faction':
+												colors.length === 1 ? colors[0] : 'var(--foreground)',
+										} as React.CSSProperties
+									}
+									className={cn(toggleClassName, factionToggleClassName)}
+								>
+									<span aria-hidden className="flex shrink-0">
+										{colors.map((color) => (
+											<span
+												key={color}
+												style={{ '--dot': color } as React.CSSProperties}
+												className="ring-background size-2.5 rounded-full bg-(--dot) transition-colors not-first:-ml-1 not-only:ring-1 group-disabled/toggle:bg-current"
+											/>
+										))}
+									</span>
+									{toggle.name}
+								</ToggleGroupItem>
+							)
+						})}
 					</ToggleGroup>
 				</ToggleFilter>
-				{side ? <input type="hidden" name="side" value={side} /> : null}
+				{sides.map((side) => (
+					<input key={side} type="hidden" name="side" value={side} />
+				))}
 				{factions.map((id) => (
 					<input key={id} type="hidden" name="faction" value={id} />
 				))}
@@ -473,24 +523,16 @@ function Filters({
 					<NativeSelectOption value="missing">Not owned</NativeSelectOption>
 				</FilterSelect>
 			</div>
-			{hasFilters ? (
-				<Link
-					to="/collection"
-					replace
-					preventScrollReset
-					className="text-muted-foreground self-start text-sm underline"
-				>
-					Clear filters
-				</Link>
-			) : null}
 		</Form>
 	)
 }
 
+const clearClassName = 'bg-background dark:bg-input/30 shrink-0'
+
 // On the muted filter panel, toggles sit on the page background like the
 // selects, and a pressed one fills in.
 const toggleClassName =
-	'bg-background hover:bg-background dark:bg-input/30 dark:hover:bg-input/50 aria-pressed:border-primary aria-pressed:bg-primary aria-pressed:text-primary-foreground aria-pressed:hover:bg-primary/80 aria-pressed:hover:text-primary-foreground'
+	'bg-background hover:bg-background dark:bg-input/30 dark:hover:bg-input/50 aria-pressed:border-selected aria-pressed:bg-selected aria-pressed:text-selected-foreground aria-pressed:hover:bg-selected/85 aria-pressed:hover:text-selected-foreground dark:aria-pressed:bg-selected dark:aria-pressed:hover:bg-selected/85'
 // Faction toggles take their faction's color (`--faction`) instead.
 const factionToggleClassName =
 	'hover:border-(--faction) aria-pressed:border-(--faction) aria-pressed:bg-(--faction)/15 aria-pressed:text-foreground aria-pressed:hover:bg-(--faction)/25 aria-pressed:hover:text-foreground dark:aria-pressed:bg-(--faction)/25'
@@ -559,8 +601,10 @@ function CardTile({
 			p.variants.reduce((vSum, v) => vSum + v.quantity, 0),
 		0,
 	)
+	const preferredId = card.preferredArt[0]?.printingId ?? null
 	const featured =
-		card.printings.find((p) => p.set.id === featuredSetId) ?? card.printings[0]
+		card.printings.find((p) => p.set.id === featuredSetId) ??
+		pickArtPrinting(card.printings, preferredId)
 	const labelFor = (p: LoaderCard['printings'][number]) =>
 		`${card.title} (${p.set.name})`
 
@@ -569,7 +613,7 @@ function CardTile({
 			imageUrl={featured?.imageLarge ?? featured?.imageSmall ?? null}
 			alt={card.title}
 			dimmed={owned === 0}
-			badge={<CountBadge owned={owned} target={card.deckLimit} />}
+			badge={<CountBadge owned={owned} />}
 			overlay={
 				<>
 					<header className="flex flex-col gap-1">
@@ -584,16 +628,16 @@ function CardTile({
 									{card.title}
 								</a>
 							</h2>
-							<CountBadge
-								owned={owned}
-								target={card.deckLimit}
-								title={`You own ${owned} (deck limit ${card.deckLimit})`}
-							/>
+							<CountBadge owned={owned} />
 						</div>
 						<p className="text-muted-foreground text-xs">
 							<FactionDot factionId={card.faction.id} /> {card.faction.name} ·{' '}
 							{card.type.name}
 							{card.displaySubtypes ? `: ${card.displaySubtypes}` : ''}
+						</p>
+						{/* a deck building limit, not a collection target */}
+						<p className="text-muted-foreground text-xs">
+							Deck limit {card.deckLimit}
 						</p>
 					</header>
 					<ul className="flex flex-col gap-2">
@@ -615,6 +659,7 @@ function CardTile({
 							label: labelFor(printing),
 							heading: printing.set.name,
 						}))}
+						defaultArt={{ cardId: card.id, printingId: preferredId }}
 					/>
 				</>
 			}

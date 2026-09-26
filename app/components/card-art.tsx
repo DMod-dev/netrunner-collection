@@ -1,6 +1,7 @@
 import { DotsHorizontal, XClose } from '@untitledui/icons'
 import { useEffect, useRef, useState } from 'react'
 import {
+	DefaultArtButton,
 	QuantityStepper,
 	STEPPER_SET_EVENT,
 	STEPPER_STEP_EVENT,
@@ -55,7 +56,7 @@ export function CardArtTile({
 }: {
 	imageUrl: string | null
 	alt: string
-	/** Grey out the art, e.g. when none are owned. */
+	/** Wash out the art, e.g. when none are owned. */
 	dimmed?: boolean
 	/**
 	 * Shown in the corner of the art while the overlay is closed, e.g. the
@@ -122,7 +123,10 @@ export function CardArtTile({
 		>
 			<button
 				type="button"
-				className="focus-visible:ring-ring absolute inset-0 rounded-lg focus-visible:ring-2 focus-visible:outline-none"
+				className={cn(
+					'focus-visible:ring-ring absolute inset-0 rounded-lg focus-visible:ring-2 focus-visible:outline-none',
+					dimmed && washedOutBackdrop,
+				)}
 				aria-expanded={pinned}
 				aria-label={`${alt}: show details`}
 				onClick={() => setPinned((p) => !p)}
@@ -136,7 +140,7 @@ export function CardArtTile({
 						height={420}
 						className={cn(
 							'size-full object-cover transition-[filter,opacity]',
-							dimmed && 'opacity-60 grayscale',
+							dimmed && washedOut,
 						)}
 					/>
 				) : (
@@ -180,21 +184,30 @@ export function CardArtTile({
 	)
 }
 
-/** Owned vs target pill, green once the target is met. */
+// Unowned art fades toward the page (white, or near-black in dark mode),
+// keeping enough colour to recognise it. The image goes see-through over
+// that backdrop.
+export const washedOutBackdrop = 'bg-white dark:bg-background'
+export const washedOut = 'opacity-45 saturate-75'
+
+/**
+ * How many are owned, as a pill. With a target (set completion, a deck) it
+ * reads "owned / target" and turns green once the target is met.
+ */
 export function CountBadge({
 	owned,
 	target,
-	title,
+	title = target === undefined ? `You own ${owned}` : undefined,
 }: {
 	owned: number
-	target: number
+	target?: number
 	title?: string
 }) {
 	return (
 		<span
 			className={cn(
 				'shrink-0 rounded-full px-2 py-0.5 text-xs font-bold tabular-nums',
-				owned >= target
+				target !== undefined && owned >= target
 					? 'bg-success text-success-foreground'
 					: owned > 0
 						? 'bg-secondary text-secondary-foreground'
@@ -202,7 +215,7 @@ export function CountBadge({
 			)}
 			title={title}
 		>
-			{owned} / {target}
+			{target === undefined ? owned : `${owned} / ${target}`}
 		</span>
 	)
 }
@@ -258,6 +271,7 @@ export function OverlayCounters({
 export function VersionsButton({
 	title,
 	printings,
+	defaultArt,
 }: {
 	title: string
 	printings: Array<{
@@ -265,6 +279,8 @@ export function VersionsButton({
 		label: string
 		heading: string
 	}>
+	/** Lets each printing be picked as the card's art, if it has several. */
+	defaultArt?: { cardId: string; printingId: string | null }
 }) {
 	const dialogRef = useRef<HTMLDialogElement>(null)
 	return (
@@ -313,6 +329,16 @@ export function VersionsButton({
 									printing={printing}
 									label={label}
 									heading={heading}
+									badge={
+										defaultArt && printings.length > 1 ? (
+											<DefaultArtButton
+												cardId={defaultArt.cardId}
+												printingId={printing.id}
+												label={label}
+												isDefault={printing.id === defaultArt.printingId}
+											/>
+										) : null
+									}
 								/>
 							</li>
 						))}

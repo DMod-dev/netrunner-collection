@@ -154,6 +154,10 @@ test('searching, paging and clearing filters stay in place', async ({
 	await expect(page).toHaveURL('/collection')
 	await expect(search).toHaveValue('')
 	expect(await scrollY(page)).toBe(150)
+	// nothing left to clear, but the button keeps its place
+	await expect(
+		page.getByRole('button', { name: 'Clear filters' }),
+	).toBeDisabled()
 
 	expect(loads).toBe(0)
 })
@@ -239,8 +243,13 @@ test('picking a side turns off the other side’s factions', async ({
 	await expect(faction).toHaveAttribute('aria-pressed', 'true')
 	await expect(page).toHaveURL(/faction=/)
 
+	// both sides: the faction stays
 	const corp = sideToggle(page, 'Corp')
 	await corp.click()
+	await expect(page).toHaveURL(/side=runner&side=corp&faction=/)
+	await expect(faction).toHaveAttribute('aria-pressed', 'true')
+
+	await sideToggle(page, 'Runner').click()
 	await expect(page).toHaveURL('/collection?side=corp')
 	await expect(faction).toHaveAttribute('aria-pressed', 'false')
 	await expect(faction).toBeDisabled()
@@ -263,7 +272,7 @@ test('tiles show the owned count and change it', async ({
 	const tile = cardTile(page, title)
 
 	// visible without hovering (the overlay has its own copy)
-	await expect(tile.getByText('0 / 3').first()).toBeVisible()
+	await expect(tile.getByTitle('You own 0').first()).toBeVisible()
 
 	const add = tile.getByRole('button', {
 		name: `Add one ${title} (${setName})`,
@@ -283,6 +292,8 @@ test('tiles show the owned count and change it', async ({
 		await route.continue().catch(() => {})
 	})
 	await tile.hover()
+	// the deck limit is only information, not a target
+	await expect(tile.getByText('Deck limit 3')).toBeVisible()
 	await add.click()
 	await add.click()
 	await expect(quantity).toHaveValue('2')
@@ -310,7 +321,7 @@ test('tiles show the owned count and change it', async ({
 		.toEqual({ quantity: 3 })
 
 	await page.mouse.move(0, 0)
-	await expect(tile.getByText('3 / 3').first()).toBeVisible()
+	await expect(tile.getByTitle('You own 3').first()).toHaveText('3')
 })
 
 test('a failed quantity change is reported and undone', async ({

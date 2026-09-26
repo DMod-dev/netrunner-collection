@@ -25,6 +25,9 @@
 	/* not part of the preset: complete sets and cards */
 	--success: oklch(0.627 0.194 149.214);
 	--success-foreground: oklch(0.985 0 0);
+	/* not part of the preset: whatever is on, picked or current */
+	--selected: oklch(0.52 0.105 223.128);
+	--selected-foreground: oklch(0.985 0 0);
 	--border: oklch(0.92 0.004 286.32);
 	--input: oklch(0.92 0.004 286.32);
 	--ring: oklch(0.705 0.015 286.067);
@@ -48,6 +51,8 @@
 	--destructive: oklch(0.704 0.191 22.216);
 	--success: oklch(0.723 0.219 149.579);
 	--success-foreground: oklch(0.21 0.006 285.885);
+	--selected: oklch(0.74 0.12 216);
+	--selected-foreground: oklch(0.21 0.006 285.885);
 	--border: oklch(1 0 0 / 10%);
 	--input: oklch(1 0 0 / 15%);
 	--ring: oklch(0.552 0.016 285.938);
@@ -71,6 +76,8 @@
 	--color-destructive: var(--destructive);
 	--color-success: var(--success);
 	--color-success-foreground: var(--success-foreground);
+	--color-selected: var(--selected);
+	--color-selected-foreground: var(--selected-foreground);
 	--color-border: var(--border);
 	--color-input: var(--input);
 	--color-ring: var(--ring);
