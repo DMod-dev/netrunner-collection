@@ -1,26 +1,19 @@
 import { cachedUntilNextSync } from './card-data-cache.server.ts'
 import { prisma } from './db.server.ts'
+import { type CardLite, type FormatRules } from './deck-rules.ts'
 
 /**
- * What a format's current ban/restricted/points list says, as lookups by
- * card id. `Card.legalFormats` already says whether a card is in the format's
- * card pool; a card is legal if it's in the pool and not banned here.
+ * Startup's cap on agendas worth 3+ points, per list. NetrunnerDB's public
+ * API doesn't include it (it's `max_3_point_agendas` in the lists in
+ * NetrunnerDB/netrunner-cards-json), so it's copied here; a list missing from
+ * this table has no cap.
  */
-export type FormatRules = {
-	formatId: string
-	/** The list in force, or null if the format has none. */
-	restrictionId: string | null
-	restrictionName: string | null
-	banned: Set<string>
-	restricted: Set<string>
-	/** Points each card costs (points lists, e.g. Eternal). */
-	points: Map<string, number>
-	pointLimit: number | null
-	globalPenalty: Set<string>
-	/** Extra influence a card costs whatever its faction. */
-	universalFactionCost: Map<string, number>
-	/** card_subtype_ids that are banned outright. */
-	bannedSubtypes: Set<string>
+export const MAX_THREE_POINT_AGENDAS: Record<string, number> = {
+	startup_ban_list_24_09: 3,
+	startup_balance_update_25_04: 4,
+	startup_balance_update_25_11: 4,
+	startup_balance_update_26_03: 3,
+	startup_balance_update_26_05: 4,
 }
 
 /**
@@ -46,13 +39,14 @@ async function loadFormatRules(formatId: string): Promise<FormatRules | null> {
 		formatId,
 		restrictionId: null,
 		restrictionName: null,
-		banned: new Set(),
-		restricted: new Set(),
-		points: new Map(),
+		banned: [],
+		restricted: [],
+		points: {},
 		pointLimit: null,
-		globalPenalty: new Set(),
-		universalFactionCost: new Map(),
-		bannedSubtypes: new Set(),
+		globalPenalty: [],
+		universalFactionCost: {},
+		bannedSubtypes: [],
+		maxThreePointAgendas: null,
 	}
 	const restriction = format.activeRestrictionId
 		? await prisma.restriction.findUnique({
@@ -62,7 +56,10 @@ async function loadFormatRules(formatId: string): Promise<FormatRules | null> {
 					name: true,
 					pointLimit: true,
 					bannedSubtypes: true,
-					verdicts: { select: { cardId: true, verdict: true, value: true } },
+					verdicts: {
+						select: { cardId: true, verdict: true, value: true },
+						orderBy: { cardId: 'asc' },
+					},
 				},
 			})
 		: null
@@ -71,27 +68,62 @@ async function loadFormatRules(formatId: string): Promise<FormatRules | null> {
 	rules.restrictionId = restriction.id
 	rules.restrictionName = restriction.name
 	rules.pointLimit = restriction.pointLimit
-	rules.bannedSubtypes = new Set(
-		restriction.bannedSubtypes.split(',').filter(Boolean),
-	)
+	rules.bannedSubtypes = splitWrapped(restriction.bannedSubtypes)
+	rules.maxThreePointAgendas = MAX_THREE_POINT_AGENDAS[restriction.id] ?? null
 	for (const { cardId, verdict, value } of restriction.verdicts) {
 		switch (verdict) {
 			case 'banned':
-				rules.banned.add(cardId)
+				rules.banned.push(cardId)
 				break
 			case 'restricted':
-				rules.restricted.add(cardId)
+				rules.restricted.push(cardId)
 				break
 			case 'global_penalty':
-				rules.globalPenalty.add(cardId)
+				rules.globalPenalty.push(cardId)
 				break
 			case 'points':
-				if (value !== null) rules.points.set(cardId, value)
+				if (value !== null) rules.points[cardId] = value
 				break
 			case 'universal_faction_cost':
-				if (value !== null) rules.universalFactionCost.set(cardId, value)
+				if (value !== null) rules.universalFactionCost[cardId] = value
 				break
 		}
 	}
 	return rules
+}
+
+/** "," or ",a,b," (how Card and Restriction store id lists) → ["a", "b"] */
+function splitWrapped(ids: string) {
+	return ids.split(',').filter(Boolean)
+}
+
+/** The Card columns `toCardLite` reads. */
+export const CARD_LITE_SELECT = {
+	id: true,
+	title: true,
+	sideId: true,
+	factionId: true,
+	typeId: true,
+	subtypes: true,
+	deckLimit: true,
+	influenceCost: true,
+	agendaPoints: true,
+	minimumDeckSize: true,
+	influenceLimit: true,
+	legalFormats: true,
+} as const
+
+type CardRow = {
+	[K in keyof typeof CARD_LITE_SELECT]: K extends 'subtypes' | 'legalFormats'
+		? string
+		: CardLite[K]
+}
+
+/** A Card row as the deck rules take it (id lists split into arrays). */
+export function toCardLite(card: CardRow): CardLite {
+	return {
+		...card,
+		subtypes: splitWrapped(card.subtypes),
+		legalFormats: splitWrapped(card.legalFormats),
+	}
 }
