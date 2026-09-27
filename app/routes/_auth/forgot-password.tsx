@@ -64,23 +64,25 @@ export async function action({ request }: Route.ActionArgs) {
 		target: usernameOrEmail,
 	})
 
-	const response = await sendEmail({
-		to: user.email,
+	// Not awaited: an unknown account answers at once, so a real one must not
+	// take noticeably longer while the email provider responds.
+	const { email } = user
+	void sendEmail({
+		to: email,
 		subject: `Netrunner Collection Password Reset`,
 		react: (
 			<ForgotPasswordEmail onboardingUrl={verifyUrl.toString()} otp={otp} />
 		),
 	})
+		.then((response) => {
+			if (response.status !== 'success') throw response.error
+		})
+		.catch((error: unknown) => {
+			releaseEmailCooldown('reset-password', email)
+			console.error('Failed to send the password reset email', error)
+		})
 
-	if (response.status === 'success') {
-		return redirect(redirectTo.toString())
-	} else {
-		releaseEmailCooldown('reset-password', user.email)
-		return data(
-			{ result: submission.reply({ formErrors: [response.error.message] }) },
-			{ status: 500 },
-		)
-	}
+	return redirect(redirectTo.toString())
 }
 
 function ForgotPasswordEmail({

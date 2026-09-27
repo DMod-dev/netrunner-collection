@@ -1,10 +1,11 @@
-import { invariant } from '@epic-web/invariant'
+import { invariant, invariantResponse } from '@epic-web/invariant'
 import * as E from 'react-email'
 import { data } from 'react-router'
 import {
 	requireRecentVerification,
 	type VerifyFunctionArgs,
 } from '#app/routes/_auth/verify.server.ts'
+import { requireUserId, signOutOtherSessions } from '#app/utils/auth.server.ts'
 import { prisma } from '#app/utils/db.server.ts'
 import { sendEmail } from '#app/utils/email.server.ts'
 import { redirectWithToast } from '#app/utils/toast.server.ts'
@@ -16,9 +17,17 @@ export async function handleVerification({
 	submission,
 }: VerifyFunctionArgs) {
 	await requireRecentVerification(request)
+	const userId = await requireUserId(request)
 	invariant(
 		submission.status === 'success',
 		'Submission should be successful by now',
+	)
+	// the code was checked against `target` from the form; it must be the
+	// signed-in user's own
+	invariantResponse(
+		submission.value.target === userId,
+		'You can only change your own email',
+		{ status: 403 },
 	)
 
 	const verifySession = await verifySessionStorage.getSession(
@@ -46,6 +55,8 @@ export async function handleVerification({
 		select: { id: true, email: true, username: true },
 		data: { email: newEmail },
 	})
+	// the email is how the account is recovered; nobody else stays signed in
+	await signOutOtherSessions(request, user.id)
 
 	void sendEmail({
 		to: preUpdateUser.email,
