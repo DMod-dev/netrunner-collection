@@ -11,6 +11,7 @@ import morgan from 'morgan'
 import { formatUrlForLog } from '../app/utils/log-redaction.ts'
 import { createHostAllowlist } from './allowed-hosts.ts'
 import { createBodyLimit } from './body-limit.ts'
+import { routerPath } from './router-path.ts'
 
 const MODE = process.env.NODE_ENV ?? 'development'
 const IS_PROD = MODE === 'production'
@@ -142,9 +143,11 @@ const rateLimitDefault = {
 	// to trusting req.ip when hosted on Fly.io. However, users cannot spoof Fly-Client-Ip.
 	// When sitting behind a CDN such as cloudflare, replace fly-client-ip with the CDN
 	// specific header such as cf-connecting-ip
+	// ipKeyGenerator groups IPv6 addresses by /56: one host usually has a whole
+	// /64 to itself, and would otherwise get a fresh bucket per address.
 	keyGenerator: (req: express.Request) => {
-		const ip = req.ip ?? req.socket?.remoteAddress
-		return req.get('fly-client-ip') ?? ipKeyGenerator(ip ?? '0.0.0.0')
+		const ip = req.get('fly-client-ip') ?? req.ip ?? req.socket?.remoteAddress
+		return ipKeyGenerator(ip ?? '0.0.0.0')
 	},
 }
 
@@ -189,13 +192,14 @@ const expensiveRequests: Array<{ method: string; path: string }> = [
 ]
 
 app.use((req, res, next) => {
-	if (req.path.startsWith('/resources/images')) {
+	const path = routerPath(req.path)
+	if (path.startsWith('/resources/images')) {
 		return imageRateLimit(req, res, next)
 	}
 
 	// Client-side navigations and fetchers hit `<route>.data`; treat those
 	// the same as the document request.
-	const routePath = req.path.replace(/\.data$/, '')
+	const routePath = path.replace(/\.data$/, '')
 	if (
 		expensiveRequests.some(
 			(r) => r.method === req.method && r.path === routePath,
@@ -217,7 +221,7 @@ app.use((req, res, next) => {
 		'/resources/verify',
 	]
 	if (req.method !== 'GET' && req.method !== 'HEAD') {
-		if (strongPaths.some((p) => req.path.includes(p))) {
+		if (strongPaths.some((p) => path.includes(p))) {
 			return strongestRateLimit(req, res, next)
 		}
 		return strongRateLimit(req, res, next)
@@ -225,7 +229,7 @@ app.use((req, res, next) => {
 
 	// the verify route is a special case because it's a GET route that
 	// can have a token in the query string
-	if (req.path.includes('/verify')) {
+	if (path.includes('/verify')) {
 		return strongestRateLimit(req, res, next)
 	}
 
