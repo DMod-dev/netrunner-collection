@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { RouterContextProvider } from 'react-router'
 import sharp from 'sharp'
@@ -6,7 +7,7 @@ import { afterAll, beforeAll, expect, test } from 'vitest'
 import { getUserImages } from '#tests/db-utils.ts'
 import { BASE_URL } from '#tests/utils.ts'
 import { type Route } from './+types/images.ts'
-import { loader } from './images.tsx'
+import { loader, pruneImageCache } from './images.tsx'
 
 const ROUTE_PATH = '/resources/images'
 const KODY = './tests/fixtures/images/users/seed/profile-images/kody.png'
@@ -151,4 +152,23 @@ test('404s for an object that does not exist', async () => {
 		'objectKey=users/imgtest/profile-images/3-missing.png',
 	)
 	expect(response.status).toBe(404)
+})
+
+test('prunes the least recently used cache files once the cache is too big', async () => {
+	const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'image-cache-'))
+	try {
+		for (const [i, name] of ['old', 'mid', 'new'].entries()) {
+			const file = path.join(dir, `${name}.webp`)
+			await fs.writeFile(file, Buffer.alloc(100))
+			const used = new Date(Date.UTC(2026, 0, i + 1))
+			await fs.utimes(file, used, used)
+		}
+		// under the cap: nothing goes
+		expect(await pruneImageCache(dir, 300)).toBe(300)
+		// over it: oldest first, down to 75% of the cap
+		expect(await pruneImageCache(dir, 250)).toBe(100)
+		expect(await fs.readdir(dir)).toEqual(['new.webp'])
+	} finally {
+		await fs.rm(dir, { recursive: true, force: true })
+	}
 })
