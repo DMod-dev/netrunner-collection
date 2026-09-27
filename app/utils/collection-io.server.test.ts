@@ -19,6 +19,29 @@ test('parseCsv handles quotes, escaped quotes, commas and CRLF', () => {
 	])
 })
 
+test('rowsToCsv keeps spreadsheets from running cells as formulas', () => {
+	const row = {
+		printingId: '01110',
+		card: 'Hedge Fund',
+		set: 'Core Set',
+		version: '=HYPERLINK("https://example.com","x")',
+		quantity: 1,
+		notes: '-2 from the binder',
+	}
+	const csv = rowsToCsv([row])
+	expect(csv).toContain(`"'=HYPERLINK(""https://example.com"",""x"")"`)
+	expect(csv).toContain(`'-2 from the binder`)
+	// and the guard comes off again on import
+	expect(parseCsv(csv)[1]).toEqual([
+		'01110',
+		'Hedge Fund',
+		'Core Set',
+		row.version,
+		'1',
+		row.notes,
+	])
+})
+
 async function insertPrintings() {
 	await prisma.faction.create({
 		data: { id: 'neutral_corp', name: 'Neutral Corp', sideId: 'corp' },

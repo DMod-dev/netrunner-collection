@@ -527,7 +527,15 @@ test('copyDeck copies a public deck or the user’s own, not a private one', asy
 
 	await updateDeck(owner.id, deck.id, { isPublic: false })
 	expect(await copyDeck(other.id, deck.id)).toBeNull()
-	expect(await copyDeck(owner.id, deck.id)).not.toBeNull()
+	const ownCopy = await copyDeck(owner.id, deck.id)
+	expect(ownCopy).not.toBeNull()
+	// copying your own private deck mustn't publish it
+	expect(
+		await prisma.deck.findUniqueOrThrow({
+			where: { id: ownCopy!.id },
+			select: { isPublic: true },
+		}),
+	).toEqual({ isPublic: false })
 	expect(await copyDeck(owner.id, 'missing')).toBeNull()
 })
 

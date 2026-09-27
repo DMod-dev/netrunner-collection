@@ -638,6 +638,8 @@ export async function copyDeck(userId: string, deckId: string) {
 	return prisma.deck.create({
 		data: {
 			userId,
+			// a copy of your own private deck stays private
+			isPublic: deck.userId === userId ? deck.isPublic : true,
 			name: copyName(deck.name),
 			sideId: deck.sideId,
 			formatId: deck.formatId,
