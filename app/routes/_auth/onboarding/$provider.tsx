@@ -115,9 +115,12 @@ export async function action({ request, params }: Route.ActionArgs) {
 				})
 				return
 			}
-		}).transform(async (data) => {
+		}).transform(async ({ imageUrl: _formImageUrl, ...data }) => {
 			const session = await signupWithConnection({
 				...data,
+				// The server fetches this URL, so it must be the one the provider
+				// gave us, not whatever the (hidden) form field was changed to.
+				imageUrl: verifySession.get(prefilledProfileKey)?.imageUrl,
 				email,
 				providerId: String(providerId),
 				providerName,
