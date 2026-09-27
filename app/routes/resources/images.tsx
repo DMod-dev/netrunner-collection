@@ -58,7 +58,19 @@ type ImgSource =
 	| { kind: 'avatar'; objectKey: string }
 	| { kind: 'static'; src: string }
 
+/**
+ * The cache shares the Fly volume with the database. Anyone can ask for any
+ * size/fit/format of any avatar, so without a cap it would grow until the
+ * volume is full and SQLite can no longer write.
+ */
+export const MAX_CACHE_BYTES = 256 * 1024 * 1024
+/** Pruning deletes the least recently used files down to this share. */
+const PRUNE_TO = 0.75
+
 let cacheDir: string | null = null
+/** Bytes in the cache directory; null until counted after the first write. */
+let cacheBytes: number | null = null
+let pruning: Promise<void> | null = null
 
 async function getCacheDir() {
 	if (cacheDir) return cacheDir
@@ -78,6 +90,56 @@ async function getCacheDir() {
 	await fs.mkdir(dir, { recursive: true })
 
 	return (cacheDir = dir)
+}
+
+async function listCache(dir: string) {
+	const names = await fs.readdir(dir).catch(() => [])
+	const files = await Promise.all(
+		names.map(async (name) => {
+			const file = path.join(dir, name)
+			const stat = await fs.stat(file).catch(() => null)
+			return stat?.isFile()
+				? { file, size: stat.size, used: stat.mtimeMs }
+				: null
+		}),
+	)
+	return files.filter((f) => f !== null)
+}
+
+/**
+ * Deletes the least recently used files (cache hits touch their mtime) until
+ * the cache is at most `PRUNE_TO` of `maxBytes`. Returns the bytes left.
+ */
+export async function pruneImageCache(dir: string, maxBytes = MAX_CACHE_BYTES) {
+	const files = await listCache(dir)
+	let total = files.reduce((sum, f) => sum + f.size, 0)
+	if (total <= maxBytes) return total
+	files.sort((a, b) => a.used - b.used)
+	for (const { file, size } of files) {
+		if (total <= maxBytes * PRUNE_TO) break
+		await fs.rm(file, { force: true })
+		total -= size
+	}
+	return total
+}
+
+async function recordCacheWrite(dir: string, bytes: number) {
+	cacheBytes =
+		cacheBytes === null
+			? (await listCache(dir)).reduce((sum, f) => sum + f.size, 0)
+			: cacheBytes + bytes
+	if (cacheBytes > MAX_CACHE_BYTES && !pruning) {
+		pruning = pruneImageCache(dir)
+			.then((total) => {
+				cacheBytes = total
+			})
+			.catch((error: unknown) => {
+				console.error('image cache pruning failed', error)
+			})
+			.finally(() => {
+				pruning = null
+			})
+	}
 }
 
 function badRequest(message: string) {
@@ -149,7 +211,8 @@ function getCachePath(dir: string, source: ImgSource, params: ImgParams) {
 		source.kind === 'avatar' ? source.objectKey : source.src,
 		params.width ?? '',
 		params.height ?? '',
-		params.fit ?? '',
+		// fit only matters when resizing, and defaults to cover
+		params.width || params.height ? (params.fit ?? 'cover') : '',
 		params.format ?? '',
 	].join('|')
 	const hash = createHash('sha256').update(key).digest('hex')
@@ -223,6 +286,9 @@ export async function loader({ request }: Route.LoaderArgs) {
 	const cachePathPrefix = getCachePath(dir, source, params)
 	const cached = await findCached(cachePathPrefix)
 	if (cached) {
+		// mark it recently used, for pruning
+		const now = new Date()
+		void fs.utimes(cached.path, now, now).catch(() => {})
 		return fileResponse(
 			cached.path,
 			OUTPUT_FORMATS[cached.format],
@@ -248,6 +314,8 @@ export async function loader({ request }: Route.LoaderArgs) {
 				width: params.width,
 				height: params.height,
 				fit: params.fit ?? 'cover',
+				// a bigger copy of a small image only takes up space
+				withoutEnlargement: true,
 			})
 		}
 		const outputFormat: OutputFormat = params.format ?? probed.format
@@ -258,6 +326,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 		const tmpPath = `${finalPath}.${process.pid}-${Date.now()}.tmp`
 		await fs.writeFile(tmpPath, output)
 		await fs.rename(tmpPath, finalPath)
+		void recordCacheWrite(dir, output.byteLength)
 
 		return fileResponse(
 			finalPath,

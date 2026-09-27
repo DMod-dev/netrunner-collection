@@ -79,7 +79,10 @@ export async function getCollectionRows(
 }
 
 function csvField(value: string | number) {
-	const text = String(value)
+	let text = String(value)
+	// Spreadsheets run a cell that starts with one of these as a formula, and
+	// labels and notes are free text (possibly from someone else's import file).
+	if (typeof value === 'string' && /^[=+\-@\t\r]/.test(text)) text = `'${text}`
 	return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text
 }
 
@@ -148,8 +151,10 @@ export function parseCsv(text: string): Array<Array<string>> {
 		record.push(field)
 		records.push(record)
 	}
-	// drop blank lines
-	return records.filter((r) => r.some((f) => f.trim() !== ''))
+	// drop blank lines, and undo csvField's formula guard so exports round-trip
+	return records
+		.filter((r) => r.some((f) => f.trim() !== ''))
+		.map((r) => r.map((f) => (/^'[=+\-@\t\r]/.test(f) ? f.slice(1) : f)))
 }
 
 type RawRow = {

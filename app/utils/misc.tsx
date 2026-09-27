@@ -289,16 +289,17 @@ export function useDebounce<
 	}, [delay])
 }
 
+const MAX_DOWNLOAD_BYTES = 5 * 1024 * 1024
+
 export async function downloadFile(url: string, retries: number = 0) {
 	const MAX_RETRIES = 3
 	try {
-		const response = await fetch(url)
+		const response = await fetch(url, { signal: AbortSignal.timeout(10_000) })
 		if (!response.ok) {
 			throw new Error(`Failed to fetch image with status ${response.status}`)
 		}
 		const contentType = response.headers.get('content-type') ?? 'image/jpg'
-		const arrayBuffer = await response.arrayBuffer()
-		const file = new File([arrayBuffer], 'downloaded-file', {
+		const file = new File([await readLimited(response)], 'downloaded-file', {
 			type: contentType,
 		})
 		return file
@@ -306,4 +307,32 @@ export async function downloadFile(url: string, retries: number = 0) {
 		if (retries > MAX_RETRIES) throw e
 		return downloadFile(url, retries + 1)
 	}
+}
+
+// Read at most MAX_DOWNLOAD_BYTES, so a huge (or endless) response can't be
+// buffered into the machine's memory.
+async function readLimited(response: Response) {
+	const declared = Number(response.headers.get('content-length'))
+	if (declared > MAX_DOWNLOAD_BYTES) {
+		throw new Error(`File is larger than ${MAX_DOWNLOAD_BYTES} bytes`)
+	}
+	const chunks: Array<Uint8Array> = []
+	let size = 0
+	if (response.body) {
+		for await (const chunk of response.body as AsyncIterable<Uint8Array>) {
+			size += chunk.byteLength
+			// leaving the loop cancels the stream
+			if (size > MAX_DOWNLOAD_BYTES) {
+				throw new Error(`File is larger than ${MAX_DOWNLOAD_BYTES} bytes`)
+			}
+			chunks.push(chunk)
+		}
+	}
+	const bytes = new Uint8Array(size)
+	let offset = 0
+	for (const chunk of chunks) {
+		bytes.set(chunk, offset)
+		offset += chunk.byteLength
+	}
+	return bytes
 }

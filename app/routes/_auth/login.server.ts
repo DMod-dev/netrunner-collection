@@ -96,17 +96,20 @@ export async function handleVerification({
 	)
 
 	const remember = verifySession.get(rememberKey)
-	const { redirectTo } = submission.value
+	const { redirectTo, target } = submission.value
 	const headers = new Headers()
-	authSession.set(verifiedTimeKey, Date.now())
 
+	// The code was checked against `target`, which comes from the form. It only
+	// proves anything about the session being verified if that session belongs
+	// to `target`; otherwise anyone could pass someone else's 2FA with a code
+	// from their own authenticator.
 	const unverifiedSessionId = verifySession.get(unverifiedSessionIdKey)
 	if (unverifiedSessionId) {
 		const session = await prisma.session.findUnique({
-			select: { expirationDate: true },
+			select: { expirationDate: true, userId: true },
 			where: { id: unverifiedSessionId },
 		})
-		if (!session) {
+		if (!session || session.userId !== target) {
 			throw await redirectWithToast('/login', {
 				type: 'error',
 				title: 'Invalid session',
@@ -114,6 +117,7 @@ export async function handleVerification({
 			})
 		}
 		authSession.set(sessionKey, unverifiedSessionId)
+		authSession.set(verifiedTimeKey, Date.now())
 
 		headers.append(
 			'set-cookie',
@@ -122,6 +126,15 @@ export async function handleVerification({
 			}),
 		)
 	} else {
+		// re-verifying the signed-in user (e.g. before disabling 2FA)
+		if ((await getUserId(request)) !== target) {
+			throw await redirectWithToast('/login', {
+				type: 'error',
+				title: 'Invalid session',
+				description: 'Could not find session to verify. Please try again.',
+			})
+		}
+		authSession.set(verifiedTimeKey, Date.now())
 		headers.append(
 			'set-cookie',
 			await authSessionStorage.commitSession(authSession),

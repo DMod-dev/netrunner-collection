@@ -20,7 +20,11 @@ import { ErrorList, Field } from '#app/components/forms.tsx'
 import { Icon } from '#app/components/ui/icon.tsx'
 import { StatusButton } from '#app/components/ui/status-button.tsx'
 import { UserIcon } from '#app/components/user-icon.tsx'
-import { requireUserId, sessionKey } from '#app/utils/auth.server.ts'
+import {
+	requireUserId,
+	sessionKey,
+	signOutOtherSessions,
+} from '#app/utils/auth.server.ts'
 import { getEnabledProviderNames } from '#app/utils/connections.server.ts'
 import { prisma } from '#app/utils/db.server.ts'
 import { pageTitle, useDoubleCheck } from '#app/utils/misc.tsx'
@@ -286,12 +290,7 @@ async function signOutOfSessionsAction({ request, userId }: ProfileActionArgs) {
 		sessionId,
 		'You must be authenticated to sign out of other sessions',
 	)
-	await prisma.session.deleteMany({
-		where: {
-			userId,
-			id: { not: sessionId },
-		},
-	})
+	await signOutOtherSessions(request, userId)
 	return { status: 'success' } as const
 }
 
