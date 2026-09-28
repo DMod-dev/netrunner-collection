@@ -1,6 +1,7 @@
 import {
 	BookOpen01,
 	Database01,
+	SwitchHorizontal01,
 	LayersThree01,
 	LogOut01,
 	RefreshCw01,
@@ -67,6 +68,11 @@ export function UserDropdown() {
 				<DropdownMenuItem render={<Link prefetch="intent" to="/decks" />}>
 					<Icon className="text-body-md" icon={BookOpen01}>
 						Decks
+					</Icon>
+				</DropdownMenuItem>
+				<DropdownMenuItem render={<Link prefetch="intent" to="/borrowing" />}>
+					<Icon className="text-body-md" icon={SwitchHorizontal01}>
+						Borrowing
 					</Icon>
 				</DropdownMenuItem>
 				<DropdownMenuItem

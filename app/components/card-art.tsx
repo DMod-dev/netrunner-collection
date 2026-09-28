@@ -54,6 +54,7 @@ export function CardArtTile({
 	dimmed = false,
 	compact = false,
 	badge,
+	statusBadge,
 	overlay,
 }: {
 	imageUrl: string | null
@@ -67,6 +68,11 @@ export function CardArtTile({
 	 * owned count. Hidden from screen readers: repeat it in the overlay.
 	 */
 	badge?: React.ReactNode
+	/**
+	 * Shown in the bottom-left corner while the overlay is closed, e.g.
+	 * "Borrowed". Hidden from screen readers like `badge`.
+	 */
+	statusBadge?: React.ReactNode
 	overlay: React.ReactNode
 }) {
 	const [pinned, setPinned] = useState(false)
@@ -160,6 +166,17 @@ export function CardArtTile({
 					)}
 				>
 					{badge}
+				</div>
+			) : null}
+			{statusBadge ? (
+				<div
+					aria-hidden
+					className={cn(
+						'pointer-events-none absolute bottom-1.5 left-1.5 flex max-w-[calc(100%-2.5rem)] flex-wrap gap-1 transition-opacity duration-150',
+						'group-hover:opacity-0 group-has-[:focus-visible]:opacity-0 group-data-[pinned]:opacity-0',
+					)}
+				>
+					{statusBadge}
 				</div>
 			) : null}
 			{/* touch screens can't hover: hint that tapping opens the details */}

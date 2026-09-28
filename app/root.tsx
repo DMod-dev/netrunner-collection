@@ -23,6 +23,7 @@ import { useToast } from './components/toaster.tsx'
 import { buttonVariants } from './components/ui/button.tsx'
 import { EpicToaster } from './components/ui/sonner.tsx'
 import { TooltipProvider } from './components/ui/tooltip.tsx'
+import { NotificationBell } from './components/notification-bell.tsx'
 import { UserDropdown } from './components/user-dropdown.tsx'
 import {
 	ThemeSwitch,
@@ -31,6 +32,7 @@ import {
 } from './routes/resources/theme-switch.tsx'
 import tailwindStyleSheetUrl from './styles/tailwind.css?url'
 import { getUserId, logout } from './utils/auth.server.ts'
+import { getBorrowingNotifications } from './utils/borrowing.server.ts'
 import { ClientHintCheck, getHints } from './utils/client-hints.tsx'
 import { prisma } from './utils/db.server.ts'
 import { getEnv } from './utils/env.server.ts'
@@ -113,12 +115,21 @@ export async function loader({ request, url }: Route.LoaderArgs) {
 		// them in the database. Maybe they were deleted? Let's log them out.
 		await logout({ request, redirectTo: '/' })
 	}
+	// borrow requests and notices waiting on the user, for the header's bell
+	const notifications = user
+		? await time(() => getBorrowingNotifications(user.id), {
+				timings,
+				type: 'notifications',
+				desc: 'borrowing notifications in root',
+			})
+		: []
 	const { toast, headers: toastHeaders } = await getToast(request)
 	const honeyProps = await honeypot.getInputProps()
 
 	return data(
 		{
 			user,
+			notifications,
 			requestInfo: {
 				hints: getHints(request),
 				origin: getDomainUrl(request),
@@ -250,6 +261,7 @@ function App() {
 										>
 											Decks
 										</Link>
+										<NotificationBell notifications={data.notifications} />
 										<UserDropdown />
 									</>
 								) : (

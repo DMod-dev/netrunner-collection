@@ -216,12 +216,12 @@ test('filling from the collection shows what’s missing and what’s in use', a
 	await user.click(screen.getByRole('button', { name: 'Fill with collection' }))
 
 	const panel = screen.getByRole('complementary', { name: 'Deck' })
-	await within(panel).findByText('1 in use: Glacier')
+	await within(panel).findByText('1 in use: Glacier (1)')
 	const row = panel.querySelector('[data-deck-card="hedge_fund"]')!
 	expect(within(row as HTMLElement).getByText('2/3')).toBeInTheDocument()
-	// the identity isn't owned
+	// the identity isn't owned: an orange 1 on its art
 	const identity = within(panel).getByRole('region', { name: 'Identity' })
-	expect(within(identity).getByText('need 1')).toBeInTheDocument()
+	expect(within(identity).getByTitle(/^Need 1 more /)).toBeInTheDocument()
 	expect(
 		screen.getByRole('button', { name: /From collection\s*2\/4/ }),
 	).toBeInTheDocument()
@@ -272,7 +272,9 @@ test('each card in the deck takes copies from the collection by hand', async () 
 	// only 2 are owned
 	await within(row).findByText('2/3')
 	expect(take).toBeDisabled()
-	expect(within(row).getByText('need 1')).toBeInTheDocument()
+	// an orange 1 on the art, and the reason in the overlay
+	expect(within(row).getByTitle('Need 1 more Hedge Fund')).toBeInTheDocument()
+	expect(within(row).getByText('Need 1 more')).toBeInTheDocument()
 	await expect
 		.poll(() =>
 			prisma.deckCard.findFirst({

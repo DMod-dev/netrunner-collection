@@ -1,6 +1,9 @@
 import { data } from 'react-router'
+import { sendBorrowNotifications } from './borrowing-email.server.tsx'
+import { endLoans } from './borrowing.server.ts'
 import { getCollectionTotals } from './collection.server.ts'
 import { prisma } from './db.server.ts'
+import { getDomainUrl } from './misc.tsx'
 import { createToastHeaders } from './toast.server.ts'
 
 /**
@@ -60,8 +63,10 @@ function isUniqueConstraintError(error: unknown) {
 
 /**
  * Delete a share that `userId` is either side of: the owner revoking it or the
- * viewer leaving it. A share between two other users is left alone. Returns
- * the deleted share, or null if there was nothing to delete.
+ * viewer leaving it. A share between two other users is left alone. Every
+ * card the owner lent the viewer is revoked and every pending request
+ * rejected (see `endLoans`). Returns the deleted share and the emails to
+ * send, or null if there was nothing to delete.
  */
 export async function removeShare(userId: string, shareId: string) {
 	const share = await prisma.collectionShare.findFirst({
@@ -73,16 +78,23 @@ export async function removeShare(userId: string, shareId: string) {
 		},
 	})
 	if (!share) return null
-	// deleteMany, so removing twice at once doesn't throw
-	await prisma.collectionShare.deleteMany({ where: { id: share.id } })
-	return share
+	const notifications = await prisma.$transaction(async (tx) => {
+		// deleteMany, so removing twice at once doesn't throw
+		await tx.collectionShare.deleteMany({ where: { id: share.id } })
+		return endLoans(tx, share.owner.id, share.viewer.id)
+	})
+	return { ...share, notifications }
 }
 
 /**
  * The `remove-share` intent, shared by the owner's Sharing settings and the
  * viewer's Shared with me page.
  */
-export async function removeShareAction(userId: string, formData: FormData) {
+export async function removeShareAction(
+	request: Request,
+	userId: string,
+	formData: FormData,
+) {
 	const shareId = formData.get('shareId')
 	const share =
 		typeof shareId === 'string' ? await removeShare(userId, shareId) : null
@@ -96,10 +108,12 @@ export async function removeShareAction(userId: string, formData: FormData) {
 			}),
 		})
 	}
+	await sendBorrowNotifications(share.notifications, getDomainUrl(request))
+	const lent = share.notifications.length > 0
 	const description =
 		share.owner.id === userId
-			? `${displayName(share.viewer)} can no longer see your collection.`
-			: `You can no longer see ${displayName(share.owner)}’s collection.`
+			? `${displayName(share.viewer)} can no longer see your collection${lent ? ' or borrow from it; the cards you lent them are back' : ''}.`
+			: `You can no longer see ${displayName(share.owner)}’s collection${lent ? ' or borrow from it' : ''}.`
 	return data({ status: 'success' } as const, {
 		headers: await createToastHeaders({
 			type: 'success',

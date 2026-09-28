@@ -1,6 +1,7 @@
 import { type SEOHandle } from '@nasa-gcn/remix-seo'
 import { AlertTriangle, Plus } from '@untitledui/icons'
 import { Link } from 'react-router'
+import { BorrowStatusBadge } from '#app/components/borrowing-ui.tsx'
 import { GeneralErrorBoundary } from '#app/components/error-boundary.tsx'
 import { FactionDot } from '#app/components/printing-tile.tsx'
 import { buttonVariants } from '#app/components/ui/button.tsx'
@@ -113,7 +114,21 @@ function DeckCard({ deck }: { deck: DeckSummary }) {
 							{deck.copiesFromCollection}{' '}
 							{deck.copiesFromCollection === 1 ? 'card' : 'cards'} from
 							collection
+							{deck.copiesBorrowed ? ` · ${deck.copiesBorrowed} borrowed` : ''}
 						</span>
+					) : null}
+					{deck.borrowNotLent ? (
+						<BorrowStatusBadge
+							status="rejected"
+							title="A lender rejected, or took back, some cards"
+							className="shadow-none"
+						/>
+					) : deck.borrowPending ? (
+						<BorrowStatusBadge
+							status="pending"
+							title="Waiting for a lender to approve"
+							className="shadow-none"
+						/>
 					) : null}
 					<span className="text-muted-foreground ml-auto text-xs">
 						{formatDate(deck.updatedAt)}

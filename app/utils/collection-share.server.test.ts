@@ -96,13 +96,14 @@ test('the remove action is a 404 for a share that isn’t yours', async () => {
 	})
 	const formData = new FormData()
 	formData.set('shareId', id)
+	const request = new Request('http://localhost/collection/shared')
 
-	const denied = await removeShareAction(stranger.id, formData)
+	const denied = await removeShareAction(request, stranger.id, formData)
 	expect(denied.init?.status).toBe(404)
 	expect(denied.data).toEqual({ status: 'error' })
 	expect(await shareCount()).toBe(1)
 
-	const removed = await removeShareAction(viewer.id, formData)
+	const removed = await removeShareAction(request, viewer.id, formData)
 	expect(removed.data).toEqual({ status: 'success' })
 	expect(await shareCount()).toBe(0)
 })

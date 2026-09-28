@@ -1,14 +1,21 @@
 // "Fill with collection": which of a deck's copies come from the owner's
 // collection. Client-safe; the reads and writes are in deck-fill.server.ts.
 
-/** A deck holding copies of a card, and how many. */
-export type Reservation = { deckId: string; name: string; quantity: number }
+/**
+ * What holds copies of a card, and how many: one of the user's decks, or
+ * (deckId null) copies lent or asked for by someone borrowing them.
+ */
+export type Reservation = {
+	deckId: string | null
+	name: string
+	quantity: number
+}
 
 /** How many copies of a card the user has, and how many other decks hold. */
 export type Availability = {
 	/** every printing and custom version */
 	owned: number
-	/** held by the user's other filled decks */
+	/** held by the user's other filled decks, or lent (or asked for) */
 	reservedElsewhere: number
 	reservedBy: Reservation[]
 	/** what's left for this deck: max(0, owned - reservedElsewhere) */
