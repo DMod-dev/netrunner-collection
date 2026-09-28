@@ -1,4 +1,5 @@
 import { type BrowserOptions } from '@sentry/react-router'
+import { SENSITIVE_QUERY_PARAMS } from './log-redaction.ts'
 
 /**
  * Sentry 11 replaced `sendDefaultPii` with `dataCollection`, whose defaults
@@ -14,7 +15,8 @@ export const sentryDataCollection = {
 		response: { deny: ['forwarded', '-ip'] },
 	},
 	httpBodies: [],
-	urlQueryParams: { deny: ['forwarded', '-ip'] },
+	// span URLs (url.full, page loads); event.request is scrubbed in beforeSend
+	urlQueryParams: { deny: ['forwarded', '-ip', ...SENSITIVE_QUERY_PARAMS] },
 	genAI: { inputs: false, outputs: false },
 	databaseQueryData: false,
 	queues: false,

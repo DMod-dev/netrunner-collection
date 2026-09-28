@@ -12,6 +12,7 @@ import {
 	checkIsCommonPassword,
 	getPasswordHash,
 	requireUserId,
+	signOutOtherSessions,
 	verifyUserPassword,
 } from '#app/utils/auth.server.ts'
 import { prisma } from '#app/utils/db.server.ts'
@@ -113,6 +114,7 @@ export async function action({ request }: Route.ActionArgs) {
 			},
 		},
 	})
+	await signOutOtherSessions(request, userId)
 
 	return redirectWithToast(
 		`/settings/profile`,

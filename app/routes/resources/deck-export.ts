@@ -1,4 +1,4 @@
-import { requireUserId } from '#app/utils/auth.server.ts'
+import { getUserId } from '#app/utils/auth.server.ts'
 import { deckFileName, toNrdbText } from '#app/utils/deck-export.ts'
 import { evaluateDeck } from '#app/utils/deck-rules.ts'
 import { getDeckForBuilder } from '#app/utils/deck.server.ts'
@@ -6,9 +6,10 @@ import { type Route } from './+types/deck-export.ts'
 
 /** `?deckId=`: the deck as a text file, like NetrunnerDB's text export. */
 export async function loader({ request }: Route.LoaderArgs) {
-	const userId = await requireUserId(request)
+	const userId = await getUserId(request)
 	const deckId = new URL(request.url).searchParams.get('deckId') ?? ''
-	// another user's deck is a 404, as in the builder
+	// anyone can download a public deck; someone else's private deck is a 404,
+	// as in the builder
 	const deck = await getDeckForBuilder(userId, deckId)
 	const text = toNrdbText(
 		deck,

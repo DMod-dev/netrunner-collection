@@ -17,8 +17,8 @@ export const IDENTITY_TYPES: Record<DeckSide, string> = {
 
 /** The card types a deck can hold, in the order the decklist shows them. */
 export const DECK_CARD_TYPES: Record<DeckSide, string[]> = {
-	corp: ['agenda', 'asset', 'upgrade', 'operation', 'ice'],
-	runner: ['event', 'hardware', 'resource', 'program'],
+	corp: ['agenda', 'operation', 'asset', 'upgrade', 'ice'],
+	runner: ['event', 'resource', 'program', 'hardware'],
 }
 
 export function parseDeckSide(value: string): DeckSide {
@@ -63,6 +63,7 @@ export function deckSettingsFetcherKey(
 	setting:
 		| 'identity'
 		| 'legality'
+		| 'visibility'
 		| 'format'
 		| 'name'
 		| 'notes'

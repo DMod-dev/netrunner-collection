@@ -31,7 +31,7 @@ async function get(cookie: string, deckId: string) {
 	}
 }
 
-test('downloads the owner’s deck as text; anyone else gets a 404', async () => {
+test('downloads a public deck as text for anyone; a private one only for its owner', async () => {
 	await insertCards()
 	const owner = await insertUser()
 	const other = await insertUser()
@@ -55,5 +55,15 @@ test('downloads the owner’s deck as text; anyone else gets a 404', async () =>
 		/^Glacier \/ v2\nHaas-Bioroid: Precision Design\n\nOperation \(3\)\n3x Hedge Fund\n/,
 	)
 
+	// public by default: anyone, signed in or not
+	expect((await get(other.cookie, deck.id)).status).toBe(200)
+	expect((await get('', deck.id)).status).toBe(200)
+
+	await prisma.deck.update({
+		where: { id: deck.id },
+		data: { isPublic: false },
+	})
+	expect((await get(owner.cookie, deck.id)).status).toBe(200)
 	expect((await get(other.cookie, deck.id)).status).toBe(404)
+	expect((await get('', deck.id)).status).toBe(404)
 })

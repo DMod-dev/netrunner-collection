@@ -106,7 +106,24 @@ export async function resetUserPassword({
 					hash: hashedPassword,
 				},
 			},
+			// whoever knew the old password may still be signed in
+			sessions: { deleteMany: {} },
 		},
+	})
+}
+
+/**
+ * Deletes every session of `userId` except the one making the request. Call it
+ * after a credential changes, so a session someone else holds (a stolen cookie,
+ * a shared computer) doesn't outlive it.
+ */
+export async function signOutOtherSessions(request: Request, userId: string) {
+	const authSession = await authSessionStorage.getSession(
+		request.headers.get('cookie'),
+	)
+	const sessionId = authSession.get(sessionKey)
+	await prisma.session.deleteMany({
+		where: { userId, ...(sessionId ? { id: { not: sessionId } } : {}) },
 	})
 }
 

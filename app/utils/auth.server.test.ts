@@ -1,8 +1,17 @@
 import { http, HttpResponse } from 'msw'
 import { describe, expect, test, vi } from 'vitest'
+import { createPassword, createUser } from '#tests/db-utils.ts'
 import { server } from '#tests/mocks/index.ts'
 import { consoleWarn } from '#tests/setup/setup-test-env.ts'
-import { checkIsCommonPassword, getPasswordHashParts } from './auth.server.ts'
+import { getSessionCookieHeader } from '#tests/utils.ts'
+import {
+	checkIsCommonPassword,
+	getPasswordHashParts,
+	getSessionExpirationDate,
+	resetUserPassword,
+	signOutOtherSessions,
+} from './auth.server.ts'
+import { prisma } from './db.server.ts'
 
 test('checkIsCommonPassword returns true when password is found in breach database', async () => {
 	const password = 'testpassword'
@@ -107,4 +116,44 @@ describe('timeout handling', () => {
 		expect(result).toBe(false)
 		expect(consoleWarn).toHaveBeenCalledWith('Password check timed out')
 	})
+})
+
+async function insertUserWithSessions(count: number) {
+	const user = await prisma.user.create({
+		select: { id: true, username: true },
+		data: { ...createUser(), password: { create: createPassword() } },
+	})
+	const sessions = await Promise.all(
+		Array.from({ length: count }, () =>
+			prisma.session.create({
+				select: { id: true },
+				data: { userId: user.id, expirationDate: getSessionExpirationDate() },
+			}),
+		),
+	)
+	return { ...user, sessions }
+}
+
+test('resetting a password signs the account out everywhere', async () => {
+	const user = await insertUserWithSessions(2)
+	await resetUserPassword({ username: user.username, password: 'new-pass' })
+	expect(await prisma.session.count({ where: { userId: user.id } })).toBe(0)
+})
+
+test('signOutOtherSessions keeps only the current session', async () => {
+	const user = await insertUserWithSessions(3)
+	const other = await insertUserWithSessions(1)
+	const current = user.sessions[0]!
+	const request = new Request('https://example.com', {
+		headers: { cookie: await getSessionCookieHeader(current) },
+	})
+	await signOutOtherSessions(request, user.id)
+	expect(
+		await prisma.session.findMany({
+			where: { userId: user.id },
+			select: { id: true },
+		}),
+	).toEqual([current])
+	// nobody else's sessions are touched
+	expect(await prisma.session.count({ where: { userId: other.id } })).toBe(1)
 })

@@ -1,4 +1,5 @@
 import * as Sentry from '@sentry/react-router'
+import { redactSentryRequest, redactUrl } from './log-redaction.ts'
 import { sentryDataCollection } from './sentry-data-collection.ts'
 
 export function init() {
@@ -17,10 +18,34 @@ export function init() {
 					return null
 				}
 			}
-			return event
+			// Verify links carry the one-time code and the email address in the
+			// query string, and the browser SDK copies location.href into every
+			// event without applying dataCollection.
+			return redactSentryRequest(event)
+		},
+		beforeSendTransaction(event) {
+			return redactSentryRequest(event)
+		},
+		beforeBreadcrumb(breadcrumb) {
+			const data = breadcrumb.data
+			if (data) {
+				for (const key of ['from', 'to', 'url']) {
+					if (typeof data[key] === 'string') data[key] = redactUrl(data[key])
+				}
+			}
+			return breadcrumb
 		},
 		integrations: [
-			Sentry.replayIntegration(),
+			Sentry.replayIntegration({
+				// replays record the page URL on every navigation
+				beforeAddRecordingEvent(event) {
+					const data = event.data as { href?: unknown } | undefined
+					if (data && typeof data.href === 'string') {
+						data.href = redactUrl(data.href)
+					}
+					return event
+				},
+			}),
 			Sentry.browserProfilingIntegration(),
 		],
 

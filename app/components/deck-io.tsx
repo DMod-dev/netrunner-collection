@@ -19,7 +19,7 @@ import {
 import { Icon } from './ui/icon.tsx'
 import { StatusButton } from './ui/status-button.tsx'
 
-async function copyText(text: string, done: string) {
+export async function copyText(text: string, done: string) {
 	try {
 		await navigator.clipboard.writeText(text)
 	} catch {
@@ -37,12 +37,15 @@ export function DeckExportMenu({
 	deckId,
 	text,
 	missing,
+	isPublic,
 }: {
 	deckId: string
 	/** the decklist, as `toNrdbText` writes it */
 	text: string
 	/** "2x Card" lines for the copies not owned; null if there are none */
 	missing: string | null
+	/** a public deck's link can be shared */
+	isPublic: boolean
 }) {
 	return (
 		<DropdownMenu>
@@ -66,6 +69,18 @@ export function DeckExportMenu({
 				>
 					Download .txt
 				</DropdownMenuItem>
+				{isPublic ? (
+					<DropdownMenuItem
+						onClick={() =>
+							void copyText(
+								new URL(`/decks/${deckId}`, window.location.origin).href,
+								'Copied the link to this deck',
+							)
+						}
+					>
+						Copy link
+					</DropdownMenuItem>
+				) : null}
 				{missing ? (
 					<DropdownMenuItem
 						onClick={() =>

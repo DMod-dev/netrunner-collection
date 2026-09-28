@@ -83,7 +83,9 @@ export class GitHubProvider implements AuthProvider {
 				)
 				const rawEmails = await emailsResponse.json()
 				const emails = GitHubEmailsResponseSchema.parse(rawEmails)
-				const email = emails.find((e) => e.primary)?.email
+				// an unverified address proves nothing, and the callback links
+				// accounts by email
+				const email = emails.find((e) => e.primary && e.verified)?.email
 				if (!email) {
 					throw new Error('Email not found')
 				}

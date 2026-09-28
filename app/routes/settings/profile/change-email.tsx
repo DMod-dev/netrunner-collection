@@ -8,11 +8,16 @@ import { ErrorList, Field } from '#app/components/forms.tsx'
 import { Icon } from '#app/components/ui/icon.tsx'
 import { StatusButton } from '#app/components/ui/status-button.tsx'
 import {
+	getRedirectToUrl,
 	prepareVerification,
 	requireRecentVerification,
 } from '#app/routes/_auth/verify.server.ts'
 import { requireUserId } from '#app/utils/auth.server.ts'
 import { prisma } from '#app/utils/db.server.ts'
+import {
+	claimEmailCooldown,
+	releaseEmailCooldown,
+} from '#app/utils/email-cooldown.server.ts'
 import { sendEmail } from '#app/utils/email.server.ts'
 import { pageTitle, useIsPending } from '#app/utils/misc.tsx'
 import { EmailSchema } from '#app/utils/user-validation.ts'
@@ -53,21 +58,7 @@ export async function loader({ request, url }: Route.LoaderArgs) {
 export async function action({ request }: Route.ActionArgs) {
 	const userId = await requireUserId(request)
 	const formData = await request.formData()
-	const submission = await parseWithZod(formData, {
-		schema: ChangeEmailSchema.superRefine(async (data, ctx) => {
-			const existingUser = await prisma.user.findUnique({
-				where: { email: data.email },
-			})
-			if (existingUser) {
-				ctx.addIssue({
-					path: ['email'],
-					code: z.ZodIssueCode.custom,
-					message: 'This email is already in use.',
-				})
-			}
-		}),
-		async: true,
-	})
+	const submission = parseWithZod(formData, { schema: ChangeEmailSchema })
 
 	if (submission.status !== 'success') {
 		return data(
@@ -75,7 +66,40 @@ export async function action({ request }: Route.ActionArgs) {
 			{ status: submission.status === 'error' ? 400 : 200 },
 		)
 	}
-	const { otp, redirectTo, verifyUrl } = await prepareVerification({
+	const { email } = submission.value
+
+	// Same response whether or not the address already has an account (signup
+	// is open, so this form mustn't tell anyone which emails are registered),
+	// and at most one email a minute per address. A taken address gets no
+	// code, so the change can't be completed.
+	const verifySession = await verifySessionStorage.getSession()
+	verifySession.set(newEmailAddressSessionKey, email)
+	const sent = redirect(
+		getRedirectToUrl({
+			request,
+			type: 'change-email',
+			target: userId,
+		}).toString(),
+		{
+			headers: {
+				'set-cookie': await verifySessionStorage.commitSession(verifySession),
+			},
+		},
+	)
+	const existingUser = await prisma.user.findUnique({
+		where: { email },
+		select: { id: true },
+	})
+	if (existingUser) {
+		// an earlier code (for another address) must not now apply to this one
+		await prisma.verification.deleteMany({
+			where: { target: userId, type: 'change-email' },
+		})
+		return sent
+	}
+	if (!claimEmailCooldown('change-email', email)) return sent
+
+	const { otp, verifyUrl } = await prepareVerification({
 		period: 10 * 60,
 		request,
 		target: userId,
@@ -83,20 +107,15 @@ export async function action({ request }: Route.ActionArgs) {
 	})
 
 	const response = await sendEmail({
-		to: submission.value.email,
+		to: email,
 		subject: `Netrunner Collection Email Change Verification`,
 		react: <EmailChangeEmail verifyUrl={verifyUrl.toString()} otp={otp} />,
 	})
 
 	if (response.status === 'success') {
-		const verifySession = await verifySessionStorage.getSession()
-		verifySession.set(newEmailAddressSessionKey, submission.value.email)
-		return redirect(redirectTo.toString(), {
-			headers: {
-				'set-cookie': await verifySessionStorage.commitSession(verifySession),
-			},
-		})
+		return sent
 	} else {
+		releaseEmailCooldown('change-email', email)
 		return data(
 			{ result: submission.reply({ formErrors: [response.error.message] }) },
 			{ status: 500 },

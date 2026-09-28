@@ -1,4 +1,9 @@
-import { AlertCircle, AlertTriangle, CheckCircle } from '@untitledui/icons'
+import {
+	AlertCircle,
+	AlertTriangle,
+	CheckCircle,
+	ChevronDown,
+} from '@untitledui/icons'
 import {
 	DeckBorrowStepper,
 	DeckCollectionStepper,
@@ -451,28 +456,40 @@ export function ProblemList({ problems }: { problems: Problem[] }) {
 	)
 }
 
+/** A deck that isn't filled from anyone's collection. */
+const UNFILLED: DeckCollection = {
+	filled: false,
+	availability: {},
+	lenders: [],
+}
+
 /**
  * The deck's cards as their faces, grouped by type. The corner shows the
  * copies (and, once filled, the copies from the collection); hovering or
- * tapping a card opens its steppers for both.
+ * tapping a card opens its steppers for both. `readOnly` (someone else's
+ * deck) leaves the steppers and the collection out and uses the whole width.
  */
 export function DecklistPanel({
 	deckId,
 	side,
 	entries,
 	perCard,
-	collection,
+	collection = UNFILLED,
+	readOnly = false,
 }: {
 	deckId: string
 	side: DeckSide
 	entries: DecklistEntry[]
 	perCard: DeckEvaluation['perCard']
-	collection: DeckCollection
+	collection?: DeckCollection
+	readOnly?: boolean
 }) {
 	if (entries.length === 0) {
 		return (
 			<p className="text-muted-foreground text-sm">
-				No cards yet. Add some from the card browser.
+				{readOnly
+					? 'This deck has no cards yet.'
+					: 'No cards yet. Add some from the card browser.'}
 			</p>
 		)
 	}
@@ -480,31 +497,44 @@ export function DecklistPanel({
 		<div className="flex flex-col gap-3">
 			{groupByType(entries, side).map((group) => (
 				<section key={group.typeId} aria-label={group.name}>
-					<h3 className="text-muted-foreground mb-1 text-xs font-semibold tracking-wide uppercase">
-						{group.name} ({group.count})
-					</h3>
-					<ul
-						className={cn(
-							'grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-2',
-							// the panel's column: as many as keep the steppers whole
-							'lg:grid-cols-2 xl:grid-cols-3 pointer-coarse:xl:grid-cols-2',
-						)}
-					>
-						{group.entries.map((entry) => (
-							<li
-								key={entry.card.id}
-								data-deck-card={entry.card.id}
-								className="flex min-w-0 flex-col gap-1"
-							>
-								<DeckCardTile
-									deckId={deckId}
-									entry={entry}
-									info={perCard[entry.card.id]}
-									collection={collection}
-								/>
-							</li>
-						))}
-					</ul>
+					{/* open to start with; collapsing one stays collapsed while
+					    the deck changes */}
+					<details open className="group/type">
+						<summary className="text-muted-foreground hover:text-foreground focus-visible:ring-ring mb-1 flex cursor-pointer list-none items-center gap-1 rounded-sm select-none focus-visible:ring-2 focus-visible:outline-none [&::-webkit-details-marker]:hidden">
+							<Icon
+								icon={ChevronDown}
+								size="sm"
+								className="-rotate-90 transition-transform group-open/type:rotate-0"
+							/>
+							<h3 className="text-xs font-semibold tracking-wide uppercase">
+								{group.name} ({group.count})
+							</h3>
+						</summary>
+						<ul
+							className={cn(
+								'grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-2',
+								// the panel's column: as many as keep the steppers whole
+								!readOnly &&
+									'lg:grid-cols-2 xl:grid-cols-3 pointer-coarse:xl:grid-cols-2',
+							)}
+						>
+							{group.entries.map((entry) => (
+								<li
+									key={entry.card.id}
+									data-deck-card={entry.card.id}
+									className="flex min-w-0 flex-col gap-1"
+								>
+									<DeckCardTile
+										deckId={deckId}
+										entry={entry}
+										info={perCard[entry.card.id]}
+										collection={collection}
+										readOnly={readOnly}
+									/>
+								</li>
+							))}
+						</ul>
+					</details>
 				</section>
 			))}
 		</div>
@@ -516,11 +546,14 @@ function DeckCardTile({
 	entry: { card, quantity, fromCollection, loans },
 	info,
 	collection,
+	readOnly,
 }: {
 	deckId: string
 	entry: DecklistEntry
 	info: DeckEvaluation['perCard'][string] | undefined
 	collection: DeckCollection
+	/** someone else's deck: no steppers, and nothing about their collection */
+	readOnly: boolean
 }) {
 	const availability = collection.availability[card.id] ?? NO_COPIES
 	const fill = collection.filled
@@ -559,7 +592,7 @@ function DeckCardTile({
 					</span>
 				}
 				statusBadge={
-					loans.length || (fill && fill.status.need > 0) ? (
+					!readOnly && (loans.length || (fill && fill.status.need > 0)) ? (
 						<>
 							<LoanStatusBadges loans={loans} />
 							{fill ? (
@@ -578,7 +611,7 @@ function DeckCardTile({
 								influence={info?.influence ?? 0}
 								factionId={card.factionId}
 							/>
-							<LoanDetails loans={loans} />
+							{readOnly ? null : <LoanDetails loans={loans} />}
 							{fill ? <FillDetails {...fill} /> : null}
 							{problems.map((problem, i) => (
 								<p
@@ -594,40 +627,49 @@ function DeckCardTile({
 								</p>
 							))}
 						</header>
-						<div className="mt-auto flex flex-col gap-1">
-							{/* the tile's keyboard shortcuts step this one */}
-							<div data-primary className="flex flex-col gap-0.5">
-								<span className="text-xs font-medium">In deck</span>
-								<DeckQuantityStepper
+						{readOnly ? (
+							<p className="mt-auto text-xs font-medium tabular-nums">
+								{quantity} {quantity === 1 ? 'copy' : 'copies'}
+							</p>
+						) : (
+							<div className="mt-auto flex flex-col gap-1">
+								{/* the tile's keyboard shortcuts step this one */}
+								<div data-primary className="flex flex-col gap-0.5">
+									<span className="text-xs font-medium">In deck</span>
+									<DeckQuantityStepper
+										deckId={deckId}
+										cardId={card.id}
+										title={card.title}
+										quantity={quantity}
+										deckLimit={card.deckLimit}
+										size="sm"
+									/>
+								</div>
+								<div className="flex flex-col gap-0.5">
+									<span className="text-xs font-medium">From collection</span>
+									<DeckCollectionStepper
+										deckId={deckId}
+										cardId={card.id}
+										title={card.title}
+										fromCollection={fromCollection}
+										max={Math.min(
+											quantity - loaned.all,
+											availability.available,
+										)}
+										size="sm"
+									/>
+								</div>
+								<BorrowSteppers
 									deckId={deckId}
 									cardId={card.id}
 									title={card.title}
 									quantity={quantity}
-									deckLimit={card.deckLimit}
-									size="sm"
-								/>
-							</div>
-							<div className="flex flex-col gap-0.5">
-								<span className="text-xs font-medium">From collection</span>
-								<DeckCollectionStepper
-									deckId={deckId}
-									cardId={card.id}
-									title={card.title}
 									fromCollection={fromCollection}
-									max={Math.min(quantity - loaned.all, availability.available)}
-									size="sm"
+									loans={loans}
+									lenders={collection.lenders}
 								/>
 							</div>
-							<BorrowSteppers
-								deckId={deckId}
-								cardId={card.id}
-								title={card.title}
-								quantity={quantity}
-								fromCollection={fromCollection}
-								loans={loans}
-								lenders={collection.lenders}
-							/>
-						</div>
+						)}
 					</>
 				}
 			/>
