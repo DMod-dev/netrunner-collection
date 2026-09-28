@@ -141,7 +141,8 @@ export function DeckView({
 					<DecklistPanel
 						deckId={deck.id}
 						side={deck.sideId}
-						entries={deck.cards}
+						// someone else's loans are theirs to know about
+						entries={deck.cards.map((entry) => ({ ...entry, loans: [] }))}
 						perCard={evaluation.perCard}
 						readOnly
 					/>

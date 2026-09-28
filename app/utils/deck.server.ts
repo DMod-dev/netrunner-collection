@@ -3,6 +3,7 @@ import { type Prisma } from '@prisma/client'
 import { cachedUntilNextSync } from './card-data-cache.server.ts'
 import { prisma } from './db.server.ts'
 import { DECK_FORMATS, type DeckFormat } from './deck-formats.ts'
+import { cancelEmptyRequests, reconcileDeckLoans } from './deck-loans.server.ts'
 import {
 	CARD_LITE_SELECT,
 	getFormatRules,
@@ -216,7 +217,10 @@ export async function listDecks(userId: string) {
 		prisma.deck.findMany({
 			where: { userId },
 			orderBy: { updatedAt: 'desc' },
-			select: deckSummarySelect,
+			select: {
+				...deckSummarySelect,
+				loans: { select: { cardId: true, quantity: true, status: true } },
+			},
 		}),
 		getAllFormatRules(),
 	])
@@ -322,24 +326,54 @@ export type PublicDeckSummary = Awaited<
 
 /**
  * How much of a deck comes from the collection: whether it's filled at all,
- * how many copies, and whether any card (or the identity) is short.
+ * how many copies are the owner's and how many borrowed (lent or asked
+ * for), whether any card (or the identity) is short, and whether borrowed
+ * copies wait on the lender or on the owner.
  */
 function collectionSummary(deck: {
-	identity: unknown
+	identity: { id: string } | null
 	identityFromCollection: number
-	cards: Array<{ quantity: number; fromCollection: number }>
+	cards: Array<{
+		quantity: number
+		fromCollection: number
+		card: { id: string }
+	}>
+	loans: Array<{ cardId: string; quantity: number; status: string }>
 }) {
 	const copiesFromCollection =
 		deck.identityFromCollection +
 		deck.cards.reduce((sum, c) => sum + c.fromCollection, 0)
-	const filledFromCollection = copiesFromCollection > 0
+	const active = deck.loans.filter(
+		(l) => l.status === 'approved' || l.status === 'pending',
+	)
+	// only lent copies cover a card, as in the builder's count; asked-for
+	// ones may yet be rejected
+	const lentByCard = new Map<string, number>()
+	for (const loan of deck.loans) {
+		if (loan.status !== 'approved') continue
+		lentByCard.set(
+			loan.cardId,
+			(lentByCard.get(loan.cardId) ?? 0) + loan.quantity,
+		)
+	}
+	const covered = (cardId: string, own: number) =>
+		own + (lentByCard.get(cardId) ?? 0)
+	const filledFromCollection = copiesFromCollection > 0 || deck.loans.length > 0
 	return {
 		filledFromCollection,
 		copiesFromCollection,
+		copiesBorrowed: active.reduce((sum, l) => sum + l.quantity, 0),
+		borrowPending: deck.loans.some((l) => l.status === 'pending'),
+		borrowNotLent: deck.loans.some(
+			(l) => l.status === 'rejected' || l.status === 'revoked',
+		),
 		shortFromCollection:
 			filledFromCollection &&
-			(deck.cards.some((c) => c.fromCollection < c.quantity) ||
-				(deck.identity !== null && deck.identityFromCollection < 1)),
+			(deck.cards.some(
+				(c) => covered(c.card.id, c.fromCollection) < c.quantity,
+			) ||
+				(deck.identity !== null &&
+					covered(deck.identity.id, deck.identityFromCollection) < 1)),
 	}
 }
 
@@ -459,7 +493,7 @@ export async function createDeck(
 
 /**
  * Set how many copies of a card the deck has; 0 takes it out. Copies reserved
- * from the collection never exceed the new count. Adding cards from the other
+ * from the collection and borrowed copies never exceed the new count. Adding cards from the other
  * side, or identities (a deck's identity is set on its own), is refused;
  * taking them out isn't.
  */
@@ -496,19 +530,14 @@ export async function setDeckCardQuantity(
 		if (clamped === 0) {
 			await tx.deckCard.deleteMany({ where: { deckId, cardId } })
 		} else {
-			const existing = await tx.deckCard.findUnique({
-				where: key,
-				select: { fromCollection: true },
-			})
 			await tx.deckCard.upsert({
 				where: key,
 				create: { deckId, cardId, quantity: clamped },
-				update: {
-					quantity: clamped,
-					fromCollection: Math.min(existing?.fromCollection ?? 0, clamped),
-				},
+				update: { quantity: clamped },
 			})
 		}
+		// fewer copies give back borrowed ones first, then reserved ones
+		await reconcileDeckLoans(tx, deckId)
 		await touchDeck(tx, deckId)
 	})
 	return { quantity: clamped }
@@ -517,7 +546,8 @@ export async function setDeckCardQuantity(
 /**
  * Change the deck's identity. Switching sides would strand every card, so
  * it's only allowed while the deck is empty. A new identity isn't reserved
- * from the collection until the deck is filled again.
+ * from the collection until the deck is filled again; a borrowed old one is
+ * given back.
  */
 export async function setDeckIdentity(
 	userId: string,
@@ -539,16 +569,18 @@ export async function setDeckIdentity(
 			status: 400,
 		}
 	}
-	await prisma.deck.update({
-		where: { id: deckId },
-		data: {
-			identityCardId,
-			sideId: identity.sideId,
-			// the old identity's copy goes back to the collection
-			...(identityCardId === deck.identityCardId
-				? {}
-				: { identityFromCollection: 0 }),
-		},
+	const changed = identityCardId !== deck.identityCardId
+	await prisma.$transaction(async (tx) => {
+		await tx.deck.update({
+			where: { id: deckId },
+			data: {
+				identityCardId,
+				sideId: identity.sideId,
+				// the old identity's copy goes back to the collection
+				...(changed ? { identityFromCollection: 0 } : {}),
+			},
+		})
+		await reconcileDeckLoans(tx, deckId)
 	})
 	return { ok: true }
 }
@@ -602,9 +634,11 @@ export async function removeIllegalCards(userId: string, deckId: string) {
 	)
 	if (illegal.length === 0) return { removed: 0, formatId }
 	await prisma.$transaction(async (tx) => {
+		const cardIds = illegal.map(({ card }) => card.id)
 		await tx.deckCard.deleteMany({
-			where: { deckId, cardId: { in: illegal.map(({ card }) => card.id) } },
+			where: { deckId, cardId: { in: cardIds } },
 		})
+		await reconcileDeckLoans(tx, deckId)
 		await touchDeck(tx, deckId)
 	})
 	return {
@@ -658,11 +692,15 @@ export function copyName(name: string) {
 	return `${name.slice(0, MAX_DECK_NAME_LENGTH - suffix.length).trimEnd()}${suffix}`
 }
 
+/** Delete a deck; its borrowed copies go back with it. */
 export async function deleteDeck(userId: string, deckId: string) {
-	const { count } = await prisma.deck.deleteMany({
-		where: { id: deckId, userId },
+	return prisma.$transaction(async (tx) => {
+		const { count } = await tx.deck.deleteMany({
+			where: { id: deckId, userId },
+		})
+		if (count > 0) await cancelEmptyRequests(tx, userId)
+		return count > 0
 	})
-	return count > 0
 }
 
 /** Bump `updatedAt` when only the deck's cards changed, so it sorts first. */

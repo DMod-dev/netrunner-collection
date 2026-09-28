@@ -7,7 +7,10 @@ import { Button } from '#app/components/ui/button.tsx'
 import {
 	DropdownMenu,
 	DropdownMenuContent,
+	DropdownMenuGroup,
 	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuSeparator,
 	DropdownMenuTrigger,
 } from '#app/components/ui/dropdown-menu.tsx'
 import { Icon } from '#app/components/ui/icon.tsx'
@@ -19,6 +22,12 @@ import {
 	STEPPER_STEP_EVENT,
 } from '#app/routes/resources/collection.tsx'
 import { requireUserId } from '#app/utils/auth.server.ts'
+import { sendBorrowNotifications } from '#app/utils/borrowing-email.server.tsx'
+import {
+	fillFromLender,
+	returnToLender,
+	setBorrowed,
+} from '#app/utils/borrowing.server.ts'
 import { DeckImportError } from '#app/utils/deck-check.server.ts'
 import {
 	fillDeck,
@@ -42,6 +51,7 @@ import {
 	updateDeck,
 } from '#app/utils/deck.server.ts'
 import {
+	deckBorrowFetcherKey,
 	deckCardFetcherKey,
 	deckCollectionFetcherKey,
 	deckSettingsFetcherKey,
@@ -50,7 +60,12 @@ import {
 	MAX_DECK_QUANTITY,
 } from '#app/utils/deck.ts'
 import { ensurePrimary } from '#app/utils/litefs.server.ts'
-import { cn, useDoubleCheck, useIsPending } from '#app/utils/misc.tsx'
+import {
+	cn,
+	getDomainUrl,
+	useDoubleCheck,
+	useIsPending,
+} from '#app/utils/misc.tsx'
 import {
 	createToastHeaders,
 	redirectWithToast,
@@ -122,6 +137,30 @@ const DeckActionSchema = z.discriminatedUnion('intent', [
 	z.object({ intent: z.literal('copy'), deckId }),
 	z.object({ intent: z.literal('fill'), deckId }),
 	z.object({ intent: z.literal('unfill'), deckId }),
+	// ask a lender (sharing their collection with you) for the copies the
+	// deck has no source for
+	z.object({
+		intent: z.literal('fill-from-lender'),
+		deckId,
+		lenderId: z.string().min(1),
+	}),
+	z.object({
+		intent: z.literal('set-borrowed'),
+		deckId,
+		cardId: z.string().min(1),
+		lenderId: z.string().min(1),
+		borrowed: z
+			.string()
+			.regex(/^\d+$/, 'Invalid quantity')
+			.transform(Number)
+			.pipe(z.number().int().max(MAX_DECK_QUANTITY)),
+	}),
+	// give back every copy borrowed from (or asked of) a lender
+	z.object({
+		intent: z.literal('return-to-lender'),
+		deckId,
+		lenderId: z.string().min(1),
+	}),
 	// replace the deck's cards with a pasted list or NetrunnerDB link
 	z.object({
 		intent: z.literal('import'),
@@ -149,6 +188,22 @@ export function fillMessage({
 	if (taken === 0)
 		return 'None of this deck’s cards are free in your collection'
 	return `Took ${taken} of ${cards(total)} from your collection`
+}
+
+/** "Asked for 12 of 15 cards", and so on. */
+export function borrowMessage({
+	asked,
+	open,
+}: {
+	asked: number
+	open: number
+}) {
+	const cards = (n: number) => `${n} ${n === 1 ? 'card' : 'cards'}`
+	if (open === 0) return 'Every card already has a source'
+	if (asked === 0)
+		return 'None of the cards this deck still needs are free to borrow'
+	const what = asked === open ? cards(asked) : `${asked} of ${cards(open)}`
+	return `Asked to borrow ${what}; they’re pending until approved`
 }
 
 /**
@@ -292,6 +347,52 @@ export async function action({ request }: Route.ActionArgs) {
 				headers: await createToastHeaders({
 					type: report.taken === report.total ? 'success' : 'message',
 					description: fillMessage(report),
+				}),
+			})
+		}
+		case 'fill-from-lender': {
+			const result = await fillFromLender(
+				userId,
+				submission.deckId,
+				submission.lenderId,
+			)
+			if (!result) return notFound()
+			if ('error' in result) return refused(result)
+			void sendBorrowNotifications(result.notifications, getDomainUrl(request))
+			return data({ ok: true } as const, {
+				headers: await createToastHeaders({
+					type:
+						result.asked > 0 && result.asked === result.open
+							? 'success'
+							: 'message',
+					description: borrowMessage(result),
+				}),
+			})
+		}
+		case 'set-borrowed': {
+			const result = await setBorrowed(
+				userId,
+				submission.deckId,
+				submission.cardId,
+				submission.lenderId,
+				submission.borrowed,
+			)
+			if (!result) return notFound()
+			if ('error' in result) return refused(result)
+			void sendBorrowNotifications(result.notifications, getDomainUrl(request))
+			return { ok: true } as const
+		}
+		case 'return-to-lender': {
+			const result = await returnToLender(
+				userId,
+				submission.deckId,
+				submission.lenderId,
+			)
+			if (!result) return notFound()
+			return data({ ok: true } as const, {
+				headers: await createToastHeaders({
+					type: 'success',
+					description: `Gave back ${result.returned} borrowed ${result.returned === 1 ? 'card' : 'cards'}`,
 				}),
 			})
 		}
@@ -785,38 +886,61 @@ export function RemoveIllegalCardsButton({
 /** The intent a fill fetcher is submitting, while it's in flight. */
 function pendingFillIntent(formData: FormData | undefined) {
 	const intent = formData?.get('intent')
-	return intent === 'fill' || intent === 'unfill' ? intent : null
+	return intent === 'fill' ||
+		intent === 'unfill' ||
+		intent === 'fill-from-lender' ||
+		intent === 'return-to-lender'
+		? intent
+		: null
+}
+
+/** A collection shared with the deck's owner, for the fill menu. */
+export type FillLender = {
+	id: string
+	name: string
+	/** copies the deck borrows from them, lent or asked for */
+	borrowed: number
 }
 
 /**
  * "Fill with collection" until the deck is filled; then a "From collection"
  * menu to fill again (after the collection or the deck changed) or unfill.
+ * With collections shared with the owner it's always a menu, which can also
+ * fill from each of them (asking to borrow) and give their cards back.
  */
 export function FillControls({
 	deckId,
 	filled,
 	fromCollection,
+	borrowed,
 	total,
+	lenders,
 }: {
 	deckId: string
 	filled: boolean
 	/** copies reserved from the collection, the identity included */
 	fromCollection: number
+	/** copies borrowed, lent or asked for */
+	borrowed: number
 	/** copies the deck plays, the identity included */
 	total: number
+	lenders: FillLender[]
 }) {
 	const fetcher = useFetcher<typeof clientAction>({
 		key: deckSettingsFetcherKey(deckId, 'fill'),
 	})
 	useErrorToast(fetcher, 'Fill with collection', `fill-${deckId}`)
 	const pending = pendingFillIntent(fetcher.formData)
-	const submit = (intent: 'fill' | 'unfill') =>
+	const submit = (
+		intent: 'fill' | 'unfill' | 'fill-from-lender' | 'return-to-lender',
+		lenderId?: string,
+	) =>
 		fetcher.submit(
-			{ intent, deckId },
+			{ intent, deckId, ...(lenderId ? { lenderId } : {}) },
 			{ method: 'POST', action: DECK_ACTION_PATH },
 		)
 
-	if (!filled || pending === 'fill') {
+	if (lenders.length === 0 && (!filled || pending === 'fill')) {
 		return (
 			<StatusButton
 				type="button"
@@ -829,38 +953,170 @@ export function FillControls({
 			</StatusButton>
 		)
 	}
+	const pendingLabel =
+		pending === 'unfill' || pending === 'return-to-lender'
+			? 'Giving back…'
+			: pending
+				? 'Filling…'
+				: null
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger
 				render={
 					<Button
-						variant="secondary"
-						className="rounded-full"
+						variant={filled ? 'secondary' : 'outline'}
+						className={cn(filled && 'rounded-full')}
 						disabled={pending !== null}
 					/>
 				}
 			>
-				{pending === 'unfill' ? (
-					'Unfilling…'
-				) : (
-					<>
-						From collection{' '}
-						<span className="tabular-nums">
-							{fromCollection}/{total}
-						</span>
-					</>
-				)}
+				{pendingLabel ??
+					(filled ? (
+						<>
+							From collection{' '}
+							<span className="tabular-nums">
+								{fromCollection + borrowed}/{total}
+							</span>
+						</>
+					) : (
+						'Fill from collection'
+					))}
 				<Icon icon={ChevronDown} size="sm" />
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end">
-				<DropdownMenuItem onClick={() => void submit('fill')}>
-					Fill again
-				</DropdownMenuItem>
-				<DropdownMenuItem onClick={() => void submit('unfill')}>
-					Unfill (give the cards back)
-				</DropdownMenuItem>
+				<DropdownMenuGroup>
+					{lenders.length ? (
+						<DropdownMenuLabel>Fill from</DropdownMenuLabel>
+					) : null}
+					<DropdownMenuItem onClick={() => void submit('fill')}>
+						{lenders.length
+							? 'My collection'
+							: filled
+								? 'Fill again'
+								: 'Fill with collection'}
+					</DropdownMenuItem>
+					{lenders.map((lender) => (
+						<DropdownMenuItem
+							key={lender.id}
+							onClick={() => void submit('fill-from-lender', lender.id)}
+						>
+							{lender.name}’s collection (borrow)
+						</DropdownMenuItem>
+					))}
+				</DropdownMenuGroup>
+				{fromCollection > 0 || lenders.some((l) => l.borrowed > 0) ? (
+					<DropdownMenuSeparator />
+				) : null}
+				{fromCollection > 0 ? (
+					<DropdownMenuItem onClick={() => void submit('unfill')}>
+						Unfill (give the cards back)
+					</DropdownMenuItem>
+				) : null}
+				{lenders
+					.filter((lender) => lender.borrowed > 0)
+					.map((lender) => (
+						<DropdownMenuItem
+							key={lender.id}
+							onClick={() => void submit('return-to-lender', lender.id)}
+						>
+							Give back {lender.name}’s cards
+						</DropdownMenuItem>
+					))}
 			</DropdownMenuContent>
 		</DropdownMenu>
+	)
+}
+
+/**
+ * The copies of a card the deck borrows from a lender, while a change is in
+ * flight (see `pendingQuantity`).
+ */
+export function pendingBorrowed(formData: FormData | undefined) {
+	if (formData?.get('intent') !== 'set-borrowed') return null
+	const borrowed = Number(formData.get('borrowed'))
+	return Number.isInteger(borrowed) ? borrowed : null
+}
+
+/**
+ * −/+ for how many of a deck's copies of a card are borrowed from a lender,
+ * up to `max`. + asks for another (it's pending until they approve); −
+ * takes back one still asked for, or gives a lent one back. Optimistic like
+ * `DeckQuantityStepper`.
+ */
+export function DeckBorrowStepper({
+	deckId,
+	cardId,
+	lenderId,
+	lenderName,
+	title,
+	borrowed,
+	max,
+	size = 'default',
+}: {
+	deckId: string
+	cardId: string
+	lenderId: string
+	lenderName: string
+	title: string
+	borrowed: number
+	max: number
+	size?: 'default' | 'sm'
+}) {
+	const key = deckBorrowFetcherKey(deckId, cardId, lenderId)
+	const fetcher = useFetcher<typeof clientAction>({ key })
+	const displayed = pendingBorrowed(fetcher.formData) ?? borrowed
+	useErrorToast(fetcher, title, key)
+	// as in DeckQuantityStepper: clicks can outrun re-renders
+	const latestRef = useRef(displayed)
+	useEffect(() => {
+		latestRef.current = displayed
+	}, [displayed])
+
+	function submit(next: number) {
+		const clamped = Math.max(0, Math.min(max, next))
+		if (clamped === latestRef.current) return
+		latestRef.current = clamped
+		void fetcher.submit(
+			{ intent: 'set-borrowed', deckId, cardId, lenderId, borrowed: clamped },
+			{ method: 'POST', action: DECK_ACTION_PATH },
+		)
+	}
+
+	const buttonClass = stepperButtonClass(size)
+	return (
+		<div className="flex items-center gap-1">
+			<Button
+				type="button"
+				variant="outline"
+				size="icon"
+				className={buttonClass}
+				disabled={displayed <= 0}
+				onClick={() => submit(latestRef.current - 1)}
+				aria-label={`Give one ${title} back to ${lenderName}`}
+			>
+				−
+			</Button>
+			<output
+				aria-label={`${title} borrowed from ${lenderName}`}
+				className={cn(
+					'min-w-8 text-center text-sm tabular-nums',
+					displayed > 0 ? 'font-bold' : 'text-muted-foreground',
+				)}
+			>
+				{displayed}
+			</output>
+			<Button
+				type="button"
+				variant="outline"
+				size="icon"
+				className={buttonClass}
+				disabled={displayed >= max}
+				onClick={() => submit(latestRef.current + 1)}
+				aria-label={`Ask ${lenderName} for one more ${title}`}
+			>
+				+
+			</Button>
+		</div>
 	)
 }
 

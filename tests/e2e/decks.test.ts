@@ -266,9 +266,9 @@ test('fill a deck from the collection, then unfill it', async ({
 	const panel = page.getByRole('complementary', { name: 'Deck' })
 	const row = panel.locator(`[data-deck-card="${cardId}"]`)
 	await expect(row.getByText('2/3')).toBeVisible()
-	await expect(row.getByText('need 1')).toBeVisible()
+	await expect(row.getByTitle(/^Need 1 more /)).toBeVisible()
 	await expect(
-		panel.getByRole('region', { name: 'Identity' }).getByText('need 1'),
+		panel.getByRole('region', { name: 'Identity' }).getByTitle(/^Need 1 more /),
 	).toBeVisible()
 	await expect
 		.poll(() =>
@@ -295,7 +295,7 @@ test('fill a deck from the collection, then unfill it', async ({
 	await expect(
 		page.getByRole('button', { name: 'Fill with collection' }),
 	).toBeVisible()
-	await expect(row.getByText('need 1')).toBeHidden()
+	await expect(row.getByTitle(/^Need 1 more /)).toBeHidden()
 	expect(
 		await prisma.deckCard.findFirst({
 			where: { deckId: deck.id },
@@ -339,7 +339,7 @@ test('import a pasted decklist, then replace its cards from the builder', async 
 	).toBeVisible()
 	const row = panel.locator(`[data-deck-card="${cardId}"]`)
 	await expect(row.getByText('2/3')).toBeVisible()
-	await expect(row.getByText('need 1')).toBeVisible()
+	await expect(row.getByTitle(/^Need 1 more /)).toBeVisible()
 
 	// replace the cards: 2 copies now, and the deck keeps both reserved
 	await page.getByRole('button', { name: 'Import', exact: true }).click()
@@ -351,7 +351,7 @@ test('import a pasted decklist, then replace its cards from the builder', async 
 	await dialog.getByRole('button', { name: 'Replace all cards?' }).click()
 	await expect(dialog).toBeHidden()
 	await expect(row.getByText('2/2')).toBeVisible()
-	await expect(row.getByText('need 1')).toBeHidden()
+	await expect(row.getByTitle(/^Need 1 more /)).toBeHidden()
 	const deck = await prisma.deck.findFirstOrThrow({
 		where: { userId: user.id },
 		select: {

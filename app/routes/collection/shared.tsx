@@ -29,7 +29,7 @@ export async function action({ request }: Route.ActionArgs) {
 	if (formData.get('intent') !== REMOVE_SHARE_INTENT) {
 		throw new Response('Invalid intent', { status: 400 })
 	}
-	return removeShareAction(userId, formData)
+	return removeShareAction(request, userId, formData)
 }
 
 export const meta: Route.MetaFunction = () => [

@@ -1,6 +1,8 @@
 import { type Prisma } from '@prisma/client'
+import { ACTIVE_LOAN_STATUSES, displayName } from './borrowing.ts'
 import { getOwnedCounts } from './collection.server.ts'
 import { prisma } from './db.server.ts'
+import { getLoanedCounts } from './deck-loans.server.ts'
 import {
 	type Availability,
 	isReservationStale,
@@ -12,13 +14,16 @@ import {
 // the owner's collection (DeckCard.fromCollection, and
 // Deck.identityFromCollection for the identity). Copies are counted per card:
 // any printing or custom version will do. Whichever deck is filled first
-// holds the copies; what other decks hold is summed from their rows.
+// holds the copies; what other decks hold is summed from their rows. Copies
+// the user lends to someone else's deck (or that are asked for; see
+// borrowing.server.ts) are held the same way.
 
 type Db = Prisma.TransactionClient
 
 /**
  * For each card, how many copies the user owns and how many their other
- * decks (all but `excludeDeckId`) hold. Another user's decks never count.
+ * decks (all but `excludeDeckId`) hold, plus copies lent from their
+ * collection or asked for. Another user's decks never count otherwise.
  */
 export async function getAvailability(
 	userId: string,
@@ -34,7 +39,7 @@ export async function getAvailability(
 		userId,
 		...(excludeDeckId ? { id: { not: excludeDeckId } } : {}),
 	}
-	const [owned, cardRows, identityRows] = await Promise.all([
+	const [owned, cardRows, identityRows, loanRows] = await Promise.all([
 		getOwnedCounts(userId, { cardIds: ids, db }),
 		db.deckCard.findMany({
 			where: {
@@ -61,6 +66,21 @@ export async function getAvailability(
 				identityFromCollection: true,
 			},
 		}),
+		db.deckLoan.findMany({
+			where: {
+				cardId: { in: ids },
+				status: { in: [...ACTIVE_LOAN_STATUSES] },
+				request: { lenderId: userId },
+			},
+			select: {
+				cardId: true,
+				quantity: true,
+				status: true,
+				request: {
+					select: { borrower: { select: { username: true, name: true } } },
+				},
+			},
+		}),
 	])
 
 	const reservedBy = new Map<string, Reservation[]>()
@@ -83,6 +103,26 @@ export async function getAvailability(
 			name: deck.name,
 			quantity: deck.identityFromCollection,
 		})
+	}
+	// one reservation per borrower and state, over all their decks
+	const loans = new Map<string, Reservation & { cardId: string }>()
+	for (const row of loanRows) {
+		const who = displayName(row.request.borrower)
+		const name =
+			row.status === 'approved' ? `Lent to ${who}` : `Asked for by ${who}`
+		const key = `${row.cardId}\n${name}`
+		const loan = loans.get(key)
+		if (loan) loan.quantity += row.quantity
+		else
+			loans.set(key, {
+				cardId: row.cardId,
+				deckId: null,
+				name,
+				quantity: row.quantity,
+			})
+	}
+	for (const { cardId, ...reservation } of loans.values()) {
+		reserve(cardId, reservation)
 	}
 
 	for (const cardId of ids) {
@@ -110,9 +150,10 @@ export type FillReport = {
 
 /**
  * Reserve as many of the deck's copies from the collection as are free:
- * `min(quantity, available)` per card. This deck's own reservations aren't
- * counted against it, so filling again refreshes them after the collection
- * or another deck changed. Returns null if the user doesn't own the deck.
+ * `min(quantity - borrowed, available)` per card. Borrowed copies are left
+ * alone. This deck's own reservations aren't counted against it, so filling
+ * again refreshes them after the collection or another deck changed.
+ * Returns null if the user doesn't own the deck.
  */
 export async function fillDeck(
 	userId: string,
@@ -130,22 +171,29 @@ export async function fillDeck(
 			},
 		})
 		if (!deck) return null
-		const availability = await getAvailability(
-			userId,
-			[
-				...deck.cards.map((c) => c.cardId),
-				...(deck.identityCardId ? [deck.identityCardId] : []),
-			],
-			deckId,
-			tx,
-		)
-		const available = (cardId: string) =>
-			(availability.get(cardId) ?? NO_COPIES).available
+		const [availability, loaned] = await Promise.all([
+			getAvailability(
+				userId,
+				[
+					...deck.cards.map((c) => c.cardId),
+					...(deck.identityCardId ? [deck.identityCardId] : []),
+				],
+				deckId,
+				tx,
+			),
+			getLoanedCounts(tx, deckId),
+		])
+		// borrowed copies aren't the collection's to fill
+		const available = (cardId: string, quantity: number) =>
+			Math.min(
+				Math.max(0, quantity - (loaned.get(cardId) ?? 0)),
+				(availability.get(cardId) ?? NO_COPIES).available,
+			)
 
 		let taken = 0
 		let total = 0
 		for (const row of deck.cards) {
-			const next = Math.min(row.quantity, available(row.cardId))
+			const next = available(row.cardId, row.quantity)
 			taken += next
 			total += row.quantity
 			if (next === row.fromCollection) continue
@@ -155,7 +203,7 @@ export async function fillDeck(
 			})
 		}
 		if (deck.identityCardId) {
-			const next = Math.min(1, available(deck.identityCardId))
+			const next = available(deck.identityCardId, 1)
 			taken += next
 			total += 1
 			if (next !== deck.identityFromCollection) {
@@ -171,7 +219,8 @@ export async function fillDeck(
 
 /**
  * Set how many of one card's copies come from the collection, by hand. It's
- * capped at the copies the deck plays and the copies other decks leave free.
+ * capped at the copies the deck plays and doesn't borrow, and the copies
+ * other decks leave free.
  * The identity counts as the one copy it plays. Returns null if the user
  * doesn't own the deck, or an error if the card isn't in it.
  */
@@ -193,12 +242,19 @@ export async function setFromCollection(
 		const isIdentity = deck.identityCardId === cardId
 		const quantity = isIdentity ? 1 : (deck.cards[0]?.quantity ?? 0)
 		if (quantity === 0) return { error: 'That card isn’t in this deck' }
-		const availability =
-			(await getAvailability(userId, [cardId], deckId, tx)).get(cardId) ??
-			NO_COPIES
+		const [availability, loaned] = await Promise.all([
+			getAvailability(userId, [cardId], deckId, tx).then(
+				(map) => map.get(cardId) ?? NO_COPIES,
+			),
+			getLoanedCounts(tx, deckId).then((map) => map.get(cardId) ?? 0),
+		])
 		const next = Math.max(
 			0,
-			Math.min(Math.trunc(fromCollection), quantity, availability.available),
+			Math.min(
+				Math.trunc(fromCollection),
+				quantity - loaned,
+				availability.available,
+			),
 		)
 		if (isIdentity) {
 			await tx.deck.update({

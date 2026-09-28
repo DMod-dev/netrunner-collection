@@ -44,6 +44,15 @@ export function deckCollectionFetcherKey(deckId: string, cardId: string) {
 	return `${deckCardFetcherPrefix(deckId)}collection:${cardId}`
 }
 
+/** The fetcher key of a card's "borrowed from <lender>" stepper. */
+export function deckBorrowFetcherKey(
+	deckId: string,
+	cardId: string,
+	lenderId: string,
+) {
+	return `${deckCardFetcherPrefix(deckId)}borrow:${lenderId}:${cardId}`
+}
+
 export function deckCardFetcherPrefix(deckId: string) {
 	return `deck-${deckId}-`
 }

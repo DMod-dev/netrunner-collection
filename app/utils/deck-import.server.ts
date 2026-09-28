@@ -8,6 +8,7 @@ import {
 	parseNrdbDeckRef,
 } from './deck-check.server.ts'
 import { type DeckFormat } from './deck-formats.ts'
+import { reconcileDeckLoans } from './deck-loans.server.ts'
 import { MAX_DECK_INPUT_LENGTH } from './deck-import.ts'
 import { isIdentity } from './deck-rules.ts'
 import { MAX_DECK_NAME_LENGTH, MAX_DECK_QUANTITY } from './deck.ts'
@@ -193,6 +194,10 @@ export async function replaceDeckCards(
 				updatedAt: new Date(),
 			},
 		})
+		// cards that left, or play fewer copies, give borrowed copies back
+		await reconcileDeckLoans(tx, deckId)
+		// only the owner's own collection is filled again; borrowing new
+		// cards is up to them
 		const wasFilled =
 			deck.identityFromCollection > 0 ||
 			deck.cards.some((row) => row.fromCollection > 0)

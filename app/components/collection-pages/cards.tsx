@@ -25,6 +25,10 @@ import {
 	VersionsButton,
 } from '#app/components/card-art.tsx'
 import {
+	BorrowingActionButton,
+	BorrowStatusBadge,
+} from '#app/components/borrowing-ui.tsx'
+import {
 	CollectionAccessProvider,
 	useCollectionAccess,
 } from '#app/components/collection-access-context.tsx'
@@ -43,6 +47,8 @@ import {
 	ToggleGroup,
 	ToggleGroupItem,
 } from '#app/components/ui/toggle-group.tsx'
+import { displayName } from '#app/utils/borrowing.ts'
+import { type CardLending } from '#app/utils/borrowing.server.ts'
 import { type CardsPageData } from '#app/utils/collection-loaders.server.ts'
 import { pickArtPrinting } from '#app/utils/collection.ts'
 import { DECK_FORMAT_NAMES, DECK_FORMATS } from '#app/utils/deck-formats.ts'
@@ -66,6 +72,7 @@ export function CardsPage({ loaderData }: { loaderData: CardsPageData }) {
 	const {
 		cards,
 		inUse,
+		lent,
 		total,
 		page,
 		pageCount,
@@ -155,6 +162,7 @@ export function CardsPage({ loaderData }: { loaderData: CardsPageData }) {
 										card={card}
 										featuredSetId={featuredSetId}
 										inUse={inUse[card.id] ?? 0}
+										lent={lent[card.id] ?? []}
 									/>
 								</li>
 							))}
@@ -559,12 +567,15 @@ function CardTile({
 	card,
 	featuredSetId,
 	inUse,
+	lent,
 }: {
 	card: LoaderCard
 	/** When filtering by set, show that set's art rather than the newest. */
 	featuredSetId: string | null
 	/** copies your filled decks hold */
 	inUse: number
+	/** copies you lend (or were asked for), per borrower */
+	lent: CardLending
 }) {
 	const owned = card.printings.reduce(
 		(sum, p) =>
@@ -579,8 +590,14 @@ function CardTile({
 		pickArtPrinting(card.printings, preferredId)
 	const labelFor = (p: LoaderCard['printings'][number]) =>
 		`${card.title} (${p.set.name})`
-	const countTitle =
-		inUse > 0 ? `You own ${owned}; ${inUse} in use by your decks` : undefined
+	const lentCopies = lent.reduce((n, l) => n + l.lent, 0)
+	const held = [
+		inUse > 0 ? `${inUse} in use by your decks` : null,
+		lentCopies > 0 ? `${lentCopies} lent` : null,
+	].filter(Boolean)
+	const countTitle = held.length
+		? `You own ${owned}; ${held.join(', ')}`
+		: undefined
 
 	return (
 		<CardArtTile
@@ -588,6 +605,9 @@ function CardTile({
 			alt={card.title}
 			dimmed={owned === 0}
 			badge={<CountBadge owned={owned} title={countTitle} />}
+			statusBadge={
+				lentCopies > 0 ? <BorrowStatusBadge status="lent" /> : undefined
+			}
 			overlay={
 				<>
 					<header className="flex flex-col gap-1">
@@ -614,6 +634,9 @@ function CardTile({
 							Deck limit {card.deckLimit}
 							{inUse > 0 ? ` · ${inUse} in use by your decks` : ''}
 						</p>
+						{lent.length ? (
+							<LentList cardId={card.id} title={card.title} lent={lent} />
+						) : null}
 					</header>
 					<ul className="flex flex-col gap-2">
 						{card.printings.map((printing) => (
@@ -639,6 +662,65 @@ function CardTile({
 				</>
 			}
 		/>
+	)
+}
+
+/**
+ * Who borrows copies of this card, with a "Take back" per borrower (and for
+ * everyone, when several do). Requests are answered from the notification
+ * bell, so copies only asked for aren't listed.
+ */
+function LentList({
+	cardId,
+	title,
+	lent,
+}: {
+	cardId: string
+	title: string
+	lent: CardLending
+}) {
+	const borrowers = lent.filter((l) => l.lent > 0)
+	if (borrowers.length === 0) return null
+	return (
+		<ul className="flex flex-col gap-1 text-xs">
+			{borrowers.map((entry) => {
+				const name = displayName(entry.borrower)
+				return (
+					<li
+						key={entry.borrower.id}
+						className="flex flex-col items-start gap-1"
+					>
+						<span className="font-semibold text-sky-700 dark:text-sky-300">
+							{entry.lent} lent to {name}
+						</span>
+						<BorrowingActionButton
+							fields={{
+								intent: 'revoke',
+								cardId,
+								borrowerId: entry.borrower.id,
+							}}
+							confirmLabel="Sure?"
+							accessibleName={`Take back ${title} from ${name}`}
+							size="xs"
+						>
+							Take back
+						</BorrowingActionButton>
+					</li>
+				)
+			})}
+			{borrowers.length > 1 ? (
+				<li>
+					<BorrowingActionButton
+						fields={{ intent: 'revoke', cardId }}
+						confirmLabel="Sure?"
+						accessibleName={`Take back every lent ${title}`}
+						size="xs"
+					>
+						Take back all
+					</BorrowingActionButton>
+				</li>
+			) : null}
+		</ul>
 	)
 }
 

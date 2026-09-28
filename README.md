@@ -21,6 +21,10 @@ you've completed and which cards you still need for a deck. Card data comes from
   with it on, one button takes out every card the format doesn't allow. The deck
   shows its cards as their faces: hover or tap one to change its copies in the
   deck and its copies from your collection.
+- **Borrowing:** when someone shares their collection with you, a deck can fill
+  from it. They approve or reject the request from the notification bell, and
+  can take back a card later. Borrowed cards show on the deck as Borrowed,
+  Pending or Rejected, and on the lender's collection as Lent.
 - **Fill with collection:** reserve a deck's cards from your collection. Each
   card shows how many copies are yours, how many you still need, and which of
   your other decks hold the rest. The first deck filled keeps the copies; unfill

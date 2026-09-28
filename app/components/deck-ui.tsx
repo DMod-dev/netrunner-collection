@@ -5,9 +5,16 @@ import {
 	ChevronDown,
 } from '@untitledui/icons'
 import {
+	DeckBorrowStepper,
 	DeckCollectionStepper,
 	DeckQuantityStepper,
 } from '#app/routes/resources/deck.tsx'
+import {
+	borrowedFrom,
+	type CardLoan,
+	type DeckLender,
+	loanTotals,
+} from '#app/utils/borrowing.ts'
 import {
 	type Availability,
 	fillStatus,
@@ -23,6 +30,7 @@ import {
 } from '#app/utils/deck-rules.ts'
 import { type DeckSide, groupByType } from '#app/utils/deck.ts'
 import { cn } from '#app/utils/misc.tsx'
+import { LoanDetails, LoanStatusBadges } from './borrowing-ui.tsx'
 import { CardArtTile } from './card-art.tsx'
 import { FactionDot, factionColor } from './printing-tile.tsx'
 import { Icon } from './ui/icon.tsx'
@@ -38,25 +46,34 @@ export type DecklistEntry = {
 	quantity: number
 	/** copies reserved from the collection */
 	fromCollection: number
+	/** copies borrowed from collections shared with the owner */
+	loans: CardLoan[]
 }
 
 /** A deck's view of the collection, for its rows' badges. */
 export type DeckCollection = {
 	filled: boolean
 	availability: Record<string, Availability>
+	/** collections shared with the owner, and what they have free */
+	lenders: DeckLender[]
 }
 
-/** How a row of a filled deck stands against the collection. */
+/**
+ * How a row of a filled deck stands against the collection. Borrowed copies
+ * (in any state) are the lender's, so only the rest is weighed against the
+ * owner's collection.
+ */
 export function rowFillStatus(
 	collection: DeckCollection,
 	cardId: string,
 	quantity: number,
 	fromCollection: number,
+	loans: CardLoan[] = [],
 ) {
 	const availability = collection.availability[cardId] ?? NO_COPIES
 	return {
 		status: fillStatus({
-			quantity,
+			quantity: Math.max(0, quantity - loanTotals(loans).all),
 			fromCollection,
 			owned: availability.owned,
 			available: availability.available,
@@ -118,6 +135,132 @@ export function FillStatusBadge({
 	)
 }
 
+/**
+ * A "Borrowed from <lender>" stepper per lender that has copies of the card
+ * free or already lends (or was asked for) some.
+ */
+export function BorrowSteppers({
+	deckId,
+	cardId,
+	title,
+	quantity,
+	fromCollection,
+	loans,
+	lenders,
+}: {
+	deckId: string
+	cardId: string
+	title: string
+	quantity: number
+	fromCollection: number
+	loans: CardLoan[]
+	lenders: DeckLender[]
+}) {
+	// copies with no source yet: what any lender can still be asked for
+	const open = Math.max(0, quantity - fromCollection - loanTotals(loans).all)
+	const rows = lenders
+		.map((lender) => {
+			const borrowed = borrowedFrom(loans, lender.id)
+			const free = lender.available[cardId] ?? 0
+			return {
+				id: lender.id,
+				name: lender.name,
+				borrowed,
+				max: borrowed + Math.min(open, free),
+			}
+		})
+		.filter((row) => row.max > 0)
+	// lenders who stopped sharing: their copies can only be given back
+	for (const loan of loans) {
+		if (rows.some((row) => row.id === loan.lenderId)) continue
+		const borrowed = borrowedFrom(loans, loan.lenderId)
+		if (borrowed === 0) continue
+		rows.push({
+			id: loan.lenderId,
+			name: loan.lenderName,
+			borrowed,
+			max: borrowed,
+		})
+	}
+	return (
+		<>
+			{rows.map((row) => (
+				<div key={row.id} className="flex flex-col gap-0.5">
+					<span className="text-xs font-medium break-words">
+						Borrowed from {row.name}
+					</span>
+					<DeckBorrowStepper
+						deckId={deckId}
+						cardId={cardId}
+						lenderId={row.id}
+						lenderName={row.name}
+						title={title}
+						borrowed={row.borrowed}
+						max={row.max}
+						size="sm"
+					/>
+				</div>
+			))}
+		</>
+	)
+}
+
+/**
+ * Copies the owner doesn't own, as a bare orange number on the card's art:
+ * the warning colour says what it is.
+ */
+export function NeedBadge({ need, title }: { need: number; title: string }) {
+	if (need <= 0) return null
+	return (
+		<span
+			title={`Need ${need} more ${title}`}
+			className="flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-600 px-1.5 text-xs font-bold text-white tabular-nums shadow-sm"
+		>
+			<span className="sr-only">Need </span>
+			{need}
+		</span>
+	)
+}
+
+/**
+ * Why a row of a filled deck is short, in words, for the card's hover
+ * overlay: copies the owner doesn't own, copies their other decks (or
+ * borrowers) hold, and free copies filling again would take.
+ */
+export function FillDetails({
+	status,
+	reservedBy,
+	showNeed = true,
+}: {
+	status: FillStatus
+	reservedBy: Reservation[]
+	/** off where a NeedBadge already says it */
+	showNeed?: boolean
+}) {
+	if (status.kind === 'ok') return null
+	if (!showNeed && status.inUse === 0 && status.unreserved === 0) return null
+	return (
+		<ul className="flex flex-col text-xs font-semibold">
+			{showNeed && status.need > 0 ? (
+				<li className="text-orange-700 dark:text-orange-300">
+					Need {status.need} more
+				</li>
+			) : null}
+			{status.inUse > 0 ? (
+				<li className="text-violet-700 dark:text-violet-300">
+					{status.inUse} in use:{' '}
+					{reservedBy.map((r) => `${r.name} (${r.quantity})`).join(', ')}
+				</li>
+			) : null}
+			{status.unreserved > 0 ? (
+				<li className="text-muted-foreground">
+					{status.unreserved} free in your collection; fill again to reserve
+				</li>
+			) : null}
+		</ul>
+	)
+}
+
 /** "2/3": copies from the collection out of the copies the deck plays. */
 export function FromCollectionCount({
 	fromCollection,
@@ -137,7 +280,7 @@ export function FromCollectionCount({
 					? 'bg-success text-success-foreground'
 					: 'bg-secondary text-secondary-foreground',
 			)}
-			title={`${fromCollection} of ${quantity} ${title} from your collection`}
+			title={`${fromCollection} of ${quantity} ${title} from your collection or lent to you`}
 		>
 			<span className="sr-only">From collection: </span>
 			{fromCollection}/{quantity}
@@ -314,7 +457,11 @@ export function ProblemList({ problems }: { problems: Problem[] }) {
 }
 
 /** A deck that isn't filled from anyone's collection. */
-const UNFILLED: DeckCollection = { filled: false, availability: {} }
+const UNFILLED: DeckCollection = {
+	filled: false,
+	availability: {},
+	lenders: [],
+}
 
 /**
  * The deck's cards as their faces, grouped by type. The corner shows the
@@ -396,7 +543,7 @@ export function DecklistPanel({
 
 function DeckCardTile({
 	deckId,
-	entry: { card, quantity, fromCollection },
+	entry: { card, quantity, fromCollection, loans },
 	info,
 	collection,
 	readOnly,
@@ -405,12 +552,14 @@ function DeckCardTile({
 	entry: DecklistEntry
 	info: DeckEvaluation['perCard'][string] | undefined
 	collection: DeckCollection
+	/** someone else's deck: no steppers, and nothing about their collection */
 	readOnly: boolean
 }) {
 	const availability = collection.availability[card.id] ?? NO_COPIES
 	const fill = collection.filled
-		? rowFillStatus(collection, card.id, quantity, fromCollection)
+		? rowFillStatus(collection, card.id, quantity, fromCollection, loans)
 		: null
+	const loaned = loanTotals(loans)
 	const problems = info?.problems ?? []
 	const worst = problems.some((p) => p.severity === 'error')
 		? 'error'
@@ -432,7 +581,7 @@ function DeckCardTile({
 						) : null}
 						{fill ? (
 							<FromCollectionCount
-								fromCollection={fromCollection}
+								fromCollection={fromCollection + loaned.approved}
 								quantity={quantity}
 								title={card.title}
 							/>
@@ -441,6 +590,16 @@ function DeckCardTile({
 							{quantity}×
 						</span>
 					</span>
+				}
+				statusBadge={
+					!readOnly && (loans.length || (fill && fill.status.need > 0)) ? (
+						<>
+							<LoanStatusBadges loans={loans} />
+							{fill ? (
+								<NeedBadge need={fill.status.need} title={card.title} />
+							) : null}
+						</>
+					) : undefined
 				}
 				overlay={
 					<>
@@ -452,6 +611,8 @@ function DeckCardTile({
 								influence={info?.influence ?? 0}
 								factionId={card.factionId}
 							/>
+							{readOnly ? null : <LoanDetails loans={loans} />}
+							{fill ? <FillDetails {...fill} /> : null}
 							{problems.map((problem, i) => (
 								<p
 									key={i}
@@ -491,20 +652,27 @@ function DeckCardTile({
 										cardId={card.id}
 										title={card.title}
 										fromCollection={fromCollection}
-										max={Math.min(quantity, availability.available)}
+										max={Math.min(
+											quantity - loaned.all,
+											availability.available,
+										)}
 										size="sm"
 									/>
 								</div>
+								<BorrowSteppers
+									deckId={deckId}
+									cardId={card.id}
+									title={card.title}
+									quantity={quantity}
+									fromCollection={fromCollection}
+									loans={loans}
+									lenders={collection.lenders}
+								/>
 							</div>
 						)}
 					</>
 				}
 			/>
-			{fill && fill.status.kind !== 'ok' ? (
-				<span className="flex min-w-0 flex-wrap gap-1">
-					<FillStatusBadge {...fill} />
-				</span>
-			) : null}
 		</>
 	)
 }

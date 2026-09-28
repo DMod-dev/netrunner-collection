@@ -31,6 +31,8 @@ model User {
   sharesGiven       CollectionShare[]   @relation("CollectionShareOwner")
   sharesReceived    CollectionShare[]   @relation("CollectionShareViewer")
   decks             Deck[]
+  borrowRequests    BorrowRequest[]     @relation("BorrowRequestBorrower")
+  lendRequests      BorrowRequest[]     @relation("BorrowRequestLender")
 }
 
 model UserImage {
@@ -242,6 +244,7 @@ model Card {
   preferredArt  PreferredPrinting[]
   deckCards     DeckCard[]
   identityDecks Deck[]              @relation("DeckIdentity")
+  deckLoans     DeckLoan[]
 
   @@index([strippedTitle])
   @@index([sideId, factionId])
@@ -441,6 +444,7 @@ model Deck {
   /// like DeckCard.fromCollection
   identityFromCollection Int        @default(0)
   cards                  DeckCard[]
+  loans                  DeckLoan[]
 
   @@index([userId, updatedAt])
   @@index([identityCardId])
@@ -463,4 +467,61 @@ model DeckCard {
   @@id([deckId, cardId])
   // "which of my decks use this card"
   @@index([cardId])
+}
+
+// ---------------------------------------------------------------------------
+// Borrowing (see docs/decisions/049-borrowing.md)
+// ---------------------------------------------------------------------------
+
+/// A borrower asking a lender, who shares their collection with them, for
+/// copies for their decks. A borrower has at most one pending request per
+/// lender; borrowing more from that lender adds to it.
+model BorrowRequest {
+  id          String    @id @default(cuid())
+  /// "pending" | "approved" | "rejected" | "cancelled"
+  status      String    @default("pending")
+  /// "<borrowerId>:<lenderId>" while pending, null after: the unique index
+  /// keeps it to one pending request per pair (SQLite allows many nulls)
+  pendingKey  String?   @unique
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  respondedAt DateTime?
+
+  borrower   User       @relation("BorrowRequestBorrower", fields: [borrowerId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  borrowerId String
+  lender     User       @relation("BorrowRequestLender", fields: [lenderId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  lenderId   String
+  loans      DeckLoan[]
+
+  @@index([borrowerId, lenderId, status])
+  @@index([lenderId, status])
+}
+
+/// Copies of one card a deck borrows through one request. A deck card's
+/// copies from the owner's collection plus its loans never exceed its
+/// quantity (the identity counts as one copy).
+model DeckLoan {
+  id        String   @id @default(cuid())
+  quantity  Int
+  /// pending: asked for, and held from the lender's other uses
+  /// approved: lent
+  /// rejected | revoked: not lent; waits in the deck until the borrower
+  ///   accepts that (the row goes) or asks again (it's pending again)
+  status    String
+  /// groups rejected/revoked rows the borrower answers together
+  noticeId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  request   BorrowRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  requestId String
+  deck      Deck          @relation(fields: [deckId], references: [id], onDelete: Cascade)
+  deckId    String
+  card      Card          @relation(fields: [cardId], references: [id])
+  cardId    String
+
+  @@unique([requestId, deckId, cardId, status])
+  @@index([deckId, cardId])
+  @@index([cardId, status])
+  @@index([noticeId])
 }

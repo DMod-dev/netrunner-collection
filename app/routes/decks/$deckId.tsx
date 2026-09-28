@@ -27,16 +27,19 @@ import {
 	Pagination,
 } from '#app/components/collection-pages/cards.tsx'
 import {
+	BorrowSteppers,
 	type DeckCardInfo,
 	type DecklistEntry,
 	DecklistPanel,
 	DeckStats,
-	FillStatusBadge,
+	FillDetails,
 	IdentityArt,
 	InfluencePips,
+	NeedBadge,
 	ProblemList,
 	rowFillStatus,
 } from '#app/components/deck-ui.tsx'
+import { LoanStatusBadges } from '#app/components/borrowing-ui.tsx'
 import { DeckExportMenu, ImportDeckDialog } from '#app/components/deck-io.tsx'
 import { DeckView } from '#app/components/deck-view.tsx'
 import { GeneralErrorBoundary } from '#app/components/error-boundary.tsx'
@@ -59,6 +62,7 @@ import {
 	DeckQuantityStepper,
 	DeleteDeckButton,
 	FillControls,
+	type FillLender,
 	pendingFromCollection,
 	pendingLegality,
 	pendingPublic,
@@ -70,6 +74,12 @@ import {
 	useErrorToast,
 } from '#app/routes/resources/deck.tsx'
 import { getUserId, requireUserId } from '#app/utils/auth.server.ts'
+import { getDeckBorrowing } from '#app/utils/borrowing.server.ts'
+import {
+	borrowedFrom,
+	type CardLoan,
+	loanTotals,
+} from '#app/utils/borrowing.ts'
 import { getFilterOptions, searchCards } from '#app/utils/collection.server.ts'
 import { pickArtPrinting } from '#app/utils/collection.ts'
 import { getDeckCollection } from '#app/utils/deck-fill.server.ts'
@@ -149,17 +159,27 @@ export async function loader({ request, params }: Route.LoaderArgs) {
 		}),
 		getFilterOptions(),
 	])
-	// what the collection has for the deck, and for the browser's page
-	const collection = await getDeckCollection(
-		userId,
-		deck,
-		results.cards.map((c) => c.id),
-	)
+	// what the collection has for the deck, and for the browser's page, and
+	// what the deck borrows from collections shared with its owner
+	const [collection, borrowing] = await Promise.all([
+		getDeckCollection(
+			userId,
+			deck,
+			results.cards.map((c) => c.id),
+		),
+		getDeckBorrowing(userId, deck),
+	])
 
 	return {
 		mode: 'build' as const,
 		deck,
-		collection,
+		collection: {
+			...collection,
+			// borrowing fills a deck as much as the owner's collection does
+			filled: collection.filled || Object.keys(borrowing.loans).length > 0,
+			lenders: borrowing.lenders,
+		},
+		loans: borrowing.loans,
 		browser: {
 			total: results.total,
 			page: results.page,
@@ -218,7 +238,11 @@ type Collection = LoaderData['collection']
  * in-flight change applied. The stats and problems follow it, so they update
  * the moment a count changes rather than after the server answers.
  */
-function useOptimisticDeck(deck: Deck, browserCards: BrowserCard[]) {
+function useOptimisticDeck(
+	deck: Deck,
+	browserCards: BrowserCard[],
+	loans: Record<string, CardLoan[]>,
+) {
 	const fetchers = useFetchers()
 	const legalityFetcher = useFetcher({
 		key: deckSettingsFetcherKey(deck.id, 'legality'),
@@ -249,6 +273,7 @@ function useOptimisticDeck(deck: Deck, browserCards: BrowserCard[]) {
 					pendingFrom.get(card.id) ?? fromCollection,
 					next,
 				),
+				loans: loans[card.id] ?? [],
 			})
 		}
 	}
@@ -256,7 +281,7 @@ function useOptimisticDeck(deck: Deck, browserCards: BrowserCard[]) {
 	for (const [cardId, quantity] of pending) {
 		const card = browserCards.find((c) => c.id === cardId)
 		if (card && quantity > 0)
-			entries.push({ card, quantity, fromCollection: 0 })
+			entries.push({ card, quantity, fromCollection: 0, loans: [] })
 	}
 	return {
 		entries,
@@ -280,10 +305,13 @@ export default function DeckRoute({ loaderData }: Route.ComponentProps) {
 }
 
 function DeckBuilder({ loaderData }: { loaderData: LoaderData }) {
-	const { deck, collection, browser, filters } = loaderData
+	const { deck, collection, loans, browser, filters } = loaderData
 	const [sheetOpen, setSheetOpen] = useState(false)
 	const { entries, identityFromCollection, requireLegality } =
-		useOptimisticDeck(deck, browser.cards)
+		useOptimisticDeck(deck, browser.cards, loans)
+	const identityLoans = deck.identity ? (loans[deck.identity.id] ?? []) : []
+	const allLoans = Object.values(loans).flat()
+	const loaned = loanTotals(allLoans)
 	// cheap (a deck is a few dozen rows), so it just runs every render
 	const evaluation = evaluateDeck({
 		identity: deck.identity,
@@ -318,9 +346,21 @@ function DeckBuilder({ loaderData }: { loaderData: LoaderData }) {
 					identityFromCollection +
 					entries.reduce((sum, e) => sum + e.fromCollection, 0)
 				}
+				borrowed={loaned.approved + loaned.pending}
+				lenders={collection.lenders.map((lender) => ({
+					id: lender.id,
+					name: lender.name,
+					borrowed: borrowedFrom(allLoans, lender.id),
+				}))}
 				total={(deck.identity ? 1 : 0) + stats.cardCount}
 				text={text}
-				missing={missingList(deck, identityFromCollection, entries, collection)}
+				missing={missingList(
+					deck,
+					identityFromCollection,
+					identityLoans,
+					entries,
+					collection,
+				)}
 			/>
 			{collection.stale ? (
 				<div
@@ -366,6 +406,7 @@ function DeckBuilder({ loaderData }: { loaderData: LoaderData }) {
 					<IdentityHeader
 						deck={deck}
 						identityFromCollection={identityFromCollection}
+						identityLoans={identityLoans}
 						collection={collection}
 					/>
 					<DeckStats stats={stats} checkFormat={requireLegality} />
@@ -421,10 +462,14 @@ function DeckBuilder({ loaderData }: { loaderData: LoaderData }) {
 function missingList(
 	deck: Deck,
 	identityFromCollection: number,
+	identityLoans: CardLoan[],
 	entries: DecklistEntry[],
 	collection: Collection,
 ) {
 	if (!collection.filled) return null
+	// copies a lender rejected or took back aren't lent: they're missing too
+	const lentOrAsked = (loans: CardLoan[]) =>
+		loans.filter((l) => l.status === 'approved' || l.status === 'pending')
 	const rows = [
 		...(deck.identity
 			? [
@@ -435,13 +480,20 @@ function missingList(
 							deck.identity.id,
 							1,
 							identityFromCollection,
+							lentOrAsked(identityLoans),
 						),
 					},
 				]
 			: []),
 		...entries.map((e) => ({
 			title: e.card.title,
-			...rowFillStatus(collection, e.card.id, e.quantity, e.fromCollection),
+			...rowFillStatus(
+				collection,
+				e.card.id,
+				e.quantity,
+				e.fromCollection,
+				lentOrAsked(e.loans),
+			),
 		})),
 	]
 	const lines = rows
@@ -455,6 +507,8 @@ function DeckToolbar({
 	requireLegality,
 	filled,
 	fromCollection,
+	borrowed,
+	lenders,
 	total,
 	text,
 	missing,
@@ -463,6 +517,8 @@ function DeckToolbar({
 	requireLegality: boolean
 	filled: boolean
 	fromCollection: number
+	borrowed: number
+	lenders: FillLender[]
 	total: number
 	text: string
 	missing: string | null
@@ -569,7 +625,9 @@ function DeckToolbar({
 					deckId={deck.id}
 					filled={filled}
 					fromCollection={fromCollection}
+					borrowed={borrowed}
 					total={total}
+					lenders={lenders}
 				/>
 				<ImportDeckDialog deckId={deck.id} />
 				<DeckExportMenu
@@ -606,23 +664,39 @@ function DeckToolbar({
 function IdentityHeader({
 	deck,
 	identityFromCollection,
+	identityLoans,
 	collection,
 }: {
 	deck: Deck
 	/** counting a change still being saved */
 	identityFromCollection: number
+	identityLoans: CardLoan[]
 	collection: Collection
 }) {
 	const { identity } = deck
 	const fill =
 		identity && collection.filled
-			? rowFillStatus(collection, identity.id, 1, identityFromCollection)
+			? rowFillStatus(
+					collection,
+					identity.id,
+					1,
+					identityFromCollection,
+					identityLoans,
+				)
 			: null
+	const loaned = loanTotals(identityLoans).all
 	return (
 		<section aria-label="Identity" className="flex items-start gap-3">
-			<div className="w-16 shrink-0">
+			<div className="relative w-16 shrink-0">
 				{identity ? (
-					<IdentityArt identity={identity} showTitle={false} />
+					<>
+						<IdentityArt identity={identity} showTitle={false} />
+						{fill ? (
+							<span className="absolute bottom-1 left-1">
+								<NeedBadge need={fill.status.need} title={identity.title} />
+							</span>
+						) : null}
+					</>
 				) : (
 					<div className="bg-muted aspect-[5/7] rounded-md" />
 				)}
@@ -647,12 +721,26 @@ function IdentityHeader({
 							title={identity.title}
 							fromCollection={identityFromCollection}
 							max={Math.min(
-								1,
+								1 - loaned,
 								(collection.availability[identity.id] ?? NO_COPIES).available,
 							)}
 							size="sm"
 						/>
-						{fill ? <FillStatusBadge {...fill} /> : null}
+						<LoanStatusBadges loans={identityLoans} withTitles />
+					</div>
+				) : null}
+				{fill ? <FillDetails {...fill} showNeed={false} /> : null}
+				{identity ? (
+					<div className="flex flex-wrap gap-x-4 gap-y-1">
+						<BorrowSteppers
+							deckId={deck.id}
+							cardId={identity.id}
+							title={identity.title}
+							quantity={1}
+							fromCollection={identityFromCollection}
+							loans={identityLoans}
+							lenders={collection.lenders}
+						/>
 					</div>
 				) : null}
 				<IdentityDialog deck={deck} />

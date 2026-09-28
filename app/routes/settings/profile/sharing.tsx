@@ -49,7 +49,7 @@ export async function action({ request }: Route.ActionArgs) {
 			return addShareAction(userId, formData)
 		}
 		case REMOVE_SHARE_INTENT: {
-			return removeShareAction(userId, formData)
+			return removeShareAction(request, userId, formData)
 		}
 		default: {
 			throw new Response('Invalid intent', { status: 400 })

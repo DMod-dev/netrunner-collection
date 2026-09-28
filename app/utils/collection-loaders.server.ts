@@ -1,6 +1,7 @@
 import { invariantResponse } from '@epic-web/invariant'
 import { redirect } from 'react-router'
 import { type CollectionAccessInfo } from '#app/components/collection-access-context.tsx'
+import { type CardLending, getCopiesLent } from './borrowing.server.ts'
 import { requireCollectionAccess } from './collection-access.server.ts'
 import {
 	type CardSearchParams,
@@ -77,16 +78,19 @@ export async function loadCardsPage(request: Request, view: CollectionView) {
 		getCollectionTotals(view.ownerId),
 		getCardCount(),
 	])
-	// decks are private, so only your own collection shows what they hold
-	const inUse = view.canEdit
-		? await getCopiesInUse(
-				view.ownerId,
-				results.cards.map((c) => c.id),
-			)
-		: new Map<string, number>()
+	// decks and loans are private, so only your own collection shows what
+	// your decks hold and what you lend
+	const cardIds = results.cards.map((c) => c.id)
+	const [inUse, lent] = view.canEdit
+		? await Promise.all([
+				getCopiesInUse(view.ownerId, cardIds),
+				getCopiesLent(view.ownerId, cardIds),
+			])
+		: [new Map<string, number>(), new Map<string, CardLending>()]
 	return {
 		...results,
 		inUse: Object.fromEntries(inUse),
+		lent: Object.fromEntries(lent),
 		filters,
 		totals,
 		cardCount,
