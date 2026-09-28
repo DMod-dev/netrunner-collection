@@ -358,7 +358,7 @@ export async function action({ request }: Route.ActionArgs) {
 			)
 			if (!result) return notFound()
 			if ('error' in result) return refused(result)
-			await sendBorrowNotifications(result.notifications, getDomainUrl(request))
+			void sendBorrowNotifications(result.notifications, getDomainUrl(request))
 			return data({ ok: true } as const, {
 				headers: await createToastHeaders({
 					type:
@@ -379,7 +379,7 @@ export async function action({ request }: Route.ActionArgs) {
 			)
 			if (!result) return notFound()
 			if ('error' in result) return refused(result)
-			await sendBorrowNotifications(result.notifications, getDomainUrl(request))
+			void sendBorrowNotifications(result.notifications, getDomainUrl(request))
 			return { ok: true } as const
 		}
 		case 'return-to-lender': {

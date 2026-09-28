@@ -480,6 +480,9 @@ model BorrowRequest {
   id          String    @id @default(cuid())
   /// "pending" | "approved" | "rejected" | "cancelled"
   status      String    @default("pending")
+  /// "<borrowerId>:<lenderId>" while pending, null after: the unique index
+  /// keeps it to one pending request per pair (SQLite allows many nulls)
+  pendingKey  String?   @unique
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   respondedAt DateTime?

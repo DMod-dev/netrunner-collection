@@ -76,7 +76,7 @@ export async function action({ request }: Route.ActionArgs) {
 				answer,
 			)
 			if (!result) return refused('That request is no longer pending', 404)
-			await sendBorrowNotifications(result.notifications, origin)
+			void sendBorrowNotifications(result.notifications, origin)
 			return done(
 				answer === 'approve'
 					? `Lent ${cards(result.copies)}`
@@ -90,7 +90,7 @@ export async function action({ request }: Route.ActionArgs) {
 				submission.borrowerId || undefined,
 			)
 			if (result.copies === 0) return refused('Nothing to take back', 404)
-			await sendBorrowNotifications(result.notifications, origin)
+			void sendBorrowNotifications(result.notifications, origin)
 			return done(`Took back ${cards(result.copies)}`)
 		}
 		case 'cancel': {
@@ -108,7 +108,7 @@ export async function action({ request }: Route.ActionArgs) {
 			)
 			if (!result) return refused('Nothing left to answer', 404)
 			if ('error' in result) return refused(result.error, result.status)
-			await sendBorrowNotifications(result.notifications, origin)
+			void sendBorrowNotifications(result.notifications, origin)
 			if (submission.answer === 'accept') {
 				return done(`${cards(result.answered)} no longer borrowed`)
 			}

@@ -3,11 +3,7 @@ import { type Prisma } from '@prisma/client'
 import { cachedUntilNextSync } from './card-data-cache.server.ts'
 import { prisma } from './db.server.ts'
 import { DECK_FORMATS, type DeckFormat } from './deck-formats.ts'
-import {
-	cancelEmptyRequests,
-	dropLoans,
-	fitLoansToQuantity,
-} from './deck-loans.server.ts'
+import { cancelEmptyRequests, reconcileDeckLoans } from './deck-loans.server.ts'
 import {
 	CARD_LITE_SELECT,
 	getFormatRules,
@@ -350,15 +346,18 @@ function collectionSummary(deck: {
 	const active = deck.loans.filter(
 		(l) => l.status === 'approved' || l.status === 'pending',
 	)
-	const borrowedByCard = new Map<string, number>()
-	for (const loan of active) {
-		borrowedByCard.set(
+	// only lent copies cover a card, as in the builder's count; asked-for
+	// ones may yet be rejected
+	const lentByCard = new Map<string, number>()
+	for (const loan of deck.loans) {
+		if (loan.status !== 'approved') continue
+		lentByCard.set(
 			loan.cardId,
-			(borrowedByCard.get(loan.cardId) ?? 0) + loan.quantity,
+			(lentByCard.get(loan.cardId) ?? 0) + loan.quantity,
 		)
 	}
 	const covered = (cardId: string, own: number) =>
-		own + (borrowedByCard.get(cardId) ?? 0)
+		own + (lentByCard.get(cardId) ?? 0)
 	const filledFromCollection = copiesFromCollection > 0 || deck.loans.length > 0
 	return {
 		filledFromCollection,
@@ -530,24 +529,15 @@ export async function setDeckCardQuantity(
 	await prisma.$transaction(async (tx) => {
 		if (clamped === 0) {
 			await tx.deckCard.deleteMany({ where: { deckId, cardId } })
-			await dropLoans(tx, deckId, [cardId])
 		} else {
-			const existing = await tx.deckCard.findUnique({
-				where: key,
-				select: { fromCollection: true },
-			})
-			const fromCollection = await fitLoansToQuantity(tx, {
-				deckId,
-				cardId,
-				quantity: clamped,
-				fromCollection: existing?.fromCollection ?? 0,
-			})
 			await tx.deckCard.upsert({
 				where: key,
 				create: { deckId, cardId, quantity: clamped },
-				update: { quantity: clamped, fromCollection },
+				update: { quantity: clamped },
 			})
 		}
+		// fewer copies give back borrowed ones first, then reserved ones
+		await reconcileDeckLoans(tx, deckId)
 		await touchDeck(tx, deckId)
 	})
 	return { quantity: clamped }
@@ -590,9 +580,7 @@ export async function setDeckIdentity(
 				...(changed ? { identityFromCollection: 0 } : {}),
 			},
 		})
-		if (changed && deck.identityCardId) {
-			await dropLoans(tx, deckId, [deck.identityCardId])
-		}
+		await reconcileDeckLoans(tx, deckId)
 	})
 	return { ok: true }
 }
@@ -650,7 +638,7 @@ export async function removeIllegalCards(userId: string, deckId: string) {
 		await tx.deckCard.deleteMany({
 			where: { deckId, cardId: { in: cardIds } },
 		})
-		await dropLoans(tx, deckId, cardIds)
+		await reconcileDeckLoans(tx, deckId)
 		await touchDeck(tx, deckId)
 	})
 	return {
@@ -710,7 +698,7 @@ export async function deleteDeck(userId: string, deckId: string) {
 		const { count } = await tx.deck.deleteMany({
 			where: { id: deckId, userId },
 		})
-		if (count > 0) await cancelEmptyRequests(tx, null, userId)
+		if (count > 0) await cancelEmptyRequests(tx, userId)
 		return count > 0
 	})
 }

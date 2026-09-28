@@ -8,7 +8,7 @@ import {
 	parseNrdbDeckRef,
 } from './deck-check.server.ts'
 import { type DeckFormat } from './deck-formats.ts'
-import { dropLoans, fitLoansToQuantity } from './deck-loans.server.ts'
+import { reconcileDeckLoans } from './deck-loans.server.ts'
 import { MAX_DECK_INPUT_LENGTH } from './deck-import.ts'
 import { isIdentity } from './deck-rules.ts'
 import { MAX_DECK_NAME_LENGTH, MAX_DECK_QUANTITY } from './deck.ts'
@@ -163,16 +163,9 @@ export async function replaceDeckCards(
 			(deck.identity?.sideId === plan.sideId ? deck.identityCardId : null)
 
 		const before = new Map(deck.cards.map((row) => [row.cardId, row]))
-		const kept = new Set(plan.cards.map((c) => c.cardId))
 		await tx.deckCard.deleteMany({
-			where: { deckId, cardId: { notIn: [...kept] } },
+			where: { deckId, cardId: { notIn: plan.cards.map((c) => c.cardId) } },
 		})
-		// borrowed copies of cards that left go back
-		await dropLoans(
-			tx,
-			deckId,
-			deck.cards.map((row) => row.cardId).filter((id) => !kept.has(id)),
-		)
 		for (const { cardId, quantity } of plan.cards) {
 			const row = before.get(cardId)
 			if (!row) {
@@ -184,17 +177,9 @@ export async function replaceDeckCards(
 				where: { deckId_cardId: { deckId, cardId } },
 				data: {
 					quantity,
-					fromCollection: await fitLoansToQuantity(tx, {
-						deckId,
-						cardId,
-						quantity,
-						fromCollection: row.fromCollection,
-					}),
+					fromCollection: Math.min(row.fromCollection, quantity),
 				},
 			})
-		}
-		if (deck.identityCardId && identityCardId !== deck.identityCardId) {
-			await dropLoans(tx, deckId, [deck.identityCardId])
 		}
 		await tx.deck.update({
 			where: { id: deckId },
@@ -209,6 +194,8 @@ export async function replaceDeckCards(
 				updatedAt: new Date(),
 			},
 		})
+		// cards that left, or play fewer copies, give borrowed copies back
+		await reconcileDeckLoans(tx, deckId)
 		// only the owner's own collection is filled again; borrowing new
 		// cards is up to them
 		const wasFilled =

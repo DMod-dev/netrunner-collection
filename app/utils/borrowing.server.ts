@@ -34,7 +34,13 @@ const userSelect = { id: true, username: true, name: true } as const
 
 /** An email to send once a borrowing change is saved. */
 export type BorrowNotification = {
-	kind: 'requested' | 'approved' | 'rejected' | 'revoked' | 'share-ended'
+	kind:
+		| 'requested'
+		| 'approved'
+		| 'rejected'
+		| 'revoked'
+		| 'share-ended'
+		| 'share-left'
 	/** who the email goes to */
 	toUserId: string
 	/** the other side */
@@ -76,9 +82,11 @@ async function isSharedWith(db: Db, lenderId: string, borrowerId: string) {
  * whether the lender needs telling.
  */
 async function openRequest(db: Db, borrowerId: string, lenderId: string) {
-	const existing = await db.borrowRequest.findFirst({
-		where: { borrowerId, lenderId, status: 'pending' },
-		orderBy: { createdAt: 'asc' },
+	// the unique pendingKey means a second, concurrent create fails rather
+	// than opening a second request
+	const pendingKey = `${borrowerId}:${lenderId}`
+	const existing = await db.borrowRequest.findUnique({
+		where: { pendingKey },
 		select: { id: true },
 	})
 	if (existing) {
@@ -91,7 +99,7 @@ async function openRequest(db: Db, borrowerId: string, lenderId: string) {
 		return { id: existing.id, created: false }
 	}
 	const request = await db.borrowRequest.create({
-		data: { borrowerId, lenderId },
+		data: { borrowerId, lenderId, pendingKey },
 		select: { id: true },
 	})
 	return { id: request.id, created: true }
@@ -295,7 +303,7 @@ export async function setBorrowed(
 				})
 			}
 		}
-		await cancelEmptyRequests(tx, null, borrowerId)
+		await cancelEmptyRequests(tx, borrowerId)
 		return { borrowed: target, notifications: [] }
 	})
 }
@@ -326,7 +334,7 @@ export async function returnToLender(
 			_sum: { quantity: true },
 		})
 		await tx.deckLoan.deleteMany({ where })
-		await cancelEmptyRequests(tx, null, borrowerId)
+		await cancelEmptyRequests(tx, borrowerId)
 		return { returned: _sum.quantity ?? 0 }
 	})
 }
@@ -339,7 +347,7 @@ export async function cancelRequest(borrowerId: string, requestId: string) {
 	return prisma.$transaction(async (tx) => {
 		const { count } = await tx.borrowRequest.updateMany({
 			where: { id: requestId, borrowerId, status: 'pending' },
-			data: { status: 'cancelled', respondedAt: new Date() },
+			data: { status: 'cancelled', respondedAt: new Date(), pendingKey: null },
 		})
 		if (count === 0) return false
 		await tx.deckLoan.deleteMany({ where: { requestId, status: 'pending' } })
@@ -472,6 +480,7 @@ export async function respondToRequest(
 			data: {
 				status: approve ? 'approved' : 'rejected',
 				respondedAt: new Date(),
+				pendingKey: null,
 			},
 		})
 		return {
@@ -550,56 +559,97 @@ async function revokeRows(
 }
 
 /**
- * The share from `lenderId` to `borrowerId` is gone: revoke every lent copy
- * and reject every pending request between them. The borrower can only
- * accept these (asking again needs the share).
+ * The share from `lenderId` to `borrowerId` is gone. If the lender ended it,
+ * every lent copy is revoked and every pending request rejected: the
+ * borrower can only accept those (asking again needs the share), and gets
+ * an email. If the borrower left, they chose to: their borrowed and
+ * asked-for copies simply go back, and the lender is told what came back.
+ * Returns the emails to send and how many copies were lent and asked for.
  */
 export async function endLoans(
 	db: Db,
 	lenderId: string,
 	borrowerId: string,
-): Promise<BorrowNotification[]> {
-	const approved = await db.deckLoan.findMany({
-		where: { status: 'approved', request: { lenderId, borrowerId } },
-		select: {
-			id: true,
-			quantity: true,
-			request: { select: { borrowerId: true } },
-		},
-	})
-	const revoked = await revokeRows(db, lenderId, approved)
-	const pending = await db.borrowRequest.findMany({
-		where: { lenderId, borrowerId, status: 'pending' },
-		select: { id: true },
-	})
-	let rejected = 0
-	for (const { id } of pending) {
-		const { _sum } = await db.deckLoan.aggregate({
-			where: { requestId: id, status: 'pending' },
-			_sum: { quantity: true },
+	endedBy: 'lender' | 'borrower',
+): Promise<{
+	notifications: BorrowNotification[]
+	lent: number
+	asked: number
+}> {
+	const between = { request: { lenderId, borrowerId } }
+	const [approved, pendingRows, requests] = await Promise.all([
+		db.deckLoan.findMany({
+			where: { status: 'approved', ...between },
+			select: {
+				id: true,
+				quantity: true,
+				request: { select: { borrowerId: true } },
+			},
+		}),
+		db.deckLoan.findMany({
+			where: { status: 'pending', ...between },
+			select: { quantity: true },
+		}),
+		db.borrowRequest.findMany({
+			where: { lenderId, borrowerId, status: 'pending' },
+			select: { id: true },
+		}),
+	])
+	const lent = sumQuantity(approved)
+	const asked = sumQuantity(pendingRows)
+	const closed = { respondedAt: new Date(), pendingKey: null }
+
+	if (endedBy === 'borrower') {
+		await db.deckLoan.deleteMany({
+			where: { status: { in: [...ACTIVE_LOAN_STATUSES] }, ...between },
 		})
-		rejected += _sum.quantity ?? 0
+		await db.borrowRequest.updateMany({
+			where: { id: { in: requests.map((r) => r.id) } },
+			data: { status: 'cancelled', ...closed },
+		})
+		return {
+			lent,
+			asked,
+			notifications:
+				lent > 0
+					? [
+							{
+								kind: 'share-left',
+								toUserId: lenderId,
+								fromUserId: borrowerId,
+								copies: lent,
+							},
+						]
+					: [],
+		}
+	}
+
+	await revokeRows(db, lenderId, approved)
+	for (const { id } of requests) {
 		await db.deckLoan.updateMany({
 			where: { requestId: id, status: 'pending' },
 			data: { status: 'rejected', noticeId: id },
 		})
 		await db.borrowRequest.update({
 			where: { id },
-			data: { status: 'rejected', respondedAt: new Date() },
+			data: { status: 'rejected', ...closed },
 		})
 	}
-	const copies =
-		revoked.reduce((n, notification) => n + notification.copies, 0) + rejected
-	return copies > 0
-		? [
-				{
-					kind: 'share-ended',
-					toUserId: borrowerId,
-					fromUserId: lenderId,
-					copies,
-				},
-			]
-		: []
+	return {
+		lent,
+		asked,
+		notifications:
+			lent + asked > 0
+				? [
+						{
+							kind: 'share-ended',
+							toUserId: borrowerId,
+							fromUserId: lenderId,
+							copies: lent + asked,
+						},
+					]
+				: [],
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -613,7 +663,7 @@ export async function endLoans(
 export async function getBorrowingNotifications(
 	userId: string,
 ): Promise<BorrowingNotification[]> {
-	const [requests, noticeRows, lenders] = await Promise.all([
+	const [requests, notices] = await Promise.all([
 		prisma.borrowRequest.findMany({
 			where: {
 				lenderId: userId,
@@ -627,41 +677,8 @@ export async function getBorrowingNotifications(
 				loans: { where: { status: 'pending' }, select: { quantity: true } },
 			},
 		}),
-		prisma.deckLoan.findMany({
-			where: {
-				status: { in: [...NOT_LENT_STATUSES] },
-				request: { borrowerId: userId },
-			},
-			select: {
-				noticeId: true,
-				status: true,
-				quantity: true,
-				updatedAt: true,
-				request: { select: { lender: { select: userSelect } } },
-			},
-		}),
-		listLenders(userId),
+		loadNotices(userId),
 	])
-	const sharing = new Set(lenders.map((l) => l.id))
-	const notices = new Map<string, BorrowingNotification & { kind: 'notice' }>()
-	for (const row of noticeRows) {
-		if (!row.noticeId) continue
-		const notice = notices.get(row.noticeId)
-		if (notice) {
-			notice.copies += row.quantity
-			continue
-		}
-		const { lender } = row.request
-		notices.set(row.noticeId, {
-			kind: 'notice',
-			noticeId: row.noticeId,
-			status: row.status === 'revoked' ? 'revoked' : 'rejected',
-			lenderName: displayName(lender),
-			copies: row.quantity,
-			canAskAgain: sharing.has(lender.id),
-			date: row.updatedAt,
-		})
-	}
 	return [
 		...requests.map((r): BorrowingNotification => ({
 			kind: 'request',
@@ -670,7 +687,15 @@ export async function getBorrowingNotifications(
 			copies: sumQuantity(r.loans),
 			date: r.updatedAt,
 		})),
-		...notices.values(),
+		...notices.map((n): BorrowingNotification => ({
+			kind: 'notice',
+			noticeId: n.noticeId,
+			status: n.status,
+			lenderName: displayName(n.lender),
+			copies: sumQuantity(n.rows),
+			canAskAgain: n.canAskAgain,
+			date: n.date,
+		})),
 	].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 }
 
@@ -846,9 +871,57 @@ function sumQuantity(rows: Array<{ quantity: number }>) {
 	return rows.reduce((n, r) => n + r.quantity, 0)
 }
 
+/**
+ * Copies lenders rejected or took back, waiting for `userId` to answer,
+ * grouped into notices (one per rejection or revocation), oldest first.
+ * Whether they can still ask again needs the shares, which are only looked
+ * up when there's a notice: the bell runs this on every page.
+ */
+async function loadNotices(userId: string) {
+	const rows = await prisma.deckLoan.findMany({
+		where: {
+			status: { in: [...NOT_LENT_STATUSES] },
+			request: { borrowerId: userId },
+		},
+		orderBy: { updatedAt: 'asc' },
+		select: {
+			...loanPageSelect,
+			updatedAt: true,
+			request: { select: { lender: { select: userSelect } } },
+		},
+	})
+	if (rows.length === 0) return []
+	const sharing = new Set((await listLenders(userId)).map((l) => l.id))
+	const notices = new Map<
+		string,
+		{
+			noticeId: string
+			status: 'rejected' | 'revoked'
+			lender: BorrowUser
+			canAskAgain: boolean
+			date: Date
+			rows: LoanPageRow[]
+		}
+	>()
+	for (const row of rows) {
+		if (!row.noticeId) continue
+		const notice = notices.get(row.noticeId) ?? {
+			noticeId: row.noticeId,
+			status: row.status === 'revoked' ? 'revoked' : 'rejected',
+			lender: row.request.lender,
+			canAskAgain: sharing.has(row.request.lender.id),
+			date: row.updatedAt,
+			rows: [],
+		}
+		notice.rows.push(row)
+		notices.set(row.noticeId, notice)
+	}
+	return [...notices.values()]
+}
+
 /** Everything the Borrowing page shows, both as borrower and as lender. */
 export async function getBorrowingOverview(userId: string) {
-	const [incoming, outgoing, noticeRows, lentRows, borrowedRows, lenders] =
+	const [incoming, outgoing, notices, lentRows, borrowedRows] =
 		await Promise.all([
 			prisma.borrowRequest.findMany({
 				where: { lenderId: userId, status: 'pending' },
@@ -871,18 +944,7 @@ export async function getBorrowingOverview(userId: string) {
 					loans: { where: { status: 'pending' }, select: loanPageSelect },
 				},
 			}),
-			prisma.deckLoan.findMany({
-				where: {
-					status: { in: [...NOT_LENT_STATUSES] },
-					request: { borrowerId: userId },
-				},
-				orderBy: { updatedAt: 'asc' },
-				select: {
-					...loanPageSelect,
-					updatedAt: true,
-					request: { select: { lender: { select: userSelect } } },
-				},
-			}),
+			loadNotices(userId),
 			prisma.deckLoan.findMany({
 				where: { status: 'approved', request: { lenderId: userId } },
 				select: {
@@ -897,34 +959,7 @@ export async function getBorrowingOverview(userId: string) {
 					request: { select: { lender: { select: userSelect } } },
 				},
 			}),
-			listLenders(userId),
 		])
-
-	const sharing = new Set(lenders.map((l) => l.id))
-	const notices = new Map<
-		string,
-		{
-			noticeId: string
-			status: 'rejected' | 'revoked'
-			lender: BorrowUser
-			canAskAgain: boolean
-			date: Date
-			rows: LoanPageRow[]
-		}
-	>()
-	for (const row of noticeRows) {
-		if (!row.noticeId) continue
-		const notice = notices.get(row.noticeId) ?? {
-			noticeId: row.noticeId,
-			status: row.status === 'revoked' ? 'revoked' : 'rejected',
-			lender: row.request.lender,
-			canAskAgain: sharing.has(row.request.lender.id),
-			date: row.updatedAt,
-			rows: [],
-		}
-		notice.rows.push(row)
-		notices.set(row.noticeId, notice)
-	}
 
 	const byUser = <Row extends LoanPageRow>(
 		rows: Row[],
@@ -962,7 +997,7 @@ export async function getBorrowingOverview(userId: string) {
 				copies: sumQuantity(r.loans),
 				cards: deckCardRows(r.loans),
 			})),
-		notices: [...notices.values()].map(({ rows, ...notice }) => ({
+		notices: notices.map(({ rows, ...notice }) => ({
 			...notice,
 			copies: sumQuantity(rows),
 			cards: deckCardRows(rows),

@@ -78,12 +78,17 @@ export async function removeShare(userId: string, shareId: string) {
 		},
 	})
 	if (!share) return null
-	const notifications = await prisma.$transaction(async (tx) => {
+	const ended = await prisma.$transaction(async (tx) => {
 		// deleteMany, so removing twice at once doesn't throw
 		await tx.collectionShare.deleteMany({ where: { id: share.id } })
-		return endLoans(tx, share.owner.id, share.viewer.id)
+		return endLoans(
+			tx,
+			share.owner.id,
+			share.viewer.id,
+			share.owner.id === userId ? 'lender' : 'borrower',
+		)
 	})
-	return { ...share, notifications }
+	return { ...share, ...ended }
 }
 
 /**
@@ -108,12 +113,11 @@ export async function removeShareAction(
 			}),
 		})
 	}
-	await sendBorrowNotifications(share.notifications, getDomainUrl(request))
-	const lent = share.notifications.length > 0
+	void sendBorrowNotifications(share.notifications, getDomainUrl(request))
 	const description =
 		share.owner.id === userId
-			? `${displayName(share.viewer)} can no longer see your collection${lent ? ' or borrow from it; the cards you lent them are back' : ''}.`
-			: `You can no longer see ${displayName(share.owner)}’s collection${lent ? ' or borrow from it' : ''}.`
+			? `${displayName(share.viewer)} can no longer see your collection${ownerLoanNote(share)}.`
+			: `You can no longer see ${displayName(share.owner)}’s collection${viewerLoanNote(share)}.`
 	return data({ status: 'success' } as const, {
 		headers: await createToastHeaders({
 			type: 'success',
@@ -121,6 +125,28 @@ export async function removeShareAction(
 			description,
 		}),
 	})
+}
+
+function copies(n: number) {
+	return `${n} ${n === 1 ? 'card' : 'cards'}`
+}
+
+/** What unsharing did to the owner's loans, for their toast. */
+function ownerLoanNote({ lent, asked }: { lent: number; asked: number }) {
+	const notes = [
+		lent > 0 ? `the ${copies(lent)} you lent them are back` : null,
+		asked > 0 ? 'their pending request was rejected' : null,
+	].filter(Boolean)
+	return notes.length ? ` or borrow from it; ${notes.join(', and ')}` : ''
+}
+
+/** What leaving did to the viewer's borrowing, for their toast. */
+function viewerLoanNote({ lent, asked }: { lent: number; asked: number }) {
+	const notes = [
+		lent > 0 ? `the ${copies(lent)} they lent you went back` : null,
+		asked > 0 ? 'your pending request was withdrawn' : null,
+	].filter(Boolean)
+	return notes.length ? `; ${notes.join(', and ')}` : ''
 }
 
 function displayName(user: { username: string; name: string | null }) {

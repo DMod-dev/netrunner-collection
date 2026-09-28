@@ -20,7 +20,13 @@ import {
 	getAvailability,
 	setFromCollection,
 } from './deck-fill.server.ts'
-import { createDeck, deleteDeck, setDeckCardQuantity } from './deck.server.ts'
+import { replaceDeckCards } from './deck-import.server.ts'
+import {
+	createDeck,
+	deleteDeck,
+	setDeckCardQuantity,
+	setDeckIdentity,
+} from './deck.server.ts'
 
 // insertCards gives each card one printing: 30002 is The Catalyst, 30003
 // is Corroder.
@@ -419,4 +425,108 @@ test('borrowing needs a share; removing it ends every loan', async () => {
 	expect(await corroderLoans(a.id)).toEqual(['revoked:1'])
 	await answerNotice(borrower.id, notice.noticeId!, 'accept')
 	expect(await corroderLoans(a.id)).toEqual([])
+})
+
+test('a borrower leaving the share gives everything back; the lender is told', async () => {
+	const { lender, borrower, shareId } = await setup()
+	const a = await insertDeck(borrower.id, 'A', 2)
+	await setBorrowed(borrower.id, a.id, 'corroder', lender.id, 2)
+	await respondToRequest(
+		lender.id,
+		(await pendingRequest(borrower.id)).id,
+		'approve',
+	)
+	await setBorrowed(borrower.id, a.id, 'the_catalyst', lender.id, 1)
+
+	const left = await removeShare(borrower.id, shareId)
+	expect(left).toMatchObject({
+		lent: 2,
+		asked: 1,
+		notifications: [
+			{
+				kind: 'share-left',
+				toUserId: lender.id,
+				fromUserId: borrower.id,
+				copies: 2,
+			},
+		],
+	})
+	// nothing waits for an answer: they left on purpose
+	expect(await prisma.deckLoan.count({ where: { deckId: a.id } })).toBe(0)
+	expect(await getBorrowingNotifications(borrower.id)).toEqual([])
+	expect(await getBorrowingNotifications(lender.id)).toEqual([])
+	expect(await lenderFree(lender.id)).toBe(3)
+	expect(await lenderFree(lender.id, 'the_catalyst')).toBe(1)
+})
+
+test('unsharing with nothing lent reports only the rejected request', async () => {
+	const { lender, borrower, shareId } = await setup()
+	const a = await insertDeck(borrower.id, 'A', 1)
+	await setBorrowed(borrower.id, a.id, 'corroder', lender.id, 1)
+	expect(await removeShare(lender.id, shareId)).toMatchObject({
+		lent: 0,
+		asked: 1,
+		notifications: [{ kind: 'share-ended', toUserId: borrower.id, copies: 1 }],
+	})
+})
+
+test('the database allows one pending request per borrower and lender', async () => {
+	const { lender, borrower } = await setup()
+	const a = await insertDeck(borrower.id, 'A', 1)
+	await setBorrowed(borrower.id, a.id, 'corroder', lender.id, 1)
+	const first = await pendingRequest(borrower.id)
+	await expect(
+		prisma.borrowRequest.create({
+			data: {
+				borrowerId: borrower.id,
+				lenderId: lender.id,
+				pendingKey: `${borrower.id}:${lender.id}`,
+			},
+		}),
+	).rejects.toThrow(/Unique constraint/)
+
+	// once answered, the next borrowing opens a new request
+	await respondToRequest(lender.id, first.id, 'approve')
+	await setBorrowed(borrower.id, a.id, 'the_catalyst', lender.id, 1)
+	const second = await pendingRequest(borrower.id)
+	expect(second.id).not.toBe(first.id)
+	expect(
+		await prisma.borrowRequest.findUniqueOrThrow({
+			where: { id: first.id },
+			select: { pendingKey: true },
+		}),
+	).toEqual({ pendingKey: null })
+})
+
+test('a changed identity or an import gives borrowed copies back', async () => {
+	const { lender, borrower } = await setup()
+	const empty = await insertDeck(borrower.id, 'Empty', 0)
+	await setBorrowed(borrower.id, empty.id, 'the_catalyst', lender.id, 1)
+	// an empty deck may switch sides; the borrowed identity goes back
+	await setDeckIdentity(borrower.id, empty.id, 'precision_design')
+	expect(await prisma.deckLoan.count({ where: { deckId: empty.id } })).toBe(0)
+
+	const deck = await insertDeck(borrower.id, 'A', 3)
+	await setBorrowed(borrower.id, deck.id, 'corroder', lender.id, 3)
+	const replace = (corroders: number) =>
+		replaceDeckCards(borrower.id, deck.id, {
+			name: null,
+			nrdbUrl: null,
+			// an import can't be empty: without Corroders it's just the identity
+			cards: new Map(
+				corroders ? [['corroder', corroders]] : [['the_catalyst', 1]],
+			),
+			unrecognized: [],
+		})
+	await replace(1)
+	expect(await corroderLoans(deck.id)).toEqual(['pending:1'])
+	await replace(0)
+	expect(await corroderLoans(deck.id)).toEqual([])
+	// the emptied request is cancelled
+	expect(
+		await prisma.borrowRequest.count({
+			where: { borrowerId: borrower.id, status: 'pending' },
+		}),
+	).toBe(0)
+	expect(await lenderFree(lender.id)).toBe(3)
 })

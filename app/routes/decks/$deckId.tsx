@@ -467,6 +467,9 @@ function missingList(
 	collection: Collection,
 ) {
 	if (!collection.filled) return null
+	// copies a lender rejected or took back aren't lent: they're missing too
+	const lentOrAsked = (loans: CardLoan[]) =>
+		loans.filter((l) => l.status === 'approved' || l.status === 'pending')
 	const rows = [
 		...(deck.identity
 			? [
@@ -477,7 +480,7 @@ function missingList(
 							deck.identity.id,
 							1,
 							identityFromCollection,
-							identityLoans,
+							lentOrAsked(identityLoans),
 						),
 					},
 				]
@@ -489,7 +492,7 @@ function missingList(
 				e.card.id,
 				e.quantity,
 				e.fromCollection,
-				e.loans,
+				lentOrAsked(e.loans),
 			),
 		})),
 	]

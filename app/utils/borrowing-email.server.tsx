@@ -31,6 +31,11 @@ function describe(kind: BorrowNotification['kind'], from: string, n: number) {
 				subject: `${from} took back cards they lent you`,
 				body: `${from} took back ${copies(n)} they lent you. Accept that, or ask again, on your Borrowing page.`,
 			}
+		case 'share-left':
+			return {
+				subject: `${from} left your shared collection`,
+				body: `${from} no longer has your collection shared with them, so the ${copies(n)} you lent them are back in your collection.`,
+			}
 		case 'share-ended':
 			return {
 				subject: `${from} stopped sharing their collection with you`,
@@ -66,6 +71,8 @@ function BorrowingEmail({
 /**
  * Email each notification's recipient. A failure is logged, never thrown:
  * the change is already saved and the Borrowing page shows it either way.
+ * Actions don't wait for it (`void`), so a slow email service never holds
+ * up the response.
  */
 export async function sendBorrowNotifications(
 	notifications: BorrowNotification[],
