@@ -10,7 +10,9 @@ Every HTML response carries an enforced
 [Content Security Policy](https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP),
 set in `app/entry.server.tsx`. Scripts need the per-request nonce
 (`'strict-dynamic'` lets those scripts load the route modules), and images may
-only come from us, `data:` URLs and NetrunnerDB's card-image host.
+only come from us, `data:` URLs, NetrunnerDB's card-image host and Scryfall's
+card-image and set-symbol hosts (`cards.scryfall.io`, `svgs.scryfall.io`) for
+Magic cards.
 
 `style-src` is `'self' 'unsafe-inline'`. There are no third-party stylesheets,
 so `https:` is gone, but inline styles can't be: sonner and input-otp inject

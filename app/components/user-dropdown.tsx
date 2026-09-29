@@ -94,7 +94,14 @@ export function UserDropdown() {
 							render={<Link prefetch="intent" to="/admin/nrdb-sync" />}
 						>
 							<Icon className="text-body-md" icon={RefreshCw01}>
-								Card data sync
+								Netrunner card sync
+							</Icon>
+						</DropdownMenuItem>
+						<DropdownMenuItem
+							render={<Link prefetch="intent" to="/admin/scryfall-sync" />}
+						>
+							<Icon className="text-body-md" icon={RefreshCw01}>
+								MTG card sync
 							</Icon>
 						</DropdownMenuItem>
 						<DropdownMenuItem

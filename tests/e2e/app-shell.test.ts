@@ -107,9 +107,9 @@ test('the user menu lists the account pages', async ({
 	for (const name of ['Profile', 'Collection', 'Settings', 'Logout']) {
 		await expect(menu.getByRole('menuitem', { name })).toBeVisible()
 	}
-	await expect(
-		menu.getByRole('menuitem', { name: 'Card data sync' }),
-	).toHaveCount(0)
+	for (const name of ['Netrunner card sync', 'MTG card sync']) {
+		await expect(menu.getByRole('menuitem', { name })).toHaveCount(0)
+	}
 	await expect(menu.getByRole('menuitem', { name: 'Cache' })).toHaveCount(0)
 })
 
@@ -127,7 +127,8 @@ test('the user menu lists admin pages for admins', async ({
 		'Profile',
 		'Collection',
 		'Settings',
-		'Card data sync',
+		'Netrunner card sync',
+		'MTG card sync',
 		'Cache',
 		'Logout',
 	]) {

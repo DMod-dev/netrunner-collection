@@ -1,5 +1,10 @@
 import { type Prisma } from '@prisma/client'
 import { prisma } from './db.server.ts'
+import {
+	createSyncRunner,
+	INTERRUPTED_ERROR,
+	isAutoSyncFlagOn,
+} from './sync-runner.server.ts'
 
 const NRDB_API = 'https://api.netrunnerdb.com/api/v3/public'
 // Identify ourselves so NRDB's maintainers know who's calling and how to
@@ -397,100 +402,8 @@ export async function syncFromNrdb({
 	}
 }
 
-export type SyncTrigger = 'schedule' | 'manual' | 'cli'
-
 /** How often card data is re-synced. */
 export const SYNC_EVERY_MS = 24 * 60 * 60 * 1000
-/** A sync still "running" after this long was interrupted (e.g. a restart). */
-const STALE_AFTER_MS = 15 * 60 * 1000
-
-// guards against two syncs in this process; the "running" row covers restarts
-let syncInProgress = false
-
-/**
- * Whether a sync is currently running. Rows left "running" by a process that
- * died mid-sync are marked as interrupted so they don't block future syncs.
- */
-export async function isSyncRunning() {
-	return syncInProgress || (await isSyncRunningInDb())
-}
-
-async function isSyncRunningInDb() {
-	await prisma.nrdbSync.updateMany({
-		where: {
-			status: 'running',
-			startedAt: { lt: new Date(Date.now() - STALE_AFTER_MS) },
-		},
-		data: {
-			status: 'error',
-			finishedAt: new Date(),
-			error: 'Interrupted before it finished',
-		},
-	})
-	return (await prisma.nrdbSync.count({ where: { status: 'running' } })) > 0
-}
-
-/** Run a sync and record the outcome in the NrdbSync table. */
-export async function runRecordedSync({
-	trigger = 'cli',
-	...options
-}: Parameters<typeof syncFromNrdb>[0] & { trigger?: SyncTrigger } = {}) {
-	syncInProgress = true
-	const record = await prisma.nrdbSync.create({
-		data: { status: 'running', trigger },
-		select: { id: true },
-	})
-	try {
-		const summary = await syncFromNrdb(options)
-		await prisma.nrdbSync.update({
-			where: { id: record.id },
-			data: {
-				status: 'success',
-				finishedAt: new Date(),
-				summary: JSON.stringify(summary),
-			},
-		})
-		return summary
-	} catch (error) {
-		await prisma.nrdbSync.update({
-			where: { id: record.id },
-			data: {
-				status: 'error',
-				finishedAt: new Date(),
-				error: error instanceof Error ? error.message : String(error),
-			},
-		})
-		throw error
-	} finally {
-		syncInProgress = false
-	}
-}
-
-/**
- * Start a sync without waiting for it (it takes ~20s). Returns false if one
- * is already running.
- */
-export async function startSyncInBackground(trigger: SyncTrigger) {
-	// claim the flag before awaiting anything, so two requests arriving
-	// together can't both start a sync
-	if (syncInProgress) return false
-	syncInProgress = true
-	let runningElsewhere: boolean
-	try {
-		runningElsewhere = await isSyncRunningInDb()
-	} catch (error) {
-		syncInProgress = false
-		throw error
-	}
-	if (runningElsewhere) {
-		syncInProgress = false
-		return false
-	}
-	runRecordedSync({ trigger }).catch((error: unknown) => {
-		console.error('NRDB sync failed', error)
-	})
-	return true
-}
 
 export async function getLastSuccessfulSync() {
 	return prisma.nrdbSync.findFirst({
@@ -500,18 +413,54 @@ export async function getLastSuccessfulSync() {
 	})
 }
 
-/** Sync if the last successful sync is older than SYNC_EVERY_MS. */
-export async function syncIfDue({ now = Date.now() } = {}) {
-	const last = await getLastSuccessfulSync()
-	if (last && now - last.startedAt.getTime() < SYNC_EVERY_MS) return false
-	return startSyncInBackground('schedule')
-}
+const runner = createSyncRunner({
+	label: 'NRDB',
+	sync: syncFromNrdb,
+	everyMs: SYNC_EVERY_MS,
+	// a sync takes ~20s
+	staleAfterMs: 15 * 60 * 1000,
+	store: {
+		start: (trigger) =>
+			prisma.nrdbSync.create({
+				data: { status: 'running', trigger },
+				select: { id: true },
+			}),
+		succeed: (id, summary) =>
+			prisma.nrdbSync.update({
+				where: { id },
+				data: {
+					status: 'success',
+					finishedAt: new Date(),
+					summary: JSON.stringify(summary),
+				},
+			}),
+		fail: (id, error) =>
+			prisma.nrdbSync.update({
+				where: { id },
+				data: { status: 'error', finishedAt: new Date(), error },
+			}),
+		interruptStale: (startedBefore) =>
+			prisma.nrdbSync.updateMany({
+				where: { status: 'running', startedAt: { lt: startedBefore } },
+				data: {
+					status: 'error',
+					finishedAt: new Date(),
+					error: INTERRUPTED_ERROR,
+				},
+			}),
+		countRunning: () => prisma.nrdbSync.count({ where: { status: 'running' } }),
+		lastSuccessStartedAt: async () =>
+			(await getLastSuccessfulSync())?.startedAt ?? null,
+	},
+})
+
+export const {
+	isSyncRunning,
+	runRecordedSync,
+	startSyncInBackground,
+	syncIfDue,
+} = runner
 
 export function isAutoSyncEnabled() {
-	return (
-		process.env.NRDB_AUTO_SYNC !== 'false' &&
-		process.env.NODE_ENV !== 'test' &&
-		// dev and e2e runs use mocks; sync those by hand with npm run sync:nrdb
-		process.env.MOCKS !== 'true'
-	)
+	return isAutoSyncFlagOn(process.env.NRDB_AUTO_SYNC)
 }

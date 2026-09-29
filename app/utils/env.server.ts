@@ -34,6 +34,8 @@ const schema = z.object({
 
 	// Daily NetrunnerDB card sync; on by default except with mocks or in tests
 	NRDB_AUTO_SYNC: z.enum(['true', 'false']).optional(),
+	// Scryfall (MTG) card sync, checked every 12 hours; same defaults
+	MTG_AUTO_SYNC: z.enum(['true', 'false']).optional(),
 
 	// Tigris Object Storage Configuration
 	AWS_ACCESS_KEY_ID: z.string(),
