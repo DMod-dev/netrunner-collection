@@ -10,7 +10,9 @@ import {
 	User01,
 } from '@untitledui/icons'
 import { Link, Form } from 'react-router'
+import { GAME_ROUTES } from '#app/utils/game.ts'
 import { cn } from '#app/utils/misc.tsx'
+import { useCurrentGame } from '#app/utils/use-game.ts'
 import { userHasRole, useUser } from '#app/utils/user.ts'
 import { buttonVariants } from './ui/button'
 import {
@@ -24,6 +26,8 @@ import { UserIcon } from './user-icon'
 
 export function UserDropdown() {
 	const user = useUser()
+	// Collection, Decks and Decklists are the current game's
+	const routes = GAME_ROUTES[useCurrentGame()]
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger
@@ -61,17 +65,21 @@ export function UserDropdown() {
 						Profile
 					</Icon>
 				</DropdownMenuItem>
-				<DropdownMenuItem render={<Link prefetch="intent" to="/collection" />}>
+				<DropdownMenuItem
+					render={<Link prefetch="intent" to={routes.collection} />}
+				>
 					<Icon className="text-body-md" icon={LayersThree01}>
 						Collection
 					</Icon>
 				</DropdownMenuItem>
-				<DropdownMenuItem render={<Link prefetch="intent" to="/decks" />}>
+				<DropdownMenuItem render={<Link prefetch="intent" to={routes.decks} />}>
 					<Icon className="text-body-md" icon={BookOpen01}>
 						Decks
 					</Icon>
 				</DropdownMenuItem>
-				<DropdownMenuItem render={<Link prefetch="intent" to="/decklists" />}>
+				<DropdownMenuItem
+					render={<Link prefetch="intent" to={routes.decklists} />}
+				>
 					<Icon className="text-body-md" icon={SearchMd}>
 						Decklists
 					</Icon>

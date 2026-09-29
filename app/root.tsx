@@ -25,6 +25,7 @@ import { EpicToaster } from './components/ui/sonner.tsx'
 import { TooltipProvider } from './components/ui/tooltip.tsx'
 import { NotificationBell } from './components/notification-bell.tsx'
 import { UserDropdown } from './components/user-dropdown.tsx'
+import { GameSwitch } from './routes/resources/game-switch.tsx'
 import {
 	ThemeSwitch,
 	useOptionalTheme,
@@ -36,6 +37,8 @@ import { getBorrowingNotifications } from './utils/borrowing.server.ts'
 import { ClientHintCheck, getHints } from './utils/client-hints.tsx'
 import { prisma } from './utils/db.server.ts'
 import { getEnv } from './utils/env.server.ts'
+import { GAME_LABELS, GAME_ROUTES } from './utils/game.ts'
+import { getPreferredGame } from './utils/game.server.ts'
 import { pipeHeaders } from './utils/headers.server.ts'
 import { honeypot } from './utils/honeypot.server.ts'
 import { combineHeaders, getDomainUrl, getImgSrc } from './utils/misc.tsx'
@@ -43,6 +46,7 @@ import { useNonce } from './utils/nonce-provider.ts'
 import { type Theme, getTheme } from './utils/theme.server.ts'
 import { makeTimings, time } from './utils/timing.server.ts'
 import { getToast } from './utils/toast.server.ts'
+import { useCurrentGame, useSwitchingGame } from './utils/use-game.ts'
 import { useOptionalUser } from './utils/user.ts'
 
 export const links: Route.LinksFunction = () => {
@@ -136,6 +140,7 @@ export async function loader({ request, url }: Route.LoaderArgs) {
 				path: url.pathname,
 				userPrefs: {
 					theme: getTheme(request),
+					game: getPreferredGame(request),
 				},
 			},
 			ENV: getEnv(),
@@ -231,6 +236,7 @@ function App() {
 	const user = useOptionalUser()
 	const theme = useTheme()
 	const { pathname } = useLocation()
+	const routes = GAME_ROUTES[useCurrentGame()]
 	useToast(data.toast)
 
 	return (
@@ -243,31 +249,35 @@ function App() {
 				<div className="isolate flex min-h-screen flex-col justify-between">
 					<header className="container py-6">
 						<nav className="flex items-center justify-between gap-4 md:gap-8">
-							<Logo />
+							<div className="flex items-center gap-3 sm:gap-4">
+								<Logo />
+								{user ? <GameSwitch /> : null}
+							</div>
 							<div className="flex items-center gap-3 sm:gap-6">
 								{user ? (
 									<>
+										{/* on phones the logo goes to the collection, and the menu has both */}
 										<Link
-											to="/collection"
+											to={routes.collection}
 											prefetch="intent"
-											className="font-semibold hover:underline"
+											className="font-semibold hover:underline max-sm:hidden"
 										>
 											Collection
 										</Link>
 										<Link
-											to="/decks"
+											to={routes.decks}
 											prefetch="intent"
-											className="font-semibold hover:underline"
+											className="font-semibold hover:underline max-sm:hidden"
 										>
 											Decks
 										</Link>
-										<DecklistsLink />
+										<DecklistsLink to={routes.decklists} />
 										<NotificationBell notifications={data.notifications} />
 										<UserDropdown />
 									</>
 								) : (
 									<>
-										<DecklistsLink />
+										<DecklistsLink to={routes.decklists} />
 										{pathname === '/login' ? null : (
 											<Link
 												to="/login"
@@ -333,10 +343,10 @@ const footerLinks = [
 ]
 
 /** Everyone's public decks. Phones get there from the user menu or the decks pages. */
-function DecklistsLink() {
+function DecklistsLink({ to }: { to: string }) {
 	return (
 		<Link
-			to="/decklists"
+			to={to}
 			prefetch="intent"
 			className="font-semibold hover:underline max-sm:hidden"
 		>
@@ -345,11 +355,20 @@ function DecklistsLink() {
 	)
 }
 
+/**
+ * Home: for a logged-in player, the current game's collection. Its first
+ * word is the game's, so it reads "magic collection" on the MTG pages.
+ */
 function Logo() {
+	const user = useOptionalUser()
+	const game = useSwitchingGame()
 	return (
-		<Link to="/" className="group grid leading-snug">
+		<Link
+			to={user ? GAME_ROUTES[game].collection : '/'}
+			className="group grid leading-snug"
+		>
 			<span className="font-light transition group-hover:-translate-x-1">
-				netrunner
+				{GAME_LABELS[game].logo}
 			</span>
 			<span className="font-bold transition group-hover:translate-x-1">
 				collection
