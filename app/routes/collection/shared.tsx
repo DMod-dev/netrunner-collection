@@ -13,7 +13,13 @@ import {
 	listSharesReceived,
 	removeShareAction,
 } from '#app/utils/collection-share.server.ts'
-import { userCollectionPath } from '#app/utils/game.ts'
+import {
+	GAME_LABELS,
+	GAMES,
+	type Game,
+	userCollectionPath,
+} from '#app/utils/game.ts'
+import { useCurrentGame } from '#app/utils/use-game.ts'
 import { type Route } from './+types/shared.ts'
 
 export const handle: SEOHandle = {
@@ -42,6 +48,10 @@ export default function SharedWithMeRoute({
 	loaderData,
 }: Route.ComponentProps) {
 	const { shares } = loaderData
+	// a share covers both games: the row opens the current one's collection,
+	// and a button the other's
+	const game = useCurrentGame()
+	const otherGame = GAMES.find((option) => option !== game)!
 	return (
 		<main className="container mb-24 flex flex-col gap-6">
 			<CollectionNav />
@@ -63,33 +73,35 @@ export default function SharedWithMeRoute({
 								className="flex flex-wrap items-center justify-between gap-4 rounded-lg border p-4"
 							>
 								<Link
-									to={`/users/${share.owner.username}/collection`}
+									to={userCollectionPath(game, share.owner.username)}
 									prefetch="intent"
 									className="group flex min-w-0 items-center gap-3"
 								>
 									<UserIcon className="bg-muted size-10" />
 									<span className="flex min-w-0 flex-col">
 										<span className="truncate font-semibold group-hover:underline">
-											{name}’s collection
+											{collectionName(name, game)}
 										</span>
-										<span className="text-muted-foreground truncate text-sm tabular-nums">
-											{plural(share.totals.ownedCards, 'card')} ·{' '}
-											{plural(share.totals.copies, 'copy', 'copies')}
-										</span>
+										{/* only Netrunner collections have counts so far */}
+										{game === 'netrunner' ? (
+											<span className="text-muted-foreground truncate text-sm tabular-nums">
+												{plural(share.totals.ownedCards, 'card')} ·{' '}
+												{plural(share.totals.copies, 'copy', 'copies')}
+											</span>
+										) : null}
 									</span>
 								</Link>
 								<div className="flex items-center gap-2">
-									{/* a share covers both games; the counts are Netrunner's */}
 									<Link
-										to={userCollectionPath('mtg', share.owner.username)}
+										to={userCollectionPath(otherGame, share.owner.username)}
 										prefetch="intent"
-										aria-label={`${name}’s MTG collection`}
+										aria-label={`${name}’s ${GAME_LABELS[otherGame].name} collection`}
 										className={buttonVariants({
 											variant: 'outline',
 											size: 'sm',
 										})}
 									>
-										MTG
+										{GAME_LABELS[otherGame].name}
 									</Link>
 									<RemoveShareButton
 										shareId={share.id}
@@ -116,6 +128,13 @@ export default function SharedWithMeRoute({
 			)}
 		</main>
 	)
+}
+
+/** "Kody’s collection" for Netrunner, as it always was; "Kody’s MTG collection". */
+function collectionName(name: string, game: Game) {
+	return game === 'netrunner'
+		? `${name}’s collection`
+		: `${name}’s ${GAME_LABELS[game].name} collection`
 }
 
 function plural(count: number, one: string, many = `${one}s`) {

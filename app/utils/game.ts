@@ -9,10 +9,16 @@ export type Game = (typeof GAMES)[number]
 
 export const DEFAULT_GAME: Game = 'netrunner'
 
-export const GAME_LABELS: Record<Game, { name: string; short: string }> = {
-	netrunner: { name: 'Netrunner', short: 'NR' },
-	mtg: { name: 'MTG', short: 'MTG' },
+export const GAME_LABELS: Record<
+	Game,
+	{ name: string; short: string; logo: string }
+> = {
+	netrunner: { name: 'Netrunner', short: 'NR', logo: 'netrunner' },
+	mtg: { name: 'MTG', short: 'MTG', logo: 'magic' },
 }
+
+/** Where the header's switcher posts. */
+export const GAME_SWITCH_ACTION = '/resources/game-switch'
 
 /** Where each game's sections live. */
 export const GAME_ROUTES = {

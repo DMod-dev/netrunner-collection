@@ -181,6 +181,10 @@ test('the game switcher goes to the same section in the other game and is rememb
 		'aria-pressed',
 		'true',
 	)
+	// the logo reads "magic collection" and goes home to the MTG collection
+	await expect(
+		header.getByRole('link', { name: 'magic collection' }),
+	).toHaveAttribute('href', '/mtg/collection')
 	await expect(
 		header.getByRole('link', { name: 'Collection', exact: true }),
 	).toHaveAttribute('href', '/mtg/collection')
@@ -206,6 +210,9 @@ test('the game switcher goes to the same section in the other game and is rememb
 	// and back
 	await game.getByRole('button', { name: 'Netrunner' }).click()
 	await expect(page).toHaveURL('/collection')
+	await expect(
+		header.getByRole('link', { name: 'netrunner collection' }),
+	).toHaveAttribute('href', '/collection')
 	await navigate('/')
 	await expect(page).toHaveURL('/collection')
 })

@@ -1,19 +1,17 @@
 import { invariantResponse } from '@epic-web/invariant'
-import { Form, redirect, useLocation, useNavigation } from 'react-router'
+import { Form, redirect, useLocation } from 'react-router'
 import { safeRedirect } from 'remix-utils/safe-redirect'
 import {
 	GAME_LABELS,
+	GAME_SWITCH_ACTION,
 	GAMES,
-	type Game,
 	isGame,
 	switchGamePath,
 } from '#app/utils/game.ts'
 import { setPreferredGame } from '#app/utils/game.server.ts'
 import { cn } from '#app/utils/misc.tsx'
-import { useCurrentGame } from '#app/utils/use-game.ts'
+import { useSwitchingGame } from '#app/utils/use-game.ts'
 import { type Route } from './+types/game-switch.ts'
-
-const ACTION = '/resources/game-switch'
 
 /**
  * Remembers the chosen game and goes to the same section in it: from
@@ -32,23 +30,17 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 /**
- * "Netrunner | MTG" in the header. A plain form, so it works before the page
+ * "Netrunner | MTG" next to the logo. A plain form, so it works before the page
  * has hydrated.
  */
 export function GameSwitch({ className }: { className?: string }) {
 	const location = useLocation()
-	const currentGame = useCurrentGame()
-	const navigation = useNavigation()
-	const pendingGame =
-		navigation.formAction === ACTION
-			? navigation.formData?.get('game')
-			: undefined
-	const game: Game = isGame(pendingGame) ? pendingGame : currentGame
+	const game = useSwitchingGame()
 
 	return (
 		<Form
 			method="POST"
-			action={ACTION}
+			action={GAME_SWITCH_ACTION}
 			className={cn(
 				'bg-muted inline-flex shrink-0 gap-0.5 rounded-lg p-0.5',
 				className,
