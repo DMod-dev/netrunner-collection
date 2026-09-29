@@ -14,38 +14,43 @@ import {
 	searchCards,
 } from './collection.server.ts'
 import { getCopiesInUse } from './deck-fill.server.ts'
+import { GAME_ROUTES, type Game, userCollectionPath } from './game.ts'
 
 /**
  * The loaders behind the Cards, Sets and Set pages. Each page is mounted
  * twice: at /collection for your own collection, and at
- * /users/:username/collection for one shared with you.
+ * /users/:username/collection for one shared with you. MTG's pages follow the
+ * same pattern under /mtg/collection and /users/:username/mtg/collection.
  */
 export type CollectionView = CollectionAccessInfo & { ownerId: string }
 
 /**
  * Whose collection to load. Without `ownerUsername` it's the caller's own.
  * The owner visiting their own shared URL is sent to the same page under
- * /collection, so there's only one editable copy of each page.
+ * /collection (or /mtg/collection), so there's only one editable copy of each
+ * page. Sharing covers both games, so the check is the same for each.
  */
 export async function requireCollectionView(
 	request: Request,
 	ownerUsername?: string,
+	game: Game = 'netrunner',
 ): Promise<CollectionView> {
 	const access = await requireCollectionAccess(request, ownerUsername)
+	const ownPath = GAME_ROUTES[game].collection
 	if (ownerUsername !== undefined && access.canEdit) {
 		const url = new URL(request.url)
-		const path = url.pathname.replace(
-			/^\/users\/[^/]+\/collection/,
-			'/collection',
-		)
+		const sharedPath = userCollectionPath(game, ownerUsername)
+		const path = url.pathname.startsWith(sharedPath)
+			? `${ownPath}${url.pathname.slice(sharedPath.length)}`
+			: ownPath
 		throw redirect(`${path}${url.search}`)
 	}
 	return {
 		ownerId: access.ownerId,
 		canEdit: access.canEdit,
 		basePath: access.canEdit
-			? '/collection'
-			: `/users/${access.owner.username}/collection`,
+			? ownPath
+			: userCollectionPath(game, access.owner.username),
 		ownerName: access.canEdit
 			? 'You'
 			: (access.owner.name ?? access.owner.username),

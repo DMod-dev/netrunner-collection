@@ -107,10 +107,34 @@ test('the user menu lists the account pages', async ({
 	for (const name of ['Profile', 'Collection', 'Settings', 'Logout']) {
 		await expect(menu.getByRole('menuitem', { name })).toBeVisible()
 	}
+	await expect(
+		menu.getByRole('menuitem', { name: 'Collection' }),
+	).toHaveAttribute('href', '/collection')
 	for (const name of ['Netrunner card sync', 'MTG card sync']) {
 		await expect(menu.getByRole('menuitem', { name })).toHaveCount(0)
 	}
 	await expect(menu.getByRole('menuitem', { name: 'Cache' })).toHaveCount(0)
+})
+
+test('the user menu’s game links follow the current game', async ({
+	page,
+	login,
+}) => {
+	await login()
+	await goto(page, '/mtg/decks')
+	await page.getByRole('link', { name: 'User menu' }).click()
+	const menu = page.getByRole('menu')
+	for (const [name, href] of [
+		['Collection', '/mtg/collection'],
+		['Decks', '/mtg/decks'],
+		['Decklists', '/mtg/decklists'],
+		['Borrowing', '/borrowing'],
+	]) {
+		await expect(menu.getByRole('menuitem', { name })).toHaveAttribute(
+			'href',
+			href!,
+		)
+	}
 })
 
 test('the user menu lists admin pages for admins', async ({
@@ -134,6 +158,80 @@ test('the user menu lists admin pages for admins', async ({
 	]) {
 		await expect(menu.getByRole('menuitem', { name })).toBeVisible()
 	}
+})
+
+test('the game switcher goes to the same section in the other game and is remembered', async ({
+	page,
+	navigate,
+	login,
+}) => {
+	await login()
+	await navigate('/collection/sets')
+	const header = page.getByRole('banner')
+	const game = header.getByRole('form', { name: 'Game' })
+	await expect(game.getByRole('button', { name: 'Netrunner' })).toHaveAttribute(
+		'aria-pressed',
+		'true',
+	)
+
+	await game.getByRole('button', { name: 'MTG' }).click()
+	await expect(page).toHaveURL('/mtg/collection/sets')
+	await expect(page.getByRole('heading', { level: 1 })).toHaveText('MTG sets')
+	await expect(game.getByRole('button', { name: 'MTG' })).toHaveAttribute(
+		'aria-pressed',
+		'true',
+	)
+	await expect(
+		header.getByRole('link', { name: 'Collection', exact: true }),
+	).toHaveAttribute('href', '/mtg/collection')
+	await expect(
+		header.getByRole('link', { name: 'Decks', exact: true }),
+	).toHaveAttribute('href', '/mtg/decks')
+
+	// the choice survives a reload and a page that's about neither game
+	await page.reload()
+	await navigate('/settings/profile')
+	await expect(game.getByRole('button', { name: 'MTG' })).toHaveAttribute(
+		'aria-pressed',
+		'true',
+	)
+	await header.getByRole('link', { name: 'Collection', exact: true }).click()
+	await expect(page).toHaveURL('/mtg/collection')
+	await expect(
+		page
+			.getByRole('navigation', { name: 'Collection views' })
+			.getByRole('link', { name: 'Import/Export' }),
+	).toHaveAttribute('href', '/mtg/collection/import-export')
+
+	// and back
+	await game.getByRole('button', { name: 'Netrunner' }).click()
+	await expect(page).toHaveURL('/collection')
+	await navigate('/')
+	await expect(page).toHaveURL('/collection')
+})
+
+test('every MTG page has a title', async ({ page, login }) => {
+	await login()
+	for (const path of [
+		'/mtg/collection',
+		'/mtg/collection/sets',
+		'/mtg/collection/sets/dmu',
+		'/mtg/collection/import-export',
+		'/mtg/decks',
+		'/mtg/decks/new',
+		'/mtg/decklists',
+		'/mtg/scan',
+	]) {
+		await test.step(path, async () => {
+			await goto(page, path)
+			await expectSiteTitle(page)
+			await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+		})
+	}
+	await goto(page, '/mtg')
+	await expect(page).toHaveURL('/mtg/collection')
+	const missing = await goto(page, '/mtg/decks/nope')
+	expect(missing?.status()).toBe(404)
 })
 
 test('signup renders without React key warnings', async ({

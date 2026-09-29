@@ -1,14 +1,19 @@
 import { Link, NavLink, useSearchParams } from 'react-router'
+import { COLLECTION_TABS, GAME_ROUTES } from '#app/utils/game.ts'
 import { cn } from '#app/utils/misc.tsx'
+import { useCurrentGame } from '#app/utils/use-game.ts'
 import { useCollectionAccess } from './collection-access-context.tsx'
 
 /**
  * Tabs between the collection pages. A collection shared with you only has
  * Cards and Sets, and says whose it is; your own also lists the collections
- * shared with you.
+ * shared with you. The tabs are the current game's: /mtg/collection has its
+ * own set, and Shared with me (both games) follows the preferred one.
  */
 export function CollectionNav() {
 	const { canEdit, basePath, ownerName } = useCollectionAccess()
+	const game = useCurrentGame()
+	const root = canEdit ? GAME_ROUTES[game].collection : basePath
 	const tabClass = ({ isActive }: { isActive: boolean }) =>
 		cn(
 			'rounded-md px-2.5 py-1.5 text-sm font-semibold transition-colors sm:px-4',
@@ -23,20 +28,19 @@ export function CollectionNav() {
 				aria-label="Collection views"
 				className="bg-muted inline-flex max-w-full flex-wrap gap-1 self-start rounded-lg p-1 whitespace-nowrap"
 			>
-				<NavLink to={basePath} end className={tabClass}>
+				<NavLink to={root} end className={tabClass}>
 					Cards
 				</NavLink>
-				<NavLink to={`${basePath}/sets`} className={tabClass}>
+				<NavLink to={`${root}/sets`} className={tabClass}>
 					Sets
 				</NavLink>
 				{canEdit ? (
 					<>
-						<NavLink to="/collection/deck-check" className={tabClass}>
-							Deck check
-						</NavLink>
-						<NavLink to="/collection/import-export" className={tabClass}>
-							Import/Export
-						</NavLink>
+						{COLLECTION_TABS[game].map(({ path, label }) => (
+							<NavLink key={path} to={`${root}${path}`} className={tabClass}>
+								{label}
+							</NavLink>
+						))}
 						<NavLink to="/collection/shared" className={tabClass}>
 							Shared with me
 						</NavLink>

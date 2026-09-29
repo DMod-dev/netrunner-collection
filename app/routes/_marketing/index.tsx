@@ -1,6 +1,8 @@
 import { Link, redirect } from 'react-router'
 import { buttonVariants } from '#app/components/ui/button.tsx'
 import { getUserId } from '#app/utils/auth.server.ts'
+import { GAME_ROUTES } from '#app/utils/game.ts'
+import { getPreferredGame } from '#app/utils/game.server.ts'
 import { type Route } from './+types/index.ts'
 
 export const meta: Route.MetaFunction = () => [
@@ -13,7 +15,9 @@ export const meta: Route.MetaFunction = () => [
 ]
 
 export async function loader({ request }: Route.LoaderArgs) {
-	if (await getUserId(request)) throw redirect('/collection')
+	if (await getUserId(request)) {
+		throw redirect(GAME_ROUTES[getPreferredGame(request)].collection)
+	}
 	return null
 }
 
@@ -25,7 +29,8 @@ export default function Index() {
 				<p className="text-muted-foreground text-lg">
 					Search every Netrunner card from Core Set to the latest Null Signal
 					release, record how many you own of each printing, and keep track of
-					your alt arts and promos too.
+					your alt arts and promos too. Magic: The Gathering support is on its
+					way, with the same collection and decks built on Scryfall’s card data.
 				</p>
 				<div className="flex gap-4">
 					<Link to="/signup" className={buttonVariants({ size: 'lg' })}>
@@ -47,6 +52,15 @@ export default function Index() {
 						rel="noreferrer"
 					>
 						NetrunnerDB
+					</a>{' '}
+					and{' '}
+					<a
+						href="https://scryfall.com"
+						className="underline"
+						target="_blank"
+						rel="noreferrer"
+					>
+						Scryfall
 					</a>
 					.
 				</p>

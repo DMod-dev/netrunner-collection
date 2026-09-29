@@ -6,12 +6,14 @@ import {
 	REMOVE_SHARE_INTENT,
 	RemoveShareButton,
 } from '#app/components/remove-share-button.tsx'
+import { buttonVariants } from '#app/components/ui/button.tsx'
 import { UserIcon } from '#app/components/user-icon.tsx'
 import { requireUserId } from '#app/utils/auth.server.ts'
 import {
 	listSharesReceived,
 	removeShareAction,
 } from '#app/utils/collection-share.server.ts'
+import { userCollectionPath } from '#app/utils/game.ts'
 import { type Route } from './+types/shared.ts'
 
 export const handle: SEOHandle = {
@@ -76,11 +78,25 @@ export default function SharedWithMeRoute({
 										</span>
 									</span>
 								</Link>
-								<RemoveShareButton
-									shareId={share.id}
-									label="Remove"
-									accessibleName={`Remove ${name}’s collection`}
-								/>
+								<div className="flex items-center gap-2">
+									{/* a share covers both games; the counts are Netrunner's */}
+									<Link
+										to={userCollectionPath('mtg', share.owner.username)}
+										prefetch="intent"
+										aria-label={`${name}’s MTG collection`}
+										className={buttonVariants({
+											variant: 'outline',
+											size: 'sm',
+										})}
+									>
+										MTG
+									</Link>
+									<RemoveShareButton
+										shareId={share.id}
+										label="Remove"
+										accessibleName={`Remove ${name}’s collection`}
+									/>
+								</div>
 							</li>
 						)
 					})}

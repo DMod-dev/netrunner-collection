@@ -7,6 +7,10 @@ release, record how many copies you own of each printing, and see which sets
 you've completed and which cards you still need for a deck. Card data comes from
 [NetrunnerDB](https://netrunnerdb.com).
 
+Magic: The Gathering is coming as a second game with its own collection and
+decks under `/mtg`, switched from the header; its pages are placeholders while
+it's built (see the roadmap in issue #74).
+
 ## Features
 
 - **Collection:** search and filter by side, faction, type and set. Log copies
