@@ -525,3 +525,141 @@ model DeckLoan {
   @@index([cardId, status])
   @@index([noticeId])
 }
+
+// ---------------------------------------------------------------------------
+// Magic: The Gathering card data, mirrored from Scryfall's default_cards bulk
+// file (see app/utils/scryfall.server.ts and docs/decisions/050-mtg-domain.md).
+// Siloed from the Netrunner tables above: nothing here references them.
+// Every id is Scryfall's, so a sync upserts.
+// ---------------------------------------------------------------------------
+
+model MtgSet {
+  id            String    @id // Scryfall set id (uuid)
+  code          String    @unique // "mh3"
+  name          String
+  /// core | expansion | masters | commander | token | promo | memorabilia | ...
+  setType       String
+  releasedAt    DateTime?
+  cardCount     Int       @default(0)
+  parentSetCode String?
+  iconSvgUri    String?
+  digital       Boolean   @default(false)
+  updatedAt     DateTime  @updatedAt
+
+  printings MtgPrinting[]
+
+  @@index([releasedAt])
+}
+
+/// One row per Oracle id: the rules text every printing of a card shares.
+/// The comma-wrapped columns (",W,U,") let `contains: ",W,"` match exactly,
+/// like Card.legalFormats.
+model MtgCard {
+  id                String   @id // Scryfall oracle_id
+  name              String
+  /// ascii, lower-cased name, for search (like Card.strippedTitle)
+  strippedName      String
+  /// normal | transform | modal_dfc | split | adventure | flip | meld | token | ...
+  layout            String
+  /// the faces' costs joined with " // " when the card has more than one
+  manaCost          String?
+  manaValue         Float    @default(0)
+  typeLine          String   @default("")
+  /// the faces' texts joined with "\n//\n" when the card has more than one
+  oracleText        String?
+  /// comma-wrapped colours of every face: ",W,U,"
+  colors            String   @default(",")
+  colorIdentity     String   @default(",")
+  /// comma-wrapped lower-cased supertypes and card types of every face: ",legendary,creature,"
+  types             String   @default(",")
+  /// comma-wrapped lower-cased subtypes of every face: ",human,wizard,"
+  subtypes          String   @default(",")
+  /// comma-wrapped lower-cased keywords: ",flying,trample,"
+  keywords          String   @default(",")
+  /// comma-wrapped mana symbols the card can produce: ",G,C,"
+  producedMana      String   @default(",")
+  power             String?
+  toughness         String?
+  loyalty           String?
+  /// comma-wrapped formats where Scryfall says "legal": ",commander,modern,"
+  legalFormats      String   @default(",")
+  restrictedFormats String   @default(",")
+  bannedFormats     String   @default(",")
+  /// on the Commander "game changers" list (brackets)
+  gameChanger       Boolean  @default(false)
+  edhrecRank        Int?
+  /// on the Reserved List
+  reserved          Boolean  @default(false)
+  /// JSON array of the faces (name, manaCost, typeLine, oracleText, colors,
+  /// power, toughness, loyalty) for multi-face cards; null otherwise
+  faces             String?
+  updatedAt         DateTime @updatedAt
+
+  printings MtgPrinting[]
+
+  @@index([strippedName])
+  @@index([manaValue])
+}
+
+/// One row per Scryfall card id: a paper printing (digital-only printings are
+/// skipped). Image URLs are built from the id (app/utils/mtg-images.ts).
+model MtgPrinting {
+  id              String    @id // Scryfall id (uuid)
+  collectorNumber String
+  /// common | uncommon | rare | mythic | special | bonus
+  rarity          String
+  /// comma-wrapped finishes it was printed in: ",nonfoil,foil,etched,"
+  finishes        String    @default(",nonfoil,")
+  lang            String    @default("en")
+  frame           String?
+  /// comma-wrapped: ",showcase,extendedart,"
+  frameEffects    String    @default(",")
+  /// comma-wrapped: ",prerelease,datestamped,"
+  promoTypes      String    @default(",")
+  borderColor     String?
+  fullArt         Boolean   @default(false)
+  promo           Boolean   @default(false)
+  booster         Boolean   @default(false)
+  reprint         Boolean   @default(false)
+  artist          String?
+  /// printings with the same illustration share it (scan matching, #66)
+  illustrationId  String?
+  flavorText      String?
+  releasedAt      DateTime?
+  /// highres_scan | lowres | placeholder | missing
+  imageStatus     String    @default("missing")
+  /// true when each face has its own image (transform, modal_dfc, ...)
+  multiFaceImages Boolean   @default(false)
+  priceUsd        Float?
+  priceUsdFoil    Float?
+  priceUsdEtched  Float?
+  priceEur        Float?
+  priceEurFoil    Float?
+  tcgplayerId     Int?
+  cardmarketId    Int?
+  updatedAt       DateTime  @updatedAt
+
+  card   MtgCard @relation(fields: [cardId], references: [id])
+  cardId String
+  set    MtgSet  @relation(fields: [setId], references: [id])
+  setId  String
+
+  @@index([setId, collectorNumber])
+  @@index([cardId])
+  @@index([illustrationId])
+}
+
+model MtgSync {
+  id            String    @id @default(cuid())
+  startedAt     DateTime  @default(now())
+  finishedAt    DateTime?
+  status        String // "running" | "success" | "error"
+  trigger       String    @default("cli") // "schedule" | "manual" | "cli"
+  /// Scryfall's updated_at for the bulk file this run imported (or found
+  /// unchanged and skipped)
+  bulkUpdatedAt DateTime?
+  summary       String? // JSON counts
+  error         String?
+
+  @@index([startedAt])
+}

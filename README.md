@@ -49,7 +49,10 @@ you've completed and which cards you still need for a deck. Card data comes from
   GitHub login.
 - **Card data sync:** card data, including each format's card pool and its ban,
   restricted or points list, is mirrored from NetrunnerDB automatically once a
-  day. Admins can trigger a sync from **Card data sync** in the user menu.
+  day. Magic: The Gathering card data (cards, printings, sets, legalities and
+  prices) is mirrored from Scryfall's bulk data, checked every 12 hours; the MTG
+  pages are on the way (see the pinned roadmap issue). Admins can trigger either
+  sync from **Netrunner card sync** or **MTG card sync** in the user menu.
 
 ## Tech stack
 
@@ -71,6 +74,7 @@ cp .env.example .env
 npm run setup          # build, apply migrations, install Playwright
 npx prisma db seed     # optional: admin user "kody" / "kodylovesyou"
 npm run sync:nrdb      # pull card data from NetrunnerDB
+npm run sync:scryfall  # optional: pull MTG card data from Scryfall (~80 MB)
 npm run dev
 ```
 
@@ -78,22 +82,25 @@ The app runs at http://localhost:3000. `npm run dev` mocks outside services such
 as email and GitHub. Emails are printed to the terminal instead of being sent.
 Use `npm run dev:no-mocks` to call the real services.
 
-The scheduled NetrunnerDB sync is off when mocks are on. Run `npm run sync:nrdb`
-whenever you want fresh card data locally.
+The scheduled NetrunnerDB and Scryfall syncs are off when mocks are on. Run
+`npm run sync:nrdb` or `npm run sync:scryfall` whenever you want fresh card data
+locally. The Scryfall sync skips the download when Scryfall's file hasn't
+changed since the last import; add `-- --force` to import it anyway.
 
 ## Scripts
 
-| Script              | What it does                                               |
-| ------------------- | ---------------------------------------------------------- |
-| `npm run dev`       | Dev server with mocks                                      |
-| `npm run build`     | Production build                                           |
-| `npm run sync:nrdb` | Sync cards, sets and printings from NetrunnerDB            |
-| `npm test`          | Unit tests (Vitest, watch mode)                            |
-| `npm run test:e2e`  | End-to-end tests (Playwright UI)                           |
-| `npm run lint`      | oxlint with type-aware rules                               |
-| `npm run format`    | Format with oxfmt                                          |
-| `npm run typecheck` | Generate route types and run `tsc`                         |
-| `npm run validate`  | Unit tests, lint, typecheck, format check and e2e together |
+| Script                  | What it does                                               |
+| ----------------------- | ---------------------------------------------------------- |
+| `npm run dev`           | Dev server with mocks                                      |
+| `npm run build`         | Production build                                           |
+| `npm run sync:nrdb`     | Sync cards, sets and printings from NetrunnerDB            |
+| `npm run sync:scryfall` | Sync MTG cards, printings and sets from Scryfall           |
+| `npm test`              | Unit tests (Vitest, watch mode)                            |
+| `npm run test:e2e`      | End-to-end tests (Playwright UI)                           |
+| `npm run lint`          | oxlint with type-aware rules                               |
+| `npm run format`        | Format with oxfmt                                          |
+| `npm run typecheck`     | Generate route types and run `tsc`                         |
+| `npm run validate`      | Unit tests, lint, typecheck, format check and e2e together |
 
 ## Project layout
 
@@ -111,7 +118,7 @@ app/
     collection-pages/  the Cards and Sets pages, used by both route trees
   utils/           server and client helpers (*.server.ts stays on the server)
 prisma/            schema, migrations and seed
-other/             Dockerfile, LiteFS config and the sync-nrdb script
+other/             Dockerfile, LiteFS config and the card sync scripts
 tests/e2e/         Playwright tests
 docs/              Epic Stack docs (deployment, secrets, testing and more)
 ```
@@ -130,6 +137,9 @@ Migrations run on startup with `prisma migrate deploy`. See
 ## Acknowledgements
 
 - Card data and images come from [NetrunnerDB](https://netrunnerdb.com).
+- Magic: The Gathering card data and images come from
+  [Scryfall](https://scryfall.com). Magic: The Gathering is © Wizards of the
+  Coast; this project is unofficial Fan Content and not endorsed by Wizards.
 - The project started from Kent C. Dodds'
   [Epic Stack](https://github.com/epicweb-dev/epic-stack).
 

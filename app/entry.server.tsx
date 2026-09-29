@@ -13,17 +13,17 @@ import {
 	type HandleDocumentRequestFunction,
 } from 'react-router'
 import { startAuthPruneScheduler } from './utils/auth-prune.server.ts'
+import { startCardSyncSchedulers } from './utils/card-sync-scheduler.server.ts'
 import { getEnv, init } from './utils/env.server.ts'
 import { applyPrivateCacheControl } from './utils/headers.server.ts'
 import { getInstanceInfo } from './utils/litefs.server.ts'
 import { NonceProvider } from './utils/nonce-provider.ts'
-import { startNrdbSyncScheduler } from './utils/nrdb-scheduler.server.ts'
 import { isExpectedReactRouterErrorMessage } from './utils/sentry-event-filters.ts'
 import { makeTimings } from './utils/timing.server.ts'
 
 export const streamTimeout = 5000
 
-startNrdbSyncScheduler()
+startCardSyncSchedulers()
 startAuthPruneScheduler()
 
 init()
@@ -85,7 +85,14 @@ export default async function handleRequest(...args: DocRequestArgs) {
 									],
 									'font-src': ["'self'"],
 									'frame-src': ["'self'"],
-									'img-src': ["'self'", 'data:', 'card-images.netrunnerdb.com'],
+									'img-src': [
+										"'self'",
+										'data:',
+										'card-images.netrunnerdb.com',
+										// MTG card images and set symbols (app/utils/mtg-images.ts)
+										'cards.scryfall.io',
+										'svgs.scryfall.io',
+									],
 									'script-src': [
 										"'strict-dynamic'",
 										"'self'",
