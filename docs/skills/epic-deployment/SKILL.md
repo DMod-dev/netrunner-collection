@@ -657,7 +657,10 @@ jobs:
 ```typescript
 // app/utils/env.server.ts
 export function getDeploymentEnv():
-	'production' | 'staging' | 'preview' | 'development' {
+	| 'production'
+	| 'staging'
+	| 'preview'
+	| 'development' {
 	if (process.env.NODE_ENV === 'development') {
 		return 'development'
 	}
@@ -796,6 +799,6 @@ fly releases rollback --app my-app
 ```toml
 # fly.toml
 [experimental]
-  auto_rollback = true
-  min_machines_running = 1
+auto_rollback = true
+min_machines_running = 1
 ```
