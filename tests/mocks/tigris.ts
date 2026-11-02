@@ -32,11 +32,13 @@ function validateAuth(headers: Headers) {
 	return false
 }
 
-function assertKey(key: any): asserts key is Array<string> {
+/** The object key's path segments: MSW 3 gives a `:key*` match as one string. */
+function keySegments(key: unknown): Array<string> {
 	invariantResponse(
-		Array.isArray(key) && key.length && key.every((k) => typeof k === 'string'),
+		typeof key === 'string' && key.includes('/'),
 		'Key must contain a directory',
 	)
+	return key.split('/')
 }
 
 export const handlers = [
@@ -46,9 +48,7 @@ export const handlers = [
 			if (!validateAuth(request.headers)) {
 				return new HttpResponse('Unauthorized', { status: 401 })
 			}
-			const { key } = params
-
-			assertKey(key)
+			const key = keySegments(params.key)
 
 			const filePath = path.join(MOCK_STORAGE_DIR, ...key)
 			const parentDir = path.dirname(filePath)
@@ -67,8 +67,7 @@ export const handlers = [
 			if (!validateAuth(request.headers)) {
 				return new HttpResponse('Unauthorized', { status: 401 })
 			}
-			const { key } = params
-			assertKey(key)
+			const key = keySegments(params.key)
 			// Only ever uploaded objects; the image fixtures stay put.
 			await fs.rm(path.join(MOCK_STORAGE_DIR, ...key), { force: true })
 			return new HttpResponse(null, { status: 204 })
@@ -78,8 +77,7 @@ export const handlers = [
 	http.get(
 		`${STORAGE_ENDPOINT}/${STORAGE_BUCKET}/:key*`,
 		async ({ params }) => {
-			const { key } = params
-			assertKey(key)
+			const key = keySegments(params.key)
 
 			const filePath = path.join(MOCK_STORAGE_DIR, ...key)
 			try {
