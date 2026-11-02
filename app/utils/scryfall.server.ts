@@ -143,10 +143,7 @@ function toPrice(value: string | null | undefined) {
 
 /** "Lim-Dûl's Vault" → "lim-dul's vault" */
 export function stripName(name: string) {
-	return name
-		.normalize('NFKD')
-		.replace(/[̀-ͯ]/g, '')
-		.toLowerCase()
+	return name.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase()
 }
 
 /** Reversible cards keep their Oracle id on the faces. */
